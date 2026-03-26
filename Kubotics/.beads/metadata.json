@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "Kubotics",
+  "project_id": "ec88baea-76a0-48e0-9a6f-83edefe0aac9"
+}
