@@ -1,0 +1,89 @@
+[
+    {
+        "id": "kuro-li-v-the-origin-story",
+        "title": "Kuro, Li, and V: Our Origin Story at Sea",
+        "date": "2026-02-16",
+        "author": "Vincent",
+        "excerpt": "KuroLIV is more than a name; it's our DNA. Discover how a Black & Tan Shiba Inu, a strategic soulmate, and a captain's vision came together to sail the world.",
+        "heroImage": "https://images.unsplash.com/photo-1517048676732-d65bc937f952?q=80&w=1500",
+        "tags": [
+            "family",
+            "sailing",
+            "kuro",
+            "philosophy"
+        ],
+        "content": [
+            {
+                "type": "paragraph",
+                "text": "In our professional lives, we often talk about synergy — the idea that 1+1+1 can equal something far greater than 3. But for us, this isn't just a business concept. It's the very foundation of our family and our life aboard SY Florentine."
+            },
+            {
+                "type": "heading",
+                "text": "The Pillars of KuroLIV"
+            },
+            {
+                "type": "paragraph",
+                "text": "The name KuroLIV is a contraction of the three pillars that define our team: KURO (our namesake Shiba Inu), LI (Liesbet), and V (Vincent). Whether we are tackling a C-level IT strategy or navigating a complex coastal passage, these three forces are always in balance."
+            },
+            {
+                "type": "heading",
+                "text": "KURO — The Spirited Chief Happiness Officer"
+            },
+            {
+                "type": "paragraph",
+                "text": "Meet the 'Kuro' in our name: our Black & Tan Shiba Inu. She is the spirit animal of our journey — independent, authentic, and undeniably spirited. On the deck of SY Florentine, she takes on the role of 'Little Pirate' and our Chief Happiness Officer. Her dignified independence and famously stubborn nature remind us daily that even the most serious mile sailed needs a touch of joy and a loyal companion."
+            },
+            {
+                "type": "heading",
+                "text": "LI — Precision and Soul at the Helm"
+            },
+            {
+                "type": "paragraph",
+                "text": "Liesbet (Liz) is the 'LI' — the soul of our strategy. While she leads talent leadership and high-performance cultures in the boardroom, on the water she is our 1st Mate and Helmsman. She brings the empathy and precision that allow us to thrive in the most complex environments, whether organizational or oceanic."
+            },
+            {
+                "type": "heading",
+                "text": "V — The Captain's Vision"
+            },
+            {
+                "type": "paragraph",
+                "text": "And finally, the 'V' — Vincent. As Captain, he brings a relentless focus on business value and critical vision to every detail of our journey. Much like the Shiba he admires, he possesses a focused determination to see every strategy — and every crossing — through to its most successful conclusion."
+            },
+            {
+                "type": "paragraph",
+                "text": "Together, we are a shiba-minded company and a warm, open-minded family. Our values are strictly aligned, fostering an environment of trust and relentless passion."
+            }
+        ]
+    },
+    {
+        "id": "our-boat-jeanneau-sun-odyssey-42ds",
+        "title": "SY Florentine: The Performance Edition",
+        "date": "2026-01-20",
+        "author": "Vincent",
+        "excerpt": "A deep dive into our floating home — the Jeanneau Sun Odyssey 42 DS Performance Edition.",
+        "heroImage": "https://images.unsplash.com/photo-1540946484620-20ef10658491?q=80&w=1500",
+        "tags": [
+            "boat",
+            "technical"
+        ],
+        "content": [
+            {
+                "type": "paragraph",
+                "text": "SY Florentine is more than just a boat; she is a Jeanneau Sun Odyssey 42 DS Performance Edition — a blue-water cruiser that perfectly balances performance sailing with the comforts of a floating home."
+            },
+            {
+                "type": "heading",
+                "text": "Performance Meets Comfort"
+            },
+            {
+                "type": "paragraph",
+                "text": "The 'DS' stands for Deck Saloon, offering panoramic views from the cabin. The 'Performance Edition' means she has a deeper keel and a taller rig, giving us the edge in speed and stability."
+            },
+            {
+                "type": "image",
+                "src": "/images/boat/main_florentine.jpg",
+                "caption": "SY Florentine under full sail."
+            }
+        ]
+    }
+]

@@ -1,0 +1,163 @@
+.department-container {
+    padding: 40px 20px 40px;
+    /* Top padding for fixed header */
+    background-color: var(--background, #111);
+    color: var(--text-color, #fff);
+    max-width: 1200px;
+    margin: 0 auto;
+
+    h2 {
+        font-size: 2.5rem;
+        margin-bottom: 2rem;
+        border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        padding-bottom: 1rem;
+        color: #4fc3f7;
+    }
+
+    .split-view {
+        display: flex;
+        gap: 3rem;
+
+        @media (max-width: 768px) {
+            flex-direction: column;
+        }
+
+        .sidebar {
+            flex: 0 0 250px;
+
+            ul {
+                list-style: none;
+                padding: 0;
+                margin: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+
+                li {
+                    padding: 1rem;
+                    background: rgba(255, 255, 255, 0.05);
+                    cursor: pointer;
+                    border-radius: 8px;
+                    transition: all 0.2s;
+                    border-left: 3px solid transparent;
+
+                    &:hover {
+                        background: rgba(255, 255, 255, 0.1);
+                    }
+
+                    &.active {
+                        background: rgba(79, 195, 247, 0.2);
+                        border-left-color: #4fc3f7;
+                        color: #4fc3f7;
+                        font-weight: bold;
+                    }
+                }
+            }
+        }
+
+        .content-area {
+            flex: 1;
+            padding: 0 2rem;
+            font-size: 1.1rem;
+            line-height: 1.6;
+            opacity: 0.9;
+
+            .contact-action {
+                margin-top: 3rem;
+                padding-top: 2rem;
+                border-top: 1px solid rgba(255, 255, 255, 0.1);
+            }
+
+            .contact-btn {
+                display: inline-block;
+                padding: 12px 24px;
+                background: linear-gradient(135deg, #FF6B6B, #4ECDC4);
+                color: white;
+                text-decoration: none;
+                border-radius: 8px;
+                font-weight: bold;
+                transition: opacity 0.3s;
+
+                &:hover {
+                    opacity: 0.9;
+                }
+            }
+
+            /* Ensure injected HTML looks okay */
+            ::ng-deep {
+
+                h1,
+                h2,
+                h3 {
+                    color: #eee;
+                    margin-top: 1.5rem;
+                    transition: color 0.3s;
+                }
+
+                p {
+                    margin-bottom: 1rem;
+                    color: #ccc;
+                    transition: color 0.3s;
+                }
+
+                ul,
+                ol {
+                    margin-left: 1.5rem;
+                    margin-bottom: 1rem;
+                    color: #ccc;
+                    transition: color 0.3s;
+                }
+
+                a {
+                    color: #4fc3f7;
+                }
+            }
+        }
+    }
+}
+
+:host-context(body.light-mode) .department-container {
+    --background: #f0f2f5;
+    --text-color: #333;
+
+    h2 {
+        color: #0d47a1;
+        border-bottom-color: rgba(0, 0, 0, 0.1);
+    }
+
+    .split-view {
+        .sidebar ul li {
+            background: rgba(0, 0, 0, 0.05);
+
+            &:hover {
+                background: rgba(0, 0, 0, 0.1);
+            }
+
+            &.active {
+                background: rgba(13, 71, 161, 0.1);
+                border-left-color: #0d47a1;
+                color: #0d47a1;
+            }
+        }
+
+        .content-area {
+            background: rgba(0, 0, 0, 0.02);
+
+            ::ng-deep {
+
+                /* Light mode text colors */
+                h1,
+                h2,
+                h3 {
+                    color: #333;
+                }
+
+                p,
+                ul,
+                ol {
+                    color: #555;
+                }
+            }
+        }
+    }
+}

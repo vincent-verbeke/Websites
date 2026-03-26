@@ -1,0 +1,13 @@
+<div class="app-wrapper">
+    @if (showHeaderFooter()) {
+    <app-header></app-header>
+    }
+
+    <div class="content-area">
+        <router-outlet></router-outlet>
+    </div>
+
+    @if (showHeaderFooter()) {
+    <app-footer></app-footer>
+    }
+</div>

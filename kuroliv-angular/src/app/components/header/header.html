@@ -1,0 +1,20 @@
+<header>
+    <nav>
+        <a routerLink="/" class="logo-link">
+            <img src="header_website.svg" alt="Kuroliv Logo" class="logo">
+        </a>
+        <div class="right-section">
+            <ul>
+                <li><a routerLink="/home">Services</a></li>
+                <li><a [routerLink]="['/service', 'Passions']">Passions</a></li>
+                <li><a [routerLink]="['/service', 'Kuro']">KURO</a></li>
+                <li><a routerLink="/about">About</a></li> <!-- Future proofing -->
+                <li><a routerLink="/contact">Contact</a></li>
+            </ul>
+            <button (click)="themeService.toggleTheme()" class="theme-toggle"
+                [attr.aria-label]="themeService.isDarkMode() ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
+                {{ themeService.isDarkMode() ? '☀️' : '🌙' }}
+            </button>
+        </div>
+    </nav>
+</header>

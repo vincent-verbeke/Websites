@@ -1,0 +1,109 @@
+.hero-container {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #000; // Default Dark
+  cursor: url('/paw-cursor.svg') 16 16, auto;
+  /* Custom Light Paw Cursor */
+
+  ngx-particles {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+  }
+
+  .content {
+    position: relative;
+    z-index: 2;
+    color: white; // Default Dark Text
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+
+    h1 {
+      color: white;
+      text-shadow: none;
+      margin-bottom: 0.5rem;
+      font-size: 3.5rem;
+      /* Increased size */
+    }
+
+    .tagline {
+      font-size: 1.6rem;
+      /* Adjusted size */
+      font-weight: 700;
+      color: white;
+      margin-bottom: 1rem;
+      letter-spacing: 1px;
+      /* Removed uppercase */
+    }
+
+    p {
+      color: white;
+      font-size: 1.1rem;
+      opacity: 0.9;
+    }
+
+    button {
+      margin-top: 2rem;
+      padding: 12px 32px;
+      font-size: 1.1rem;
+      color: white;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 30px;
+      cursor: pointer;
+      backdrop-filter: blur(5px);
+      transition: all 0.3s ease;
+      font-family: inherit;
+      pointer-events: auto;
+      cursor: url('/paw-cursor.svg') 16 16, pointer;
+      /* Custom Light Paw Cursor for Button */
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.8);
+        box-shadow: 0 4px 15px rgba(255, 255, 255, 0.1);
+      }
+    }
+  }
+}
+
+:host-context(body.light-mode) .hero-container {
+  background-color: #f0f2f5;
+
+  .content {
+    color: #333;
+
+    h1 {
+      color: #333;
+    }
+
+    .tagline {
+      color: #0d47a1;
+    }
+
+    p {
+      color: #555;
+    }
+
+    button {
+      background: #0d47a1;
+      color: white;
+      border-color: transparent;
+
+      &:hover {
+        background: #002171;
+        box-shadow: 0 0 20px rgba(13, 71, 161, 0.3);
+        transform: translateY(-2px);
+      }
+    }
+  }
+}

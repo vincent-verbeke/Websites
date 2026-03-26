@@ -1,0 +1,12 @@
+<div class="services-container">
+    <h2>Our Services</h2>
+
+    <div class="grid">
+        @for (dept of departments(); track dept) {
+        <div class="card" (click)="navigateToDepartment(dept)">
+            <h3>{{ getDepartmentTitle(dept) }}</h3>
+            <p>{{ getDepartmentDescription(dept) }}</p>
+        </div>
+        }
+    </div>
+</div>

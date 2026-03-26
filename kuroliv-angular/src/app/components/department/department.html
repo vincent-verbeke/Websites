@@ -1,0 +1,27 @@
+<div class="department-container">
+    <h2>{{ departmentId() }}</h2>
+
+    <div class="split-view">
+        <div class="sidebar">
+            <ul>
+                <li *ngFor="let act of activities()" [class.active]="act === activeActivity()"
+                    (click)="selectActivity(act)">
+                    {{ act === 'AIAutomation' ? 'AI & Automation' : act }}
+                </li>
+            </ul>
+        </div>
+        <div class="content-area">
+            <div [innerHTML]="content()"></div>
+            <div class="contact-action">
+                <a *ngIf="hasConsultationOffer()" class="contact-btn" [routerLink]="['/contact']"
+                    [queryParams]="{ source: departmentId(), consultation: true }">
+                    Contact us for a free initial 2h consultation
+                </a>
+                <a *ngIf="!hasConsultationOffer()" class="contact-btn" [routerLink]="['/contact']"
+                    [queryParams]="{ source: departmentId() }">
+                    Contact Us
+                </a>
+            </div>
+        </div>
+    </div>
+</div>

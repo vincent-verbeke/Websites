@@ -1,0 +1,21 @@
+/* You can add global styles to this file, and also import other style files */
+body,
+html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #000;
+    /* Default Dark */
+    color: #fff;
+    /* Default Dark */
+    font-family: 'Calibri', 'Segoe UI', Candara, Segoe, Optima, Arial, sans-serif;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+body.light-mode {
+    /* Class for Light Mode */
+    background-color: #f0f2f5;
+    color: #333;
+}

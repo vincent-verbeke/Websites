@@ -1,0 +1,155 @@
+.contact-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+
+  .contact-container {
+    display: flex;
+    gap: 3rem;
+    flex-wrap: wrap;
+
+    .info-section {
+      flex: 1;
+      min-width: 300px;
+
+      h1 {
+        color: #d4af37;
+        margin-bottom: 2rem;
+        font-size: 2.5rem;
+      }
+
+      .info-block {
+        background: #1a2e1a;
+        padding: 2rem;
+        border-radius: 8px;
+        border: 1px solid #2a4a2a;
+
+        h2 {
+          color: #d4af37;
+          margin-bottom: 1rem;
+          font-size: 1.5rem;
+        }
+
+        p {
+          color: #aaaaaa;
+          margin-bottom: 0.5rem;
+
+          a {
+            color: #d4af37;
+            text-decoration: none;
+
+            &:hover {
+              text-decoration: underline;
+            }
+          }
+        }
+      }
+
+      .legal-block {
+        margin-top: 2rem;
+
+        h3 {
+          color: #d4af37;
+          margin-bottom: 1rem;
+        }
+
+        p {
+          color: #aaaaaa;
+          margin-bottom: 0.5rem;
+        }
+      }
+    }
+
+    .form-section {
+      flex: 1;
+      min-width: 300px;
+
+      h2 {
+        color: #d4af37;
+        margin-bottom: 1.5rem;
+        font-size: 1.5rem;
+      }
+
+      form {
+        background: #1a2e1a;
+        padding: 2rem;
+        border-radius: 8px;
+        border: 1px solid #2a4a2a;
+
+        .form-group {
+          margin-bottom: 1.5rem;
+
+          label {
+            display: block;
+            color: #d4af37;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+          }
+
+          input, textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #2a4a2a;
+            border-radius: 4px;
+            background: #0f1a0f;
+            color: #f0f0f0;
+            font-size: 1rem;
+
+            &:focus {
+              outline: none;
+              border-color: #d4af37;
+            }
+
+            &::placeholder {
+              color: #666;
+            }
+          }
+
+          textarea {
+            resize: vertical;
+            min-height: 120px;
+          }
+
+          .consultation-mention {
+            h3 {
+              color: #d4af37;
+              font-size: 0.9rem;
+              margin: 0;
+              padding: 0.75rem;
+              background: rgba(212, 175, 55, 0.1);
+              border-radius: 4px;
+            }
+          }
+        }
+
+        .submit-btn {
+          width: 100%;
+          padding: 1rem;
+          background: linear-gradient(135deg, #d4af37 0%, #b8860b 100%);
+          color: #0f1a0f;
+          border: none;
+          border-radius: 4px;
+          font-size: 1rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.3s ease;
+
+          &:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+          }
+        }
+      }
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .contact-page {
+    padding: 1rem;
+
+    .contact-container {
+      flex-direction: column;
+    }
+  }
+}

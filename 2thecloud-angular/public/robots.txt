@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://2thecloud.ch/sitemap.xml

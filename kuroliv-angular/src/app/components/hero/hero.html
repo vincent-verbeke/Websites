@@ -1,0 +1,11 @@
+<div class="hero-container">
+  <ngx-particles [id]="id" [options]="particlesOptions" (particlesLoaded)="particlesLoaded($event)"
+    [particlesInit]="particlesInit"></ngx-particles>
+
+  <div class="content">
+    <h1>KuroLIV GmbH</h1>
+    <h2 class="tagline">Embrace Bold Solutions, Empower Your Success</h2>
+    <p>Professional IT Services & Leadership</p>
+    <button (click)="scrollToServices()">Continue</button>
+  </div>
+</div>

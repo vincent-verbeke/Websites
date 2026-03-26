@@ -1,0 +1,20 @@
+<header>
+    <nav>
+        <a routerLink="/" class="logo-link">
+            <div class="logo">
+                <span class="logo-text">ANGERIK</span>
+            </div>
+        </a>
+        <div class="right-section">
+            <ul>
+                <li><a routerLink="/home">Beer</a></li>
+                <li><a routerLink="/about">About</a></li>
+                <li><a routerLink="/contact" [queryParams]="{lang: 'en'}">Contact</a></li>
+            </ul>
+            <button (click)="themeService.toggleTheme()" class="theme-toggle"
+                [attr.aria-label]="themeService.isDarkMode() ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
+                {{ themeService.isDarkMode() ? 'Sun' : 'Moon' }}
+            </button>
+        </div>
+    </nav>
+</header>

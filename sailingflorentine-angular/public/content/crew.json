@@ -1,0 +1,29 @@
+[
+    {
+        "id": "vincent",
+        "name": "Vincent Verbeke",
+        "role": "Captain",
+        "emoji": "🧭",
+        "image": "images/crew/vincent.jpg",
+        "bio": "Vincent Verbeke is the driving force behind Sailing Florentine. A seasoned IT strategist and C-level advisor in his professional life, he brings the same critical vision and relentless focus to the helm. As Captain, he oversees every detail of the journey — from navigation and weather planning to maintenance and safety. Stubborn, focused, and always on course.",
+        "quote": "Prepare meticulously, execute decisively, and never lose sight of the horizon."
+    },
+    {
+        "id": "liz",
+        "name": "Liesbet (Liz) Mallet",
+        "role": "1st Mate & Helmsman",
+        "emoji": "⚓",
+        "image": "images/crew/liz.jpg",
+        "bio": "Liesbet (Liz) Mallet is the heart and soul of both KuroLIV and Sailing Florentine. Her professional life in high-performance HR culture and talent leadership brings empathy, balance, and calm under pressure. As 1st Mate and Helmsman, Liz steers SY Florentine through the waves with the same grace she applies to organizational transformation.",
+        "quote": "The sunset is beautiful — maybe put down the charts for a moment."
+    },
+    {
+        "id": "kuro",
+        "name": "Kuro",
+        "role": "Chief Happiness Officer 🐾",
+        "emoji": "🐕",
+        "image": "images/crew/kuro.jpg",
+        "bio": "Kuro is our Black & Tan Shiba Inu — the spirit animal of our family and our adventures. Independent, authentic, and undeniably spirited, she embodies the legendary Shiba character: dignified independence, keen intelligence, and a famously stubborn nature. On board SY Florentine, she is the 'Little Pirate' of the deck, reminding us daily that every mile sailed needs a touch of joy and a loyal companion.",
+        "quote": "*wags tail, stares at the horizon philosophically*"
+    }
+]

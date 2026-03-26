@@ -1,0 +1,53 @@
+<div class="contact-page">
+    <div class="container">
+        <div class="contact-grid">
+            <section class="contact-info">
+                <h1>Contact us to your <span class="playful-twist">Cloud Journey</span></h1>
+                <p class="intro">Whether you're looking to rebuild a legacy app or optimize your cloud infrastructure,
+                    we're here to guide you.</p>
+
+                <div class="info-card">
+                    <h3>KuroLIV GmbH</h3>
+                    <p>Färberstrasse 5, 8832 Wollerau</p>
+                    <p>Switzerland</p>
+                    <p>Email: hello&#64;2thecloud.ch</p>
+                </div>
+
+                <div class="audit-highlight" *ngIf="isConsultation()">
+                    <h3>🚀 Free 2h Audit</h3>
+                    <p>You have selected our signature audit. This includes a high-level review of your IT landscape or
+                        a roadmap for modernization.</p>
+                </div>
+            </section>
+
+            <section class="contact-form-section">
+                <form (submit)="submitForm(); $event.preventDefault()">
+                    <div class="form-group">
+                        <label for="name">Name</label>
+                        <input type="text" id="name" name="name" [(ngModel)]="name" required placeholder="Your Name">
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" name="email" [(ngModel)]="email" required
+                            placeholder="your.email@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="phone">Phone</label>
+                        <input type="tel" id="phone" name="phone" [(ngModel)]="phone" placeholder="+41 00 000 00 00">
+                    </div>
+                    <div class="form-group">
+                        <label for="subject">Subject</label>
+                        <input type="text" id="subject" name="subject" [(ngModel)]="subject" required
+                            placeholder="Cloud Strategy">
+                    </div>
+                    <div class="form-group">
+                        <label for="message">Message</label>
+                        <textarea id="message" name="message" [(ngModel)]="message" required rows="5"
+                            placeholder="Tell us about your current challenges..."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Start the Journey</button>
+                </form>
+            </section>
+        </div>
+    </div>
+</div>

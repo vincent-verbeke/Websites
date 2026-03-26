@@ -1,0 +1,90 @@
+[
+  {
+    "Department": "IT",
+    "Activity": "Intro"
+  },
+  {
+    "Department": "IT",
+    "Activity": "Strengths"
+  },
+  {
+    "Department": "IT",
+    "Activity": "AIAutomation"
+  },
+  {
+    "Department": "IT",
+    "Activity": "IT Infrastructure"
+  },
+  {
+    "Department": "IT",
+    "Activity": "Application Development"
+  },
+  {
+    "Department": "IT",
+    "Activity": "Contact"
+  },
+  {
+    "Department": "HR",
+    "Activity": "Intro"
+  },
+  {
+    "Department": "HR",
+    "Activity": "Strengths"
+  },
+  {
+    "Department": "HR",
+    "Activity": "CV"
+  },
+  {
+    "Department": "HR",
+    "Activity": "Contact"
+  },
+  {
+    "Department": "Management",
+    "Activity": "Intro"
+  },
+  {
+    "Department": "Management",
+    "Activity": "Strengths"
+  },
+  {
+    "Department": "Management",
+    "Activity": "Contact"
+  },
+  {
+    "Department": "Kuro",
+    "Activity": "Intro"
+  },
+  {
+    "Department": "Kuro",
+    "Activity": "Kuro"
+  },
+  {
+    "Department": "Kuro",
+    "Activity": "Liz"
+  },
+  {
+    "Department": "Kuro",
+    "Activity": "Vincent"
+  },
+  {
+    "Department": "Passions",
+    "Activity": "Intro"
+  },
+  {
+    "Department": "Passions",
+    "Activity": "Sailing"
+  },
+  {
+    "Department": "Passions",
+    "Activity": "Diving"
+  },
+  {
+    "Department": "Passions",
+    "Activity": "Beer"
+  },
+  {
+    "Department": "Passions",
+    "Activity": "Contact"
+  }
+]

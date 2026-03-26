@@ -1,0 +1,66 @@
+<div class="contact-page">
+    <div class="contact-container">
+        <section class="info-section">
+            <h1>Contact Us / Impressum</h1>
+            <div class="info-block">
+                <h2>KuroLIV GmbH</h2>
+                <p>Gesellschaft mit beschränkter Haftung</p>
+                <p>Färberstrasse 5</p>
+                <p>8832 Wollerau, Switzerland</p> <!-- Assuming Switzerland based on "CH" and Wollerau -->
+                <p>Sitz: Wollerau</p>
+                <br>
+                <p><strong>UID:</strong> CHE-365.727.853</p>
+                <p><strong>CH-ID:</strong> CH-130-4030931-0</p>
+                <p><strong>EHRA-ID:</strong> 1533749</p>
+                <br>
+                <p>Email: <a href="mailto:info@kuroliv.ch">info@kuroliv.ch</a></p>
+            </div>
+            <div class="legal-block">
+                <h3>Management</h3>
+                <p>
+                    <strong>Vincent Verbeke</strong> (Geschäftsführer & Owner)<br>
+                    <a href="https://www.linkedin.com/in/vincentverbeke" target="_blank"
+                        rel="noopener noreferrer">LinkedIn Profile</a><br>
+                    Mobile: +41 79 748 19 75
+                </p>
+                <p>
+                    <strong>Liesbet Mallet</strong><br>
+                    <a href="https://www.linkedin.com/in/lizmallet" target="_blank" rel="noopener noreferrer">LinkedIn
+                        Profile</a>
+                </p>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <h2>{{ subtitle() }}</h2>
+            <form (submit)="submitForm(); $event.preventDefault()">
+                <div class="form-group">
+                    <label for="name">Name</label>
+                    <input type="text" id="name" name="name" [(ngModel)]="name" required placeholder="Your Name">
+                </div>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" [(ngModel)]="email" required
+                        placeholder="your.email@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="phone">Phone Number</label>
+                    <input type="tel" id="phone" name="phone" [(ngModel)]="phone" placeholder="+41 00 000 00 00">
+                </div>
+                <div class="form-group consultation-mention" *ngIf="isConsultation()">
+                    <h3>free initial 2h consultation on-site in Switzerland or via Microsoft Teams abroad</h3>
+                </div>
+                <div class="form-group">
+                    <label for="subject">Subject</label>
+                    <input type="text" id="subject" name="subject" [(ngModel)]="subject" required placeholder="Subject">
+                </div>
+                <div class="form-group">
+                    <label for="message">Message</label>
+                    <textarea id="message" name="message" [(ngModel)]="message" required rows="5"
+                        placeholder="How can we help you?"></textarea>
+                </div>
+                <button type="submit" class="submit-btn">Send Message</button>
+            </form>
+        </section>
+    </div>
+</div>

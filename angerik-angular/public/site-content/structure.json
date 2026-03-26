@@ -1,0 +1,10 @@
+[
+  {"Department": "Home", "Activity": "Home"},
+  {"Department": "About", "Activity": "About"},
+  {"Department": "Beer", "Activity": "Dilleke"},
+  {"Department": "Beer", "Activity": "Record"},
+  {"Department": "Beer", "Activity": "Lambiek"},
+  {"Department": "Beer", "Activity": "Cuvée Kluysbosch"},
+  {"Department": "Tasting", "Activity": "Tasting"},
+  {"Department": "Contact", "Activity": "Contact"}
+]

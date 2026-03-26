@@ -1,0 +1,102 @@
+header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 0.5rem 2rem;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    z-index: 1000;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+    nav {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        max-width: 1200px;
+        margin: 0 auto;
+
+        .logo-link {
+            display: flex;
+            align-items: center;
+        }
+
+        .logo {
+            height: 30px;
+            width: auto;
+            /* Default (Dark Mode): Invert black logo to white */
+            filter: invert(1);
+            transition: filter 0.3s ease;
+        }
+
+        .right-section {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        ul {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+            margin: 0;
+            padding: 0;
+
+            li a {
+                color: rgba(255, 255, 255, 0.7);
+                /* Dark Mode Text */
+                text-decoration: none;
+                transition: color 0.3s ease;
+                text-transform: uppercase;
+                font-size: 0.9rem;
+
+                &:hover {
+                    color: white;
+                }
+            }
+        }
+
+        .theme-toggle {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 50%;
+            font-size: 1.2rem;
+            line-height: 1;
+            transition: background 0.3s, color 0.3s;
+
+            &:hover {
+                background: rgba(255, 255, 255, 0.2);
+            }
+        }
+    }
+}
+
+:host-context(body.light-mode) header {
+    background: rgba(255, 255, 255, 0.9);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+
+    .logo {
+        /* Light Mode: No invert (keep black) */
+        filter: invert(0);
+    }
+
+    ul li a {
+        color: rgba(0, 0, 0, 0.6);
+
+        &:hover {
+            color: black;
+        }
+    }
+
+    .theme-toggle {
+        background: rgba(0, 0, 0, 0.05);
+        color: #333;
+
+        &:hover {
+            background: rgba(0, 0, 0, 0.1);
+        }
+    }
+}

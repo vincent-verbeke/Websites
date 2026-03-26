@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+
+:root {
+    --primary: #00a8ff;
+    /* Playful Azure */
+    --secondary: #f39c12;
+    /* Innovation Orange (AWS-ish) */
+    --accent: #2ecc71;
+    /* High-Performance Green */
+    --bg-light: #f8fbff;
+    --bg-dark: #0b1120;
+    --bg-dark-alt: #111a2e;
+    --text-light: #1e293b;
+    --text-dark: #e2e8f0;
+    --gradient: linear-gradient(135deg, #00a8ff 0%, #0056b3 100%);
+}
+
+body,
+html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: 'Outfit', 'Calibri', sans-serif;
+    background-color: var(--bg-light);
+    color: var(--text-light);
+    scroll-behavior: smooth;
+    transition: all 0.3s ease;
+}
+
+body.dark-mode {
+    background-color: var(--bg-dark);
+    color: var(--text-dark);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+h1,
+h2,
+h3,
+h4 {
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+
+.playful-twist {
+    color: var(--secondary);
+    position: relative;
+    display: inline-block;
+
+    &::after {
+        content: '';
+        position: absolute;
+        bottom: 5px;
+        left: 0;
+        width: 100%;
+        height: 8px;
+        background: rgba(243, 156, 18, 0.2);
+        z-index: -1;
+        transform: skewX(-15deg);
+    }
+}

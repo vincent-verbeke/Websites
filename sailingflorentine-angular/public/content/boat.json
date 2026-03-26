@@ -1,0 +1,101 @@
+{
+    "name": "SY Florentine",
+    "make": "Jeanneau",
+    "model": "Sun Odyssey 42 DS Performance Edition",
+    "type": "Performance Deck Saloon Cruiser",
+    "image": "/images/boat/main_florentine.jpg",
+    "drawing": "/images/boat/sun_odyssey_42ds_drawing.jpg",
+    "description": "SY Florentine is a Jeanneau Sun Odyssey 42 DS Performance Edition — a blue-water cruiser that perfectly balances performance sailing with the comforts of a floating home. Named after the \"Lovebird\" parrot of Wendy & Vincent, Florentine was more than just an inspiration; she was a true crew member who was always on board with us, through sunny days on deck and stormy weather in the bedroom below. Our version is the 3-cabin layout, providing a spacious forward V-berth and two symmetrical aft cabins for family and guests. Being the Performance Edition, she features a taller mast, a deeper 2.35m keel for better pointing, and upgraded Dyform rigging.",
+    "specs": [
+        {
+            "label": "LOA",
+            "value": "12.93 m"
+        },
+        {
+            "label": "LWL",
+            "value": "11.60 m"
+        },
+        {
+            "label": "Beam",
+            "value": "4.13 m"
+        },
+        {
+            "label": "Draft",
+            "value": "2.35 m"
+        },
+        {
+            "label": "Displacement",
+            "value": "8,925 kg"
+        },
+        {
+            "label": "Ballast",
+            "value": "2,553 kg"
+        },
+        {
+            "label": "Mainsail",
+            "value": "40.7 m²"
+        },
+        {
+            "label": "Genoa",
+            "value": "45.7 m²"
+        },
+        {
+            "label": "Spinnaker",
+            "value": "135 m²"
+        },
+        {
+            "label": "Engine",
+            "value": "Yanmar 54 HP"
+        },
+        {
+            "label": "Fuel",
+            "value": "130 L"
+        },
+        {
+            "label": "Water",
+            "value": "355 L"
+        },
+        {
+            "label": "Cabins",
+            "value": "3 Cabins / 2 Heads"
+        }
+    ],
+    "gallery": [
+        "/images/boat/florentine_lovebird.jpg",
+        "/images/boat/florentine-exterior.jpg",
+        "/images/boat/florentine-cockpit.jpg",
+        "/images/boat/florentine-interior.jpg",
+        "/images/boat/florentine-cabin.jpg",
+        "/images/boat/florentine-deck.jpg"
+    ],
+    "upgrades": [
+        {
+            "year": "2024",
+            "description": "Batteries changed to LiFePO4 (3x 12V 240AH)."
+        },
+        {
+            "year": "2024",
+            "description": "Installed flexible removable solar panels."
+        },
+        {
+            "year": "2025",
+            "description": "Updated batteries & added 24V (480 AH) circuit."
+        },
+        {
+            "year": "2025",
+            "description": "Installed 220V Hybrid Solar Inverter."
+        }
+    ],
+    "blueWaterEquipment": [
+        {
+            "name": "Hydrovane Steering Pilot",
+            "description": "A completely independent mechanical steering system that requires no power.",
+            "link": "https://www.hydrovane.com"
+        },
+        {
+            "name": "Rainman AC Watermaker",
+            "description": "High-output electric watermaker for ultimate self-sufficiency.",
+            "link": "https://www.rainmandesal.com/ac-electric-watermaker/"
+        }
+    ]
+}

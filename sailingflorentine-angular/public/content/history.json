@@ -1,0 +1,189 @@
+{
+    "makingOf": {
+        "title": "The Making of SY Florentine",
+        "subtitle": "A journey to the Jeanneau factory in Les Herbiers, France.",
+        "description": "In 2011, we visited the heart of Jeanneau's production in Les Herbiers to see our future home taking shape. Witnessing the craftsmanship and precision that goes into every hull was an unforgettable experience.",
+        "mapsLink": "https://www.google.com/maps/search/?api=1&query=34+Av.+des+Sables,+85500+Les+Herbiers,+France",
+        "story": [
+            {
+                "image": "/images/makingof/IMG_0032.jpg",
+                "caption": "The grand production hall where the journey begins - this is where all the smaller parts are crafted by hand before the main assembly."
+            },
+            {
+                "image": "/images/makingof/IMG_0001.jpg",
+                "caption": "The fiberglass hull being laid up in the precision mold, the very foundation of SY Florentine."
+            },
+            {
+                "image": "/images/makingof/IMG_0007.jpg",
+                "caption": "Structural reinforcements being integrated into the hull structure for maximum blue-water durability."
+            },
+            {
+                "image": "/images/makingof/IMG_0009.jpg",
+                "caption": "Robotic making of the holes for the through-hull fittings."
+            },
+            {
+                "image": "/images/makingof/IMG_0017.jpg",
+                "caption": "Electric Cabling and Water / Fuel Tubing being meticulously routed through the hull."
+            },
+            {
+                "image": "/images/makingof/IMG_0027.jpg",
+                "caption": "Starting to build the inner wall structure for our future floating home."
+            },
+            {
+                "image": "/images/makingof/IMG_0046.jpg",
+                "caption": "Interior components and walls are added to the primary structure."
+            },
+            {
+                "image": "/images/makingof/IMG_0049.jpg",
+                "caption": "The bare hull taking its definitive shape, ready to get the top added to the bottom."
+            },
+            {
+                "image": "/images/makingof/IMG_0053.jpg",
+                "caption": "Cockpit and deck ready to get mounted on the hull. This and the following 7 pictures are actually SY Florentine in the production line - this is our boat!"
+            },
+            {
+                "image": "/images/makingof/IMG_0054.jpg",
+                "caption": "Our first meeting with SY Florentine—shining like the brightest star in the Jeanneau production line."
+            },
+            {
+                "image": "/images/makingof/IMG_0058.jpg",
+                "caption": "Wendy for the first time ready to get on-board of SY Florentine!"
+            },
+            {
+                "image": "/images/makingof/IMG_0060.jpg",
+                "caption": "Wendy inspecting our future bedroom and ensuring everything is to spec."
+            },
+            {
+                "image": "/images/makingof/IMG_0068.jpg",
+                "caption": "Wendy & Vincent checking out the future kitchen layout."
+            },
+            {
+                "image": "/images/makingof/IMG_0069.jpg",
+                "caption": "Wendy & Vincent in what will become our cozy living room."
+            },
+            {
+                "image": "/images/makingof/IMG_0071.jpg",
+                "caption": "Back on deck for a quick 'Titanic moment' as the structure comes together."
+            },
+            {
+                "image": "/images/makingof/IMG_0072.jpg",
+                "caption": "Wendy & Vincent together on the deck, happy to see that SY Florentine is almost ready."
+            },
+            {
+                "image": "/images/makingof/IMG_0082.jpg",
+                "caption": "Ready to leave SY Florentine behind for now and continue our journey through the factory."
+            },
+            {
+                "image": "/images/makingof/IMG_0088.jpg",
+                "caption": "The bath test: Each boat stays 2x 24 hours in a bath. The first is dry, and the second is a heavy rain simulation to ensure 100% water-tightness."
+            },
+            {
+                "image": "/images/makingof/IMG_0091.jpg",
+                "caption": "Parking lot - The yacht starts looking like our future home."
+            },
+            {
+                "image": "/images/makingof/IMG_0099.jpg",
+                "caption": "The final cleaning and quality checks before packing for delivery."
+            },
+            {
+                "image": "/images/makingof/IMG_0102.jpg",
+                "caption": "The very last stage in the production process - packing SY Florentine for her journey to us."
+            }
+        ]
+    },
+    "timeline": [
+        {
+            "year": "2030",
+            "title": "Into the Big Blue",
+            "description": "The dream becomes reality. We set off into the Atlantic for our grand world trip adventure.",
+            "image": "/images/hero/caribbean.jpg"
+        },
+        {
+            "year": "2029",
+            "title": "Final Preparations",
+            "description": "Spending time in the Mediterranean or back in Belgium, ensuring everything is perfect for the crossing.",
+            "image": "/images/boat/florentine-exterior.jpg"
+        },
+        {
+            "year": "2028",
+            "title": "Test Run to the Azores",
+            "description": "A true blue-water tryout for both the boat and the crew. A mission to the Azores and back as final preparation.",
+            "image": "/images/hero/azores.jpeg"
+        },
+        {
+            "year": "2027",
+            "title": "Mediterranean Training",
+            "description": "Focused training sessions in the Mediterranean to get Liz up to an expert level of sailing and safety.",
+            "image": "/images/boat/florentine-deck.jpg"
+        },
+        {
+            "year": "2026",
+            "title": "Nieuwpoort to Genua",
+            "description": "The voyage begins in June. We sail from Nieuwpoort towards Genoa, visiting ports like Saint-Malo along the way.",
+            "image": "/images/hero/stmalo_bg.jpg"
+        },
+        {
+            "year": "2025",
+            "title": "Cruising & 48h Passage",
+            "description": "A relaxed month with Liz & Kuro. We completed our first 48h passage from Dunkerque to Cherbourg.",
+            "image": null
+        },
+        {
+            "year": "2024",
+            "title": "Exploring North France",
+            "description": "Short sailing trips along the coast of North France, reaching as far as Saint-Valéry-en-Caux.",
+            "image": "/images/timeline/IMG_0020.jpg"
+        },
+        {
+            "year": "2023",
+            "title": "The Year of Recovery",
+            "description": "Plans were postponed as we dedicated the year to repair works in the harbour with Liz & Kuro. A slow but steady return to the sea.",
+            "images": [
+                "/images/timeline/recovery_year_2023_1.jpg",
+                "/images/timeline/recovery_year_2023_2.jpg"
+            ]
+        },
+        {
+            "year": "2022/23",
+            "title": "Shocking Winter",
+            "description": "Florentine suffered a devastating break-in. The interior and exterior were heavily damaged, testing our resolve during the coldest months.",
+            "image": "/images/timeline/shocking_winter_2022.jpg"
+        },
+        {
+            "year": "2021",
+            "title": "Summer Time in Oostende",
+            "description": "Beautiful summer days at the Belgian Coast in Oostende. A season of pure sailing joy and coastal exploration.",
+            "image": "/images/timeline/belgian_coast_2021.jpg"
+        },
+        {
+            "year": "2019",
+            "title": "Family Sailing Day",
+            "description": "A serene family sailing day on the North Sea. Despite her slight skepticism of the life vest, Kuro—along with Liz—begins to truly embrace the rhythm of the waves and find her sea legs aboard SY Florentine.",
+            "image": "/images/timeline/IMG_2100.jpg"
+        },
+        {
+            "year": "2018",
+            "title": "Kuro Joins our Family",
+            "description": "14.12.2018: Kuro officially joins our family, bringing her spirited independence to our team.",
+            "image": "/images/timeline/IMG_0798.jpg"
+        },
+        {
+            "year": "2018",
+            "title": "Vincent meets Liz",
+            "description": "26.07.2018: Vincent meets Liz in Bruxelles. The beginning of a strategic and soulful partnership that would eventually lead to the world trip.",
+            "image": "/images/timeline/IMG_0791.jpg"
+        },
+        {
+            "year": "2011",
+            "title": "Getting ready for the first event",
+            "description": "Preparation for our very first sailing event. The excitement was palpable!",
+            "image": "/images/timeline/IMG_0001.jpg"
+        },
+        {
+            "year": "2011",
+            "title": "Born in France",
+            "description": "The visit to the Jeanneau factory in Les Herbiers where it all began.",
+            "image": "/images/makingof/IMG_0032.jpg"
+        }
+    ]
+}

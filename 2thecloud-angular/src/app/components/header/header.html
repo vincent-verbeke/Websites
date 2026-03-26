@@ -1,0 +1,30 @@
+<header [class.scrolled]="isScrolled">
+    <div class="header-container">
+        <div class="logo-container" routerLink="/">
+            <div class="logo-icon">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M17.5 19C15.0147 19 13 16.9853 13 14.5C13 12.0147 15.0147 10 17.5 10C19.9853 10 22 12.0147 22 14.5C22 16.9853 19.9853 19 17.5 19Z"
+                        fill="currentColor" />
+                    <path
+                        d="M8.5 19C5.46243 19 3 16.5376 3 13.5C3 10.4624 5.46243 8 8.5 8C11.5376 8 14 10.4624 14 13.5C14 16.5376 11.5376 19 8.5 19Z"
+                        fill="currentColor" fill-opacity="0.8" />
+                    <path
+                        d="M13 11C11.3431 11 10 9.65685 10 8C10 6.34315 11.3431 5 13 5C14.6569 5 16 6.34315 16 8C16 9.65685 14.6569 11 13 11Z"
+                        fill="currentColor" fill-opacity="0.6" />
+                </svg>
+            </div>
+            <span class="logo-text">2<span class="highlight">TheCloud</span></span>
+        </div>
+
+        <nav>
+            <a [routerLink]="['/']" [fragment]="'infrastructure'" routerLinkActive="active">Cloud Infrastructure</a>
+            <a [routerLink]="['/']" [fragment]="'modernization'" routerLinkActive="active">App Modernization</a>
+            <a [routerLink]="['/contact']" class="btn-cta">Contact Us</a>
+            <button class="theme-toggle" (click)="themeService.toggleTheme()">
+                <span *ngIf="!themeService.isDarkMode()">🌙</span>
+                <span *ngIf="themeService.isDarkMode()">☀️</span>
+            </button>
+        </nav>
+    </div>
+</header>

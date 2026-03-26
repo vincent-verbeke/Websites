@@ -1,0 +1,64 @@
+/* SailingFlorentine Design System */
+:root {
+    --primary-color: #001F3F;
+    /* Deep Navy Blue */
+    --secondary-color: #0074D9;
+    /* Azure Blue */
+    --accent-color: #FFDC00;
+    /* Sand Yellow */
+    --danger-color: #FF7F50;
+    /* Coral */
+    --bg-light: #F8F9FA;
+    /* Light Mist */
+    --bg-dark: #000b1a;
+    /* Deep Ocean */
+    --text-light: #333;
+    --text-dark: #eee;
+    --font-family: 'Calibri', 'Segoe UI', Candara, Segoe, Optima, Arial, sans-serif;
+    --transition-speed: 0.3s;
+
+    /* Adaptive variables */
+    --glass-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --card-text: #eee;
+    --input-bg: rgba(0, 0, 0, 0.2);
+    --input-border: rgba(255, 255, 255, 0.1);
+    --input-text: white;
+}
+
+body,
+html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
+    font-family: var(--font-family);
+    background-color: var(--bg-dark);
+    color: var(--text-dark);
+    transition: background-color var(--transition-speed) ease, color var(--transition-speed) ease;
+}
+
+body.light-mode {
+    background-color: var(--bg-light);
+    color: var(--text-light);
+    --glass-bg: rgba(255, 255, 255, 0.5);
+    --glass-border: rgba(0, 0, 0, 0.1);
+    --card-text: var(--text-light);
+    --input-bg: rgba(255, 255, 255, 0.9);
+    --input-border: rgba(0, 0, 0, 0.2);
+    --input-text: var(--text-light);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+a {
+    color: var(--secondary-color);
+    text-decoration: none;
+    transition: color 0.2s;
+
+    &:hover {
+        color: var(--accent-color);
+    }
+}

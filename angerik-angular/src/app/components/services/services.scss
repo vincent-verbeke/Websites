@@ -1,0 +1,54 @@
+.services-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+
+  h2 {
+    text-align: center;
+    font-size: 2.5rem;
+    margin-bottom: 3rem;
+    color: #d4af37;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 2rem;
+
+    .card {
+      background: #1a2e1a;
+      border-radius: 8px;
+      padding: 2rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border: 1px solid #2a4a2a;
+
+      &:hover {
+        transform: translateY(-5px);
+        border-color: #d4af37;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      }
+
+      h3 {
+        color: #d4af37;
+        margin-bottom: 1rem;
+        font-size: 1.5rem;
+      }
+
+      p {
+        color: #aaaaaa;
+        line-height: 1.6;
+      }
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .services-container {
+    padding: 1rem;
+
+    .grid {
+      grid-template-columns: 1fr;
+    }
+  }
+}
