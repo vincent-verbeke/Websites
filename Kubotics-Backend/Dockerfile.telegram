@@ -1,0 +1,49 @@
+# Production multi-stage Dockerfile for Kubotics Telegram Voice Bot
+# Includes ffmpeg for audio transcoding and runs on Python 3.14
+
+FROM python:3.14-slim AS builder
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+COPY pyproject.toml README.md ./
+RUN uv venv --python 3.14 $VIRTUAL_ENV && \
+    uv pip install setuptools && \
+    uv pip install --no-build-isolation -e . && \
+    uv pip install python-telegram-bot groq openai elevenlabs soundfile numpy
+
+# -----------------------------------------------------------------------------
+# Runtime Stage
+# -----------------------------------------------------------------------------
+FROM python:3.14-slim AS runner
+
+WORKDIR /app
+
+# Install ffmpeg for Telegram .ogg / Opus decoding
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN addgroup --system --gid 1001 appgroup && \
+    adduser --system --uid 1001 --ingroup appgroup appuser
+
+COPY --from=builder /app/.venv /app/.venv
+COPY src /app/src
+COPY telegram_bot_runner.py /app/telegram_bot_runner.py
+
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH=/app/src
+
+USER appuser
+
+CMD ["python3", "telegram_bot_runner.py"]
