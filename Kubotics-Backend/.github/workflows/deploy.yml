@@ -47,6 +47,61 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
+      - name: Configure Task Definition with Real Account ID and Secrets
+        id: prepare-task-def
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          AZURE_CLIENT_CERT_KEY: ${{ secrets.AZURE_CLIENT_CERT_KEY }}
+          AZURE_CLIENT_CERT_THUMBPRINT: ${{ secrets.AZURE_CLIENT_CERT_THUMBPRINT }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "Discovered AWS Account ID: $AWS_ACCOUNT_ID"
+
+          # Replace placeholder ACCOUNT_ID in task definition
+          sed -i "s/ACCOUNT_ID/$AWS_ACCOUNT_ID/g" Kubotics-Backend/.aws/task-definition.json
+
+          # Inject secrets and variables safely into container definition environment
+          python3 - << 'EOF'
+          import json, os
+
+          task_def_path = "Kubotics-Backend/.aws/task-definition.json"
+          with open(task_def_path, "r") as f:
+              data = json.load(f)
+
+          container = data["containerDefinitions"][0]
+          env_vars = {item["name"]: item["value"] for item in container.get("environment", [])}
+
+          # Map of environment variables and secrets to inject
+          secrets_to_inject = {
+              "DATABASE_URL": os.environ.get("DATABASE_URL"),
+              "API_SECRET_KEY": os.environ.get("API_SECRET_KEY"),
+              "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY"),
+              "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
+              "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY"),
+              "GROQ_API_KEY": os.environ.get("GROQ_API_KEY"),
+              "ELEVENLABS_API_KEY": os.environ.get("ELEVENLABS_API_KEY"),
+              "AZURE_CLIENT_CERT_KEY": os.environ.get("AZURE_CLIENT_CERT_KEY"),
+              "AZURE_CLIENT_CERT_THUMBPRINT": os.environ.get("AZURE_CLIENT_CERT_THUMBPRINT"),
+              "TELEGRAM_BOT_TOKEN": os.environ.get("TELEGRAM_BOT_TOKEN"),
+          }
+
+          for k, v in secrets_to_inject.items():
+              if v:
+                  env_vars[k] = v
+
+          container["environment"] = [{"name": k, "value": v} for k, v in env_vars.items()]
+
+          with open(task_def_path, "w") as f:
+              json.dump(data, f, indent=2)
+          EOF
+
       - name: Render Amazon ECS Task Definition
         id: render-web-container
         uses: aws-actions/amazon-ecs-render-task-definition@v1
