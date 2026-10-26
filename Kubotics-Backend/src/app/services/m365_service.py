@@ -191,9 +191,33 @@ class M365GraphService:
                     "start": start_time.isoformat(),
                     "end": end_time.isoformat(),
                     "teams_join_url": teams_url,
+                    "joinWebUrl": teams_url,
+                    "id": event_data.get("id"),
                     "web_link": event_data.get("webLink"),
                 }
             raise RuntimeError(f"Failed to create Teams calendar event: {resp.text}")
+
+    async def create_teams_event(
+        self,
+        attendee_email: str,
+        attendee_name: str,
+        subject: str,
+        start_time: datetime,
+        end_time: datetime,
+        notes: str = "",
+    ) -> Dict[str, Any]:
+        """Convenience alias for booking a Teams meeting using explicit start and end times."""
+        duration_minutes = int((end_time - start_time).total_seconds() / 60)
+        if duration_minutes <= 0:
+            duration_minutes = 30
+        return await self.book_meeting_with_teams(
+            subject=subject,
+            start_time=start_time,
+            duration_minutes=duration_minutes,
+            attendee_email=attendee_email,
+            attendee_name=attendee_name,
+            description=notes,
+        )
 
     async def send_confirmation_email(
         self,

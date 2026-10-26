@@ -1,7 +1,7 @@
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.models.entities import Organization, Contact, ContactMailPhone, Address, Opportunity
+from app.models.entities import Organization, Contact, OrganizationContact, ContactMailPhone, Address, Opportunity
 from app.schemas.dto import InboundLeadCreate, LeadResponse
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,6 @@ class LeadProcessingService:
 
         # 2. Contact Record
         contact = Contact(
-            organization_id=organization.id if organization else None,
             first_name=payload.first_name,
             last_name=payload.last_name,
             ai_summary=payload.project_description,
@@ -42,6 +41,16 @@ class LeadProcessingService:
         )
         db.add(contact)
         await db.flush()
+
+        # Link Contact to Organization if organization exists
+        if organization:
+            org_contact = OrganizationContact(
+                organization_id=organization.id,
+                contact_id=contact.id,
+                role="Inbound Lead",
+                is_primary_organization=True,
+            )
+            db.add(org_contact)
 
         # 3. Contact Channels (Decoupled Email & Phone)
         email_channel = ContactMailPhone(

@@ -2,6 +2,7 @@
 
 ## Task Tracking
 - Use `bd` (Beads) for progression tracking and task management.
+- bd available in c:\coding\Websites\bd.exe
 - Initialize with `bd init` if not already done.
 - Follow the hierarchy: `bd ready` to see what to do next.
 

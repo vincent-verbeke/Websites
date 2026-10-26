@@ -1,0 +1,173 @@
+<div class="trading-dashboard">
+
+  <!-- ═══ TOP BAR ═══ -->
+  <header class="top-bar">
+    <div class="top-bar-left">
+      <div class="logo-mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="16 7 22 7 22 13" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span class="logo-text">AI TRADING</span>
+      <span [class]="'mode-badge ' + stats().actual_mode">{{ stats().actual_mode }}</span>
+      
+      <!-- Connection Status indicator -->
+      <div class="conn-status" [class.online]="!isLoading()" title="API Connection Status">
+        <span class="dot"></span>
+        <span class="label">{{ isLoading() ? 'Syncing Portfolio...' : 'Online' }}</span>
+      </div>
+    </div>
+
+    <div class="top-bar-controls">
+      <!-- Error Message -->
+      <span class="api-err-msg" *ngIf="apiError()">{{ apiError() }}</span>
+
+      <!-- Manual Refresh Button -->
+      <button class="refresh-btn" (click)="refreshWithLoading()" [class.loading]="isLoading()" title="Force Refresh">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
+      </button>
+
+      <!-- Symbol Tabs -->
+      <div class="tab-group">
+        <button class="tab" [class.active]="currentSymbol() === 'BTCUSDC'" (click)="setSymbol('BTCUSDC')">BTC/USDC</button>
+        <button class="tab" [class.active]="currentSymbol() === 'ETHUSDC'" (click)="setSymbol('ETHUSDC')">ETH/USDC</button>
+      </div>
+
+      <!-- Mode Toggle -->
+      <div class="tab-group">
+        <button class="tab" [class.active]="selectedMode() === 'LIVE'" (click)="setMode('LIVE')">LIVE</button>
+        <button class="tab" [class.active]="selectedMode() === 'DRY'" (click)="setMode('DRY')">DRY</button>
+      </div>
+
+      <!-- Trade Limit -->
+      <div class="tab-group">
+        <button class="tab" [class.active]="tradeLimit() === 20" (click)="setLimit(20)">20</button>
+        <button class="tab" [class.active]="tradeLimit() === 50" (click)="setLimit(50)">50</button>
+        <button class="tab" [class.active]="tradeLimit() === 100" (click)="setLimit(100)">100</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══ CONSOLIDATED KPI STRIP ═══ -->
+  <section class="kpi-strip">
+    <div class="kpi-item">
+      <span class="kpi-label">Bot Equity</span>
+      <span class="kpi-val">${{ (accountPerf().current_equity || 0) | number:'1.2-2' }}</span>
+    </div>
+    <div class="kpi-item">
+      <span class="kpi-label">Bot Daily PnL</span>
+      <span [class]="'kpi-val ' + getPnlClass(accountPerf().daily_pnl_abs)">
+        {{ (accountPerf().daily_pnl_abs || 0) >= 0 ? '+' : '' }}{{ (accountPerf().daily_pnl_abs || 0) | number:'1.2-2' }}
+        <small>({{ (accountPerf().daily_pnl_rel_pct || 0) | number:'1.2-2' }}%)</small>
+      </span>
+    </div>
+    <div class="kpi-item">
+      <span class="kpi-label">Win Rate</span>
+      <span class="kpi-val">{{ (performance().win_rate || 0) | percent:'1.1-1' }}</span>
+    </div>
+
+    <div class="kpi-sep"></div>
+
+    <div class="kpi-item">
+      <span class="kpi-label">Binance Equity</span>
+      <span class="kpi-val">${{ (binancePortfolio().total_margin_balance || 0) | number:'1.2-2' }}</span>
+    </div>
+    <div class="kpi-item">
+      <span class="kpi-label">Unrealized PnL</span>
+      <span [class]="'kpi-val ' + getPnlClass(binancePortfolio().total_unrealized_pnl)">
+        {{ (binancePortfolio().total_unrealized_pnl || 0) >= 0 ? '+' : '' }}{{ (binancePortfolio().total_unrealized_pnl || 0) | number:'1.2-2' }}
+      </span>
+    </div>
+    <div class="kpi-item">
+      <span class="kpi-label">Free Margin</span>
+      <span class="kpi-val">${{ (binancePortfolio().total_available_balance || 0) | number:'1.2-2' }}</span>
+    </div>
+    <div class="kpi-item highlight">
+      <span class="kpi-label">Last {{ tradeLimit() }} PnL</span>
+      <span [class]="'kpi-val ' + getPnlClass(tradePnlSummary().totalPnl)">
+        {{ (tradePnlSummary().totalPnl || 0) >= 0 ? '+' : '' }}{{ (tradePnlSummary().totalPnl || 0) | number:'1.2-2' }} USDC
+      </span>
+    </div>
+  </section>
+
+  <!-- ═══ MAIN GRID (Individual Loading) ═══ -->
+  <div class="main-grid split-50-50">
+
+    <!-- LEFT COLUMN -->
+    <div class="left-col equal-col">
+      <div class="glass-panel strategy-panel" [class.loading]="isStrategyLoading()">
+        <div class="panel-header">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="#F59E0B" stroke-width="2"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" stroke="#F59E0B" stroke-width="2"/></svg>
+          <h3>Active Strategy</h3>
+          <span class="panel-tag">{{ currentSymbol() }}</span>
+        </div>
+        <div class="strategy-scroll" *ngIf="!isStrategyLoading() && activeStrategy(); else stratLoading">
+          <div class="param-row" *ngFor="let p of strategyParams()">
+            <span class="p-name">{{ p[0].replace('_', ' ') }}</span>
+            <span class="p-val">{{ p[1] }}</span>
+          </div>
+        </div>
+        <ng-template #stratLoading>
+          <div class="empty-state">
+            <span class="loading-spinner"></span>
+            <span class="loading-text">{{ isStrategyLoading() ? 'Synchronizing Model...' : 'No Strategy Found' }}</span>
+          </div>
+        </ng-template>
+      </div>
+
+      <div class="glass-panel chart-panel flex-grow">
+        <div class="panel-header">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" stroke="#8B5CF6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <h3>Cumulative PnL Trend</h3>
+        </div>
+        <div class="chart-container">
+          <canvas #pnlChart></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="right-col equal-col">
+      <div class="glass-panel trades-panel full-height" [class.loading]="isTradesLoading()">
+        <div class="panel-header">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke="#F59E0B" stroke-width="2"/><line x1="3" y1="9" x2="21" y2="9" stroke="#F59E0B" stroke-width="2"/><line x1="3" y1="15" x2="21" y2="15" stroke="#F59E0B" stroke-width="2"/></svg>
+          <h3>Recent Execution Logs</h3>
+          <span class="panel-tag">{{ tradePnlSummary().count }} entries</span>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Side</th>
+                <th>Entry</th>
+                <th>Exit</th>
+                <th>PnL</th>
+                <th>%</th>
+              </tr>
+            </thead>
+            <tbody *ngIf="!isTradesLoading()">
+              <tr *ngFor="let t of trades()">
+                <td class="cell-time">{{ formatTime(t.timestamp) }}</td>
+                <td><span [class]="'side-tag ' + getSideClass(t.direction)">{{ t.direction }}</span></td>
+                <td class="cell-num">{{ (t.entry_price || 0) | number:'1.2-2' }}</td>
+                <td class="cell-num">{{ t.exit_price ? (t.exit_price | number:'1.2-2') : '—' }}</td>
+                <td><span [class]="'pnl-tag ' + getPnlClass(t.pnl)">{{ (t.pnl || 0) >= 0 ? '+' : '' }}{{ (t.pnl || 0) | number:'1.2-2' }}</span></td>
+                <td><span [class]="'pnl-tag ' + getPnlClass(getPnlPct(t))">{{ getPnlPct(t) | number:'1.2-2' }}%</span></td>
+              </tr>
+              <tr *ngIf="trades().length === 0">
+                <td colspan="6" class="empty-row">{{ apiError() || 'No visible trade history for this selection.' }}</td>
+              </tr>
+            </tbody>
+            <tbody *ngIf="isTradesLoading()">
+              <tr><td colspan="6" class="empty-row loading">Syncing trades...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>

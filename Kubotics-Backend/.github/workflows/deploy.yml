@@ -60,6 +60,7 @@ jobs:
           AZURE_CLIENT_CERT_KEY: ${{ secrets.AZURE_CLIENT_CERT_KEY }}
           AZURE_CLIENT_CERT_THUMBPRINT: ${{ secrets.AZURE_CLIENT_CERT_THUMBPRINT }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          WHATSAPP_VERIFY_TOKEN: ${{ secrets.WHATSAPP_VERIFY_TOKEN || 'kubotics_wa_verify_token_2026' }}
         run: |
           AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           echo "Discovered AWS Account ID: $AWS_ACCOUNT_ID"
@@ -90,6 +91,7 @@ jobs:
               "AZURE_CLIENT_CERT_KEY": os.environ.get("AZURE_CLIENT_CERT_KEY"),
               "AZURE_CLIENT_CERT_THUMBPRINT": os.environ.get("AZURE_CLIENT_CERT_THUMBPRINT"),
               "TELEGRAM_BOT_TOKEN": os.environ.get("TELEGRAM_BOT_TOKEN"),
+              "WHATSAPP_VERIFY_TOKEN": os.environ.get("WHATSAPP_VERIFY_TOKEN"),
           }
 
           for k, v in secrets_to_inject.items():
