@@ -34,6 +34,8 @@ export interface LeadQualificationData {
   gclid?: string;
 }
 
+const BOOKING_URL = 'https://bookings.cloud.microsoft/bookwithme/user/01a588e5abd843b3b10fed3701fd338c@kuroliv.ch/meetingtype/qdRffgQQckmT6Zj8NQZ03Q2?anonymous&ismsaljsauthenabled&ep=mlink';
+
 @Injectable({
   providedIn: 'root'
 })
@@ -179,7 +181,7 @@ export class LeadAgentService {
         timestamp: new Date(),
         actionLink: {
           label: 'M365 Discovery Slot buchen (Teams)',
-          url: 'https://outlook.office.com/bookwithme/user/vincent.verbeke@kuroliv.ch',
+          url: BOOKING_URL,
           type: 'meeting'
         },
         quickReplies: ['Slot im Kalender buchen', 'Via WhatsApp chatten (+41 78 220 68 96)', 'H2 Testtag fixieren']
@@ -204,7 +206,7 @@ export class LeadAgentService {
         timestamp: new Date(),
         actionLink: {
           label: 'M365 Beratungstermin reservieren',
-          url: 'https://outlook.office.com/bookwithme/user/vincent.verbeke@kuroliv.ch',
+          url: BOOKING_URL,
           type: 'meeting'
         },
         quickReplies: ['E-Mail angeben', 'Preise / Turnkey Konditionen', 'WhatsApp Chat starten']
@@ -249,7 +251,7 @@ export class LeadAgentService {
         timestamp: new Date(),
         actionLink: {
           label: 'Discovery Call mit Vincent Verbeke buchen',
-          url: 'https://outlook.office.com/bookwithme/user/vincent.verbeke@kuroliv.ch',
+          url: BOOKING_URL,
           type: 'meeting'
         },
         quickReplies: ['Testbelege einreichen', 'ERP Schnittstellen (SAP, Odoo)', 'Rückruf anfordern']

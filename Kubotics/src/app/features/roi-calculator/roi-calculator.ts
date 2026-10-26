@@ -178,10 +178,10 @@ import { LeadAgentService } from '../lead-agent/lead-agent.service';
                 <span class="material-icons">auto_awesome</span>
                 <span>{{ i18n.t('ROI.CTA_AI_BRIEF') }}</span>
               </button>
-              <a href="#contact" class="btn-secondary-roi">
+              <button type="button" class="btn-secondary-roi" (click)="openBookingAssistant()">
                 <span class="material-icons">event</span>
                 <span>{{ i18n.t('ROI.CTA_BOOK') }}</span>
-              </a>
+              </button>
             </div>
             
             <p class="roi-footnote">
@@ -505,6 +505,21 @@ export class RoiCalculatorComponent {
       prompt = `We want to explore a Unitree H2 humanoid pilot with a team of ${this.teamSize()} engineers. When can we schedule a hands-on Consulting & Test Day in Switzerland?`;
     }
 
-    this.agent.openChat(prompt);
+    this.agent.openChat(prompt, true);
+  }
+
+  openBookingAssistant() {
+    const currentMode = this.mode();
+    let prompt = '';
+    if (currentMode === 'invoices') {
+      prompt = 'Ich möchte einen 30-minütigen Discovery Call für automatisierte Beleg- und Rechnungsextraktion vereinbaren.';
+    } else if (currentMode === 'factory') {
+      prompt = 'Ich möchte einen Beratungstermin für eine Roboterarm- bzw. Cobot-Zelle zur Maschinenbeschickung buchen.';
+    } else {
+      prompt = 'Ich möchte einen Termin für einen Unitree H2 Humanoid Testtag in der Schweiz buchen.';
+    }
+
+    // Opens the large centered diagnostic modal directly with conversation stage conversion
+    this.agent.openChat(prompt, true);
   }
 }

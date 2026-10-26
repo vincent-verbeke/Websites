@@ -1,6 +1,7 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { I18nService } from '../../core/services/i18n';
 import { ChannelLinkService } from '../../core/services/channel-link.service';
+import { LeadAgentService } from '../lead-agent/lead-agent.service';
 
 @Component({
   selector: 'app-technology-overview',
@@ -27,7 +28,7 @@ import { ChannelLinkService } from '../../core/services/channel-link.service';
                 <div class="spec"><span>Torque</span><span>360Nm</span></div>
               </div>
               <div class="cta-wrapper">
-                <a href="#contact" class="btn-cta-accent">{{ i18n.t('TECH.H2_CTA') }}</a>
+                <button type="button" class="btn-cta-accent" (click)="openH2Booking()">{{ i18n.t('TECH.H2_CTA') }}</button>
                 <div class="quick-channels">
                   <a [href]="channelLinks.getWhatsAppLink('h2_testday')" 
                      target="_blank" 
@@ -335,6 +336,11 @@ import { ChannelLinkService } from '../../core/services/channel-link.service';
 export class TechnologyOverviewComponent implements OnInit {
   readonly i18n = inject(I18nService);
   readonly channelLinks = inject(ChannelLinkService);
+  readonly agent = inject(LeadAgentService);
+  
+  openH2Booking() {
+    this.agent.openChat('Ich möchte einen Unitree H2 Humanoid Consulting & Testtag in der Schweiz buchen.', true);
+  }
   
   g1Images = [
     'robots/g1-1.jpg',
