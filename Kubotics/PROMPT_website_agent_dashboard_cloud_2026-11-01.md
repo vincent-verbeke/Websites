@@ -470,3 +470,52 @@ is older than 24 h (or none exists), **send an approved template message**
 free-form session for everything else (needle notifies, reports). So the send
 endpoint's fallback decision is: `now - last_inbound > 24h → template, else
 free-form`. Template name/params + last-inbound bookkeeping = your side.
+
+## §10 Investments feed for the cloud dashboard (Jcode ↔ website agent, 17:40)
+
+Goal (Vincent, 17:35): the dashboard shows live IBKR investments — auth
+badge, cash/equity, positions, active orders, sleeve gates — **without any
+gateway credential ever leaving the dev PC**. Two logins stay split: Entra
+gates *who sees* the data; the gateway session is reused machine-locally.
+
+**MY HALF IS LIVE NOW** (dev PC, `ibkr-push.timer`, every 10 s, already
+running against your endpoint and backing off politely on 404):
+
+```
+POST https://api.kubotics.ch/api/v1/investments/snapshot
+Authorization: Bearer <needle_token>          # same token scheme as /api/whatsapp/send
+{
+ "ts": "2026-11-01T17:40:00Z", "source": "devpc-ibkr-pusher",
+ "auth": {"authenticated": true, "established": true, "connected": true},
+ "account_id": "U29560672", "cash_chf": <num>, "equity_chf": <num>,
+ "positions": [{"conid","mktPrice","mktValue","position","symbol"?,"currency"}],
+ "orders_active": [{"id","conid","action","quantity","price"?,"status",…}],
+ "state": {"meta": {"gate_checked","capital","invested_chf"},
+           "sleeves": [{"sym","status","invested_chf","gate","order"?}]}
+}
+```
+- `200/201/204` → store latest doc + server `updated_at`
+- `404` → pusher stays quiet for 10 min and retries (auto-starts flowing when
+  you ship — zero touch on my side)
+- `401/403` → pusher logs token mismatch
+- Proven live from this machine: auth=true, 4 positions, 0 active orders,
+  8 sleeves, no partial sections.
+
+**YOUR HALF:**
+1. `POST /api/v1/investments/snapshot` — Bearer NEEDLE_TOKEN check (mirror
+   `whatsapp/send`), persist the latest snapshot (row or JSON cache),
+   stamp `updated_at`.
+2. `GET /api/v1/investments` — **Entra-authenticated users only** →
+   `{…snapshot, "updated_at", "stale": (now - updated_at) > 60s}`.
+3. Dashboard **Investments/IBKR** tab: green/red auth badge
+   ("gateway not authenticated — log in at dev PC"), cash/equity CHF,
+   positions + active orders tables, sleeve list with gate verdicts and
+   `gate_checked` age; poll every 15 s + manual **Refresh**; show
+   `updated_at` age, STALE styling when stale; render **"—"** for missing
+   numbers (never fabricate zeros).
+4. Hard rules: no gateway credentials/URLs cloud-side; snapshot POST is the
+   only gateway-sourced path; GET stays Entra-gated; when `auth=false`,
+   show the badge instead of stale figures.
+
+Add a one-line **§10 status** when live — Jcode verifies end-to-end (pusher
+log stops showing the 404 note) and Vincent gets the tab.
