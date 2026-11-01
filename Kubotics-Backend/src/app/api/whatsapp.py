@@ -142,15 +142,23 @@ async def send_health():
 # needle3 operator lane: messages from settings.NEEDLE_OPERATOR_SENDERS are
 # persisted into needle_inbox for the needle3 daemon instead of agent_core.
 # -----------------------------------------------------------------------------
+def _clean_phone_digits(phone: str | None) -> str:
+    """Normalize phone number to digits only (e.g. '+41 79 748 19 75' -> '41797481975')."""
+    if not phone:
+        return ""
+    import re
+    return re.sub(r"\D", "", phone)
+
+
 def _needle_operator_senders() -> set[str]:
-    """Comma-separated NEEDLE_OPERATOR_SENDERS, whitespace-stripped."""
-    return {part.strip() for part in settings.NEEDLE_OPERATOR_SENDERS.split(",") if part.strip()}
+    """Comma-separated NEEDLE_OPERATOR_SENDERS, whitespace-stripped and normalized."""
+    return {_clean_phone_digits(part) for part in settings.NEEDLE_OPERATOR_SENDERS.split(",") if _clean_phone_digits(part)}
 
 
 def _is_needle_operator(sender_phone: str | None) -> bool:
     if not sender_phone:
         return False
-    return sender_phone.strip() in _needle_operator_senders()
+    return _clean_phone_digits(sender_phone) in _needle_operator_senders()
 
 
 async def _maybe_route_operator(
