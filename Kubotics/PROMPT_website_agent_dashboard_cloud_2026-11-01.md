@@ -463,3 +463,10 @@ initiated). Two follow-ups (your code/Meta console, not mine):
    codes) — today the handler answers 200 but records nothing, which is why
    "200 + wamid but no message" was invisible. A `failed` callback for those
    wamids would have named this root cause instantly.
+
+**§9.8a Vincent-approved trigger rule (16:55):** if the last inbound message
+is older than 24 h (or none exists), **send an approved template message**
+(the wake-up: it reaches him regardless of window) → his reply reopens the
+free-form session for everything else (needle notifies, reports). So the send
+endpoint's fallback decision is: `now - last_inbound > 24h → template, else
+free-form`. Template name/params + last-inbound bookkeeping = your side.
