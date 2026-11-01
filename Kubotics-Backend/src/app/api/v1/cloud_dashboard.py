@@ -510,3 +510,99 @@ async def delete_dashboard_conversation(
     await db.delete(conv)
     await db.commit()
     return {"ok": True, "deleted_id": conversation_id}
+
+
+# -----------------------------------------------------------------------------
+# §10 INVESTMENTS / IBKR SNAPSHOT INGEST & DASHBOARD FEED
+# -----------------------------------------------------------------------------
+def require_needle_bearer_token(
+    authorization: str | None = Header(None),
+    x_needle_token: str | None = Header(None, alias="X-Needle-Token"),
+) -> None:
+    """Enforce authorization matching WhatsApp send endpoint and needle workers."""
+    expected = settings.NEEDLE_TOKEN or settings.API_SECRET_KEY
+    if not expected:
+        return
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split("Bearer ", 1)[1].strip()
+    elif x_needle_token:
+        token = x_needle_token.strip()
+
+    if token != expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Valid Bearer token or X-Needle-Token required"
+        )
+
+
+@router.post("/investments/snapshot", dependencies=[Depends(require_needle_bearer_token)])
+async def ingest_investments_snapshot(
+    payload: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Ingest live IBKR snapshot pushed from dev-PC systemd ibkr-push.timer.
+    Stores doc in DeviceSnapshotCache under dataset 'ibkr_investments' with server timestamp.
+    """
+    now = datetime.now(UTC)
+    result = await db.execute(
+        select(DeviceSnapshotCache).where(DeviceSnapshotCache.dataset == "ibkr_investments")
+    )
+    cached = result.scalars().first()
+
+    source = payload.get("source", "devpc-ibkr-pusher")
+    if not cached:
+        cached = DeviceSnapshotCache(
+            dataset="ibkr_investments",
+            source=source,
+            payload=payload,
+            updated_at=now,
+        )
+        db.add(cached)
+    else:
+        cached.source = source
+        cached.payload = payload
+        cached.updated_at = now
+
+    await db.commit()
+    return {"ok": True, "stored_at": now.isoformat()}
+
+
+@router.get("/investments")
+@router.get("/dashboard/investments")
+async def get_investments_feed(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    stale_threshold_seconds: int = 60,
+):
+    """
+    Dashboard read feed for IBKR Investments tab.
+    Calculates server-side staleness (stale if now - updated_at > 60s).
+    """
+    result = await db.execute(
+        select(DeviceSnapshotCache).where(DeviceSnapshotCache.dataset == "ibkr_investments")
+    )
+    cached = result.scalars().first()
+
+    if not cached:
+        return {
+            "snapshot": None,
+            "source": "devpc-ibkr-pusher",
+            "updated_at": None,
+            "stale": True,
+            "offline": True,
+            "age_seconds": None,
+        }
+
+    now = datetime.now(UTC)
+    age = (now - cached.updated_at).total_seconds() if cached.updated_at else 999999
+    is_stale = age > stale_threshold_seconds
+
+    return {
+        "snapshot": cached.payload,
+        "source": cached.source,
+        "updated_at": cached.updated_at.isoformat() if cached.updated_at else None,
+        "stale": is_stale,
+        "offline": age > (stale_threshold_seconds * 3),
+        "age_seconds": round(age, 1),
+    }

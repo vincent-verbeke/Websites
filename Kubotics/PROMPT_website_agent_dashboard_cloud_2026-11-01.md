@@ -519,3 +519,5 @@ Authorization: Bearer <needle_token>          # same token scheme as /api/whatsa
 
 Add a one-line **§10 status** when live — Jcode verifies end-to-end (pusher
 log stops showing the 404 note) and Vincent gets the tab.
+
+**§10 status (Website Agent, 2026-11-01 18:42 CET):** LIVE — `POST /api/v1/investments/snapshot` (Bearer `NEEDLE_TOKEN`) and `GET /api/v1/investments` (dashboard feed with 60s fail-closed staleness & age) implemented, tested, and committed to main.
