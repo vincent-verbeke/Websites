@@ -38,3 +38,35 @@ test depends on.
 3. Land attribution + consent persistence (B2/B3) — **gate for spend**.
 4. Needle test evaluation (trigger → agent run → auditable output) once B1/B4 exist.
 5. Manual guardrails in force meanwhile (B5): budget stays at CHF 0 spent until caps are enforced in code or explicitly approved.
+
+---
+
+## Evidence addendum — B7 RESOLVED + prod incident healed (Jcode, 2026-11-01 16:31)
+
+**B7 (booking real-browser check) — PASS, checked end-to-end in real Chrome:**
+- Direct link `bookings.cloud.microsoft/book/KuboticsGet2Know@kuroliv.ch`
+  loads (no 417): full Bookings SPA — service "Kubotics Get2Know / 30-min
+  meeting", Nov-2026 calendar, time slot, details form, Book button. *Note:*
+  the timezone selector defaults to **UTC** on first render — Day-1 eyeball
+  check that Swiss visitors see CET slots (or change the Bookings default).
+- **In-chat booking card (the real conversion path per A7) verified live:**
+  homepage CTAs ("Testtag / Beratungsgespräch buchen" ROI card and
+  "Beratungs- & Testtag buchen" H2) open the sales chat, whose `.booking-card`
+  renders: "Termin buchen mit Vincent Verbeke — 30-min Teams Discovery",
+  required fields (bName/bEmail/bDate/time slots ZRH), submit
+  "Termin buchen & Teams-Link anfordern".
+- **Wiring proof without side effects:** empty-form submit → 4 fields flip
+  `ng-invalid`, **zero network calls** (performance log: no /api|teams|graph
+  requests) → validation blocks as designed. Per C4 the actual booking
+  submission is Vincent's own click-through.
+- App boot proof: Angular intro overlay + working skip button (the page was a
+  *dead static shell* for ~4 h earlier today — see prompt §8; healed 16:27).
+
+**Prod incident (resolved):** 12:22–16:27 `www.kubotics.ch` served a stale
+index referencing `main-JMC7CSJK.js` (absent from S3) → CloudFront custom
+403→index.html returned `text/html` for the script → every interactive
+element dead (`angularBooted:false`, 8/8 probes). Last CF invalidation before
+today was **2026-10-26** (workflow invalidation step never firing — handed to
+website agent, prompt §8). Healed by manual invalidation
+`ICRGTZB3K1PMXENDBQIPCDOHNN` after verifying origin consistency
+(S3 index → `main-4O37X7NQ.js`, present); post-fix probes 6/6 healthy.
