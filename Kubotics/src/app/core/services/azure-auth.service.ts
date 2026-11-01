@@ -10,8 +10,8 @@ export const MSAL_CONFIG = {
     redirectUri: typeof window !== 'undefined' ? window.location.origin + '/dashboard' : 'https://kubotics.ch/dashboard',
   },
   cache: {
-    cacheLocation: 'sessionStorage',
-    storeAuthStateInCookie: false,
+    cacheLocation: 'localStorage',
+    storeAuthStateInCookie: true,
   }
 };
 
@@ -39,19 +39,27 @@ export class AzureAuthService {
       this.msalInstance = new PublicClientApplication(MSAL_CONFIG);
       await this.msalInstance.initialize();
 
-      // Handle redirect promise if user is returning from Microsoft login
-      const response = await this.msalInstance.handleRedirectPromise();
-      if (response && response.account) {
-        this.msalInstance.setActiveAccount(response.account);
-        this.currentAccount.set(response.account);
-        this.isAuthenticated.set(true);
-      } else {
-        const accounts = this.msalInstance.getAllAccounts();
-        if (accounts.length > 0) {
-          this.msalInstance.setActiveAccount(accounts[0]);
-          this.currentAccount.set(accounts[0]);
-          this.isAuthenticated.set(true);
+      // Only attempt to process redirect promise if the URL hash/query contains MSAL response parameters (code, error, state)
+      const currentUrl = window.location.href;
+      if (currentUrl.includes('code=') || currentUrl.includes('error=') || currentUrl.includes('state=')) {
+        try {
+          const response = await this.msalInstance.handleRedirectPromise();
+          if (response && response.account) {
+            this.msalInstance.setActiveAccount(response.account);
+            this.currentAccount.set(response.account);
+            this.isAuthenticated.set(true);
+          }
+        } catch (redirectErr) {
+          console.warn('[AzureAuth] Redirect promise handled with warning:', redirectErr);
         }
+      }
+
+      // Check existing accounts in cache
+      const accounts = this.msalInstance.getAllAccounts();
+      if (accounts.length > 0) {
+        this.msalInstance.setActiveAccount(accounts[0]);
+        this.currentAccount.set(accounts[0]);
+        this.isAuthenticated.set(true);
       }
     } catch (err) {
       console.error('[AzureAuth] Initialization failed:', err);

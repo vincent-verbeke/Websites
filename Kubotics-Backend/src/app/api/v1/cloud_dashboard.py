@@ -79,6 +79,22 @@ class AgentOutputRequest(BaseModel):
     requires_human_approval: Literal["none", "pending", "approved", "rejected"] = "none"
 
 
+@router.get("/dashboard/tasks")
+async def list_dashboard_tasks(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    status: str | None = None,
+    limit: int = 50,
+):
+    """Dashboard read view of task queue (unauthenticated or session-guarded for SPA view)."""
+    query = select(ScheduledTask).order_by(ScheduledTask.priority.asc(), ScheduledTask.created_at.desc()).limit(limit)
+    if status:
+        query = query.where(ScheduledTask.status == status)
+    
+    result = await db.execute(query)
+    tasks = result.scalars().all()
+    return {"tasks": tasks, "count": len(tasks)}
+
+
 @router.get("/tasks", dependencies=[Depends(require_scheduler_token)])
 async def list_tasks(
     db: Annotated[AsyncSession, Depends(get_db)],

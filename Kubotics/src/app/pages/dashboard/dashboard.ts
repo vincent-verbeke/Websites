@@ -508,7 +508,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.fetchSummary();
     this.fetchDeviceTelemetry('robot_h2_state', this.h2State);
     this.fetchDeviceTelemetry('cnc_cell_1', this.cncState);
-    this.fetchTasks();
+    if (this.auth.isAuthenticated()) {
+      this.fetchTasks();
+    }
   }
 
   private fetchSummary() {
@@ -530,7 +532,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private fetchTasks() {
-    this.http.get<{ tasks: any[] }>(`${this.API_BASE}/tasks?limit=15`).subscribe({
+    this.http.get<{ tasks: any[] }>(`${this.API_BASE}/dashboard/tasks?limit=15`).subscribe({
       next: (res) => this.tasks.set(res.tasks || []),
       error: () => this.tasks.set([])
     });
