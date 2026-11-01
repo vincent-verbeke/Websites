@@ -50,13 +50,11 @@ jobs:
         run: |
           aws s3 sync Kubotics/dist/Kubotics/browser/ s3://${{ env.S3_BUCKET }}/ --delete
 
-      - name: Invalidate CloudFront Distribution Cache (Optional / If Configured)
+      - name: Invalidate CloudFront Distribution Cache
         env:
-          CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID || 'ICRGTZB3K1PMXENDBQIPCDOHNN' }}
         run: |
-          if [ -n "$CLOUDFRONT_DISTRIBUTION_ID" ]; then
-            echo "Invalidating CloudFront cache for distribution $CLOUDFRONT_DISTRIBUTION_ID..."
-            aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths "/*"
-          else
-            echo "CLOUDFRONT_DISTRIBUTION_ID secret not set. Skipping cache invalidation."
-          fi
+          set -euo pipefail
+          DIST_ID="${CLOUDFRONT_DISTRIBUTION_ID:-ICRGTZB3K1PMXENDBQIPCDOHNN}"
+          echo "Invalidating CloudFront cache for distribution $DIST_ID..."
+          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"

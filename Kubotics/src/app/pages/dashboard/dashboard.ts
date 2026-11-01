@@ -3,6 +3,23 @@ import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { AzureAuthService } from '../../core/services/azure-auth.service';
 
+// Legacy / Edge Feature Components
+import { ChatComponent } from './legacy/features/chat/chat.component';
+import { HaComponent } from './legacy/features/home-assistant/ha.component';
+import { InvestmentsComponent } from './legacy/features/investments/investments.component';
+import { LidarComponent } from './legacy/features/lidar/lidar.component';
+import { ManagementComponent } from './legacy/features/management/management.component';
+import { MotionComponent } from './legacy/features/motion/motion.component';
+import { OllamaComponent } from './legacy/features/ollama/ollama.component';
+import { ServicesComponent } from './legacy/features/services/services.component';
+import { SessionsComponent } from './legacy/features/sessions/sessions.component';
+import { SoftwareComponent } from './legacy/features/software/software.component';
+import { SystemComponent } from './legacy/features/system/system.component';
+import { TrainingComponent } from './legacy/features/training/training.component';
+import { TwinComponent } from './legacy/features/twin/twin.component';
+import { VisionComponent } from './legacy/features/vision/vision.component';
+import { VoiceComponent } from './legacy/features/voice/voice.component';
+
 interface DashboardKPIs {
   total_leads: number;
   conversations: number;
@@ -21,18 +38,60 @@ interface DeviceState {
   payload?: any;
 }
 
+type TabId =
+  | 'overview'
+  | 'twin'
+  | 'services'
+  | 'system'
+  | 'management'
+  | 'lidar'
+  | 'ha'
+  | 'software'
+  | 'training'
+  | 'ollama'
+  | 'voice'
+  | 'vision'
+  | 'motion'
+  | 'chat'
+  | 'investments'
+  | 'sessions';
+
+interface TabItem {
+  id: TabId;
+  label: string;
+  icon: string;
+  badge?: string;
+}
+
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule],
+  imports: [
+    CommonModule,
+    ChatComponent,
+    HaComponent,
+    InvestmentsComponent,
+    LidarComponent,
+    ManagementComponent,
+    MotionComponent,
+    OllamaComponent,
+    ServicesComponent,
+    SessionsComponent,
+    SoftwareComponent,
+    SystemComponent,
+    TrainingComponent,
+    TwinComponent,
+    VisionComponent,
+    VoiceComponent,
+  ],
   template: `
     <div class="dashboard-container">
       <!-- HEADER / STATUS BAR -->
       <header class="dashboard-header">
         <div class="brand-group">
-          <h1>Kubotics Autonomous Control & Needle Orchestrator</h1>
+          <h1>Kubotics Autonomous Control & Orchestrator</h1>
           <span class="badge cloud-badge">
-            <span class="dot live"></span> Cloud-Native (ECS Fargate)
+            <span class="dot live"></span> Cloud-Native & Hybrid Edge
           </span>
         </div>
 
@@ -51,413 +110,619 @@ interface DeviceState {
         </div>
       </header>
 
-      <!-- UNLOGGED STATE PROMPT -->
+      <!-- NAVIGATION TABS -->
+      <nav class="dashboard-tabs" aria-label="Dashboard navigation">
+        <div class="tabs-scroll">
+          @for (tab of tabs; track tab.id) {
+            <button
+              class="tab-btn"
+              [class.active]="activeTab() === tab.id"
+              (click)="setTab(tab.id)"
+            >
+              <span class="tab-label">{{ tab.label }}</span>
+              @if (tab.badge) {
+                <span class="tab-badge">{{ tab.badge }}</span>
+              }
+            </button>
+          }
+        </div>
+      </nav>
+
+      <!-- UNLOGGED STATE PROMPT (Only shown when not signed in) -->
       @if (!auth.isAuthenticated()) {
         <div class="unauth-hero">
           <div class="lock-icon">
-            <span class="material-icons-outlined">admin_panel_settings</span>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
           </div>
           <h2>Enterprise Operations Access Restricted</h2>
-          <p>Please authenticate using your authorized Kuroliv / Kubotics Microsoft Entra ID account to access live GTM metrics, telemetry, and needle task pipelines.</p>
-          <button class="btn-primary-auth" (click)="auth.login()">Sign in with Entra ID</button>
+          <p>Please authenticate using your authorized Microsoft Entra ID tenant account to manage autonomous devices, execute Needle tasks, and access live telemetry.</p>
+          <button class="btn-login-hero" (click)="auth.login()">
+            Sign in with Microsoft 365
+          </button>
         </div>
       } @else {
-        <!-- LOGGED-IN DASHBOARD CONTENT -->
-        <main class="dashboard-content">
-          <!-- TOP ROW: SYSTEM VITALS & GTM METRICS -->
-          <div class="section-title-row">
-            <h2>GTM & Orchestration Metrics</h2>
-            <div class="freshness-indicator">
-              <span class="dot" [class.live]="!summaryStale()" [class.stale]="summaryStale()"></span>
-              Last updated: {{ summaryTime() || 'Syncing...' }}
-            </div>
-          </div>
-
-          <div class="kpi-grid">
-            <div class="kpi-card">
-              <span class="kpi-label">Total Ingested Leads</span>
-              <span class="kpi-val">{{ kpis()?.total_leads ?? 0 }}</span>
-              <span class="kpi-sub">PostgreSQL CRM Source of Truth</span>
-            </div>
-            <div class="kpi-card">
-              <span class="kpi-label">Active Conversations</span>
-              <span class="kpi-val">{{ kpis()?.conversations ?? 0 }}</span>
-              <span class="kpi-sub">Web + WhatsApp + Telegram</span>
-            </div>
-            <div class="kpi-card">
-              <span class="kpi-label">Queued Tasks (PC-A Poll)</span>
-              <span class="kpi-val" [class.warn]="(kpis()?.tasks_queued ?? 0) > 10">{{ kpis()?.tasks_queued ?? 0 }}</span>
-              <span class="kpi-sub">Awaiting daemon claim</span>
-            </div>
-            <div class="kpi-card">
-              <span class="kpi-label">Running Tasks</span>
-              <span class="kpi-val highlight">{{ kpis()?.tasks_running ?? 0 }}</span>
-              <span class="kpi-sub">In-flight agent operations</span>
-            </div>
-            <div class="kpi-card">
-              <span class="kpi-label">Failed Tasks</span>
-              <span class="kpi-val" [class.alert]="(kpis()?.tasks_failed ?? 0) > 0">{{ kpis()?.tasks_failed ?? 0 }}</span>
-              <span class="kpi-sub">Requires triage / retry</span>
-            </div>
-          </div>
-
-          <!-- MIDDLE ROW: HARDWARE & EDGE ROBOT TELEMETRY (FAIL-CLOSED) -->
-          <div class="section-title-row">
-            <h2>Edge Hardware & Unitree Telemetry (Fail-Closed)</h2>
-            <span class="badge info">Outbound Pull & Push-Ingest</span>
-          </div>
-
-          <div class="hardware-grid">
-            <!-- Unitree H2 Humanoid Card -->
-            <div class="hw-card" [class.border-stale]="h2State()?.is_stale" [class.border-offline]="h2State()?.is_offline">
-              <div class="hw-header">
-                <div>
-                  <h3>Unitree H2 Humanoid</h3>
-                  <span class="hw-source">Dataset: robot_h2_state</span>
+        <!-- TAB CONTENT VIEWS -->
+        <main class="tab-viewport">
+          <!-- 1. OVERVIEW / CLOUD ORCHESTRATION -->
+          @if (activeTab() === 'overview') {
+            <div class="overview-view">
+              <!-- KPI SECTION -->
+              <section class="kpi-grid">
+                <div class="kpi-card">
+                  <div class="kpi-label">Total GTM Leads</div>
+                  <div class="kpi-value">{{ kpis()?.total_leads ?? '—' }}</div>
+                  <div class="kpi-sub">HubSpot & Outreach Sync</div>
                 </div>
-                <div>
-                  @if (h2State()?.is_offline) {
-                    <span class="badge offline">OFFLINE (Fail-Closed)</span>
-                  } @else if (h2State()?.is_stale) {
-                    <span class="badge stale">STALE ({{ h2State()?.age_seconds }}s)</span>
-                  } @else {
-                    <span class="badge live">ONLINE (Live)</span>
-                  }
+                <div class="kpi-card">
+                  <div class="kpi-label">WhatsApp Conversations</div>
+                  <div class="kpi-value">{{ kpis()?.conversations ?? '—' }}</div>
+                  <div class="kpi-sub">Automated Sales & Inquiries</div>
                 </div>
-              </div>
+                <div class="kpi-card">
+                  <div class="kpi-label">Tasks Queued</div>
+                  <div class="kpi-value">{{ kpis()?.tasks_queued ?? 0 }}</div>
+                  <div class="kpi-sub">Needle worker pool</div>
+                </div>
+                <div class="kpi-card">
+                  <div class="kpi-label">Tasks Running</div>
+                  <div class="kpi-value status-running-val">{{ kpis()?.tasks_running ?? 0 }}</div>
+                  <div class="kpi-sub">Active leases</div>
+                </div>
+                <div class="kpi-card">
+                  <div class="kpi-label">Tasks Failed</div>
+                  <div class="kpi-value" [class.danger]="(kpis()?.tasks_failed ?? 0) > 0">
+                    {{ kpis()?.tasks_failed ?? 0 }}
+                  </div>
+                  <div class="kpi-sub">Requires triage</div>
+                </div>
+              </section>
 
-              @if (h2State()?.is_offline) {
-                <div class="offline-warning">
-                  <span class="material-icons-outlined">warning</span>
-                  <div>
-                    <strong>Edge Telemetry Feed Offline</strong>
-                    <p>No recent snapshot received from PC-A / dev PC. Values are NOT fabricated.</p>
+              <!-- EDGE DEVICE TELEMETRY STRIP (Fail-closed) -->
+              <section class="device-strip">
+                <div class="strip-header">
+                  <h3>Physical Device Telemetry Feeds (Fail-Closed)</h3>
+                  <button class="btn-refresh" (click)="loadAllData()">Refresh Now</button>
+                </div>
+                <div class="device-grid">
+                  <!-- H2 Humanoid Device -->
+                  <div class="device-card" [class.device-offline]="h2State()?.is_offline">
+                    <div class="card-top">
+                      <span class="device-name">Unitree H2 Humanoid (PC3 Thor)</span>
+                      <span class="status-indicator" [class.online]="!h2State()?.is_offline" [class.stale]="h2State()?.is_stale">
+                        {{ h2State()?.is_offline ? 'OFFLINE' : (h2State()?.is_stale ? 'STALE' : 'LIVE') }}
+                      </span>
+                    </div>
+                    <div class="card-body">
+                      @if (h2State()?.is_offline) {
+                        <div class="fail-closed-notice">
+                          <p>Telemetry stream unreachable or closed. No simulated values are synthesized.</p>
+                          <small>Edge relay last heard: {{ h2State()?.age_seconds ? h2State()?.age_seconds + 's ago' : 'Unknown' }}</small>
+                        </div>
+                      } @else {
+                        <div class="telemetry-rows">
+                          <div>Source: {{ h2State()?.source }}</div>
+                          <div>Updated: {{ h2State()?.updated_at | date:'HH:mm:ss' }}</div>
+                          <div>Payload: {{ h2State()?.payload | json }}</div>
+                        </div>
+                      }
+                    </div>
+                  </div>
+
+                  <!-- CNC Cell Device -->
+                  <div class="device-card" [class.device-offline]="cncState()?.is_offline">
+                    <div class="card-top">
+                      <span class="device-name">CNC Machine Tending Cell (Fanuc Robodrill)</span>
+                      <span class="status-indicator" [class.online]="!cncState()?.is_offline" [class.stale]="cncState()?.is_stale">
+                        {{ cncState()?.is_offline ? 'OFFLINE' : (cncState()?.is_stale ? 'STALE' : 'LIVE') }}
+                      </span>
+                    </div>
+                    <div class="card-body">
+                      @if (cncState()?.is_offline) {
+                        <div class="fail-closed-notice">
+                          <p>OPC-UA edge bridge offline. Fail-closed: values deliberately not fabricated.</p>
+                          <small>Last poll: {{ cncState()?.age_seconds ? cncState()?.age_seconds + 's ago' : 'Never' }}</small>
+                        </div>
+                      } @else {
+                        <div class="telemetry-rows">
+                          <div>Source: {{ cncState()?.source }}</div>
+                          <div>Updated: {{ cncState()?.updated_at | date:'HH:mm:ss' }}</div>
+                          <div>Payload: {{ cncState()?.payload | json }}</div>
+                        </div>
+                      }
+                    </div>
                   </div>
                 </div>
-              } @else {
-                <div class="telemetry-stats">
-                  <div class="stat-row">
-                    <span>Battery State</span>
-                    <strong>{{ h2State()?.payload?.battery_soc || 'N/A' }}%</strong>
-                  </div>
-                  <div class="stat-row">
-                    <span>Joint Temp Peak</span>
-                    <strong>{{ h2State()?.payload?.max_joint_temp || 'N/A' }}°C</strong>
-                  </div>
-                  <div class="stat-row">
-                    <span>Control Mode</span>
-                    <strong>{{ h2State()?.payload?.control_mode || 'Standby' }}</strong>
-                  </div>
+              </section>
+
+              <!-- NEEDLE TASK PIPELINE MONITOR -->
+              <section class="tasks-section">
+                <div class="section-header">
+                  <h3>Needle Task Scheduler & Work Queue</h3>
+                  <span class="task-count">{{ tasks().length }} tasks recorded</span>
                 </div>
-              }
+                <div class="task-table-wrapper">
+                  <table class="task-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Assignee</th>
+                        <th>Created</th>
+                        <th>Leased Until</th>
+                        <th>Payload / Result</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (task of tasks(); track task.id) {
+                        <tr>
+                          <td class="cell-id"><code>{{ task.id.substring(0, 8) }}</code></td>
+                          <td><span class="pill-type">{{ task.type }}</span></td>
+                          <td>
+                            <span class="pill-status status-{{ task.status }}">
+                              {{ task.status }}
+                            </span>
+                          </td>
+                          <td>{{ task.assignee || '—' }}</td>
+                          <td>{{ task.created_at | date:'shortTime' }}</td>
+                          <td>{{ task.leased_until ? (task.leased_until | date:'shortTime') : '—' }}</td>
+                          <td class="cell-payload">
+                            <code>{{ task.result ? (task.result | json) : (task.payload | json) }}</code>
+                          </td>
+                        </tr>
+                      } @empty {
+                        <tr>
+                          <td colspan="7" class="empty-state">No scheduled tasks in queue. Ad-hoc and daily schedules will materialize here.</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             </div>
+          }
 
-            <!-- CNC Automation Cell Card -->
-            <div class="hw-card" [class.border-stale]="cncState()?.is_stale" [class.border-offline]="cncState()?.is_offline">
-              <div class="hw-header">
-                <div>
-                  <h3>CNC Cell Arm & Gripper</h3>
-                  <span class="hw-source">Dataset: cnc_cell_1</span>
-                </div>
-                <div>
-                  @if (cncState()?.is_offline) {
-                    <span class="badge offline">OFFLINE (Fail-Closed)</span>
-                  } @else if (cncState()?.is_stale) {
-                    <span class="badge stale">STALE</span>
-                  } @else {
-                    <span class="badge live">ONLINE</span>
-                  }
-                </div>
-              </div>
+          <!-- 2. DIGITAL TWIN -->
+          @if (activeTab() === 'twin') {
+            <app-twin></app-twin>
+          }
 
-              @if (cncState()?.is_offline) {
-                <div class="offline-warning">
-                  <span class="material-icons-outlined">warning</span>
-                  <div>
-                    <strong>PLC / Edge Sensor Offline</strong>
-                    <p>Zero telemetry reported in the last 180 seconds.</p>
-                  </div>
-                </div>
-              } @else {
-                <div class="telemetry-stats">
-                  <div class="stat-row">
-                    <span>Cycle Counter</span>
-                    <strong>{{ cncState()?.payload?.cycle_count || 0 }} pcs</strong>
-                  </div>
-                  <div class="stat-row">
-                    <span>Spindle State</span>
-                    <strong>{{ cncState()?.payload?.spindle_status || 'Idle' }}</strong>
-                  </div>
-                </div>
-              }
-            </div>
-          </div>
+          <!-- 3. SERVICES MANAGER -->
+          @if (activeTab() === 'services') {
+            <app-services></app-services>
+          }
 
-          <!-- BOTTOM ROW: LIVE TASK QUEUE (PC-A POLLING) -->
-          <div class="section-title-row">
-            <h2>Needle Task Execution Pipeline</h2>
-            <button class="btn-refresh" (click)="loadAllData()">Manual Refresh</button>
-          </div>
+          <!-- 4. SYSTEM & THERMALS -->
+          @if (activeTab() === 'system') {
+            <app-system></app-system>
+          }
 
-          <div class="task-table-card">
-            @if (tasks().length === 0) {
-              <div class="empty-state">No active or pending tasks in cloud queue.</div>
-            } @else {
-              <table class="task-table">
-                <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th>Correlation ID</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                    <th>Assignee</th>
-                    <th>Heartbeat / Age</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (t of tasks(); track t.id) {
-                    <tr>
-                      <td class="task-type">{{ t.type }}</td>
-                      <td class="task-corr"><code>{{ t.correlation_id }}</code></td>
-                      <td>{{ t.priority }}</td>
-                      <td>
-                        <span class="status-pill status-{{ t.status }}">{{ t.status }}</span>
-                      </td>
-                      <td>{{ t.assignee || 'Unassigned' }}</td>
-                      <td class="task-time">{{ t.heartbeat_at || t.created_at | date:'shortTime' }}</td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            }
-          </div>
+          <!-- 5. MANAGEMENT & CONTROLS -->
+          @if (activeTab() === 'management') {
+            <app-management></app-management>
+          }
+
+          <!-- 6. LIDAR -->
+          @if (activeTab() === 'lidar') {
+            <app-lidar></app-lidar>
+          }
+
+          <!-- 7. HOME ASSISTANT -->
+          @if (activeTab() === 'ha') {
+            <app-ha></app-ha>
+          }
+
+          <!-- 8. SOFTWARE & UPDATES -->
+          @if (activeTab() === 'software') {
+            <app-software></app-software>
+          }
+
+          <!-- 9. TRAINING & RL -->
+          @if (activeTab() === 'training') {
+            <app-training></app-training>
+          }
+
+          <!-- 10. OLLAMA LOCAL MODELS -->
+          @if (activeTab() === 'ollama') {
+            <app-ollama></app-ollama>
+          }
+
+          <!-- 11. VOICE BOT -->
+          @if (activeTab() === 'voice') {
+            <app-voice></app-voice>
+          }
+
+          <!-- 12. VISION / CAMERAS -->
+          @if (activeTab() === 'vision') {
+            <app-vision></app-vision>
+          }
+
+          <!-- 13. MOTION CONTROLS -->
+          @if (activeTab() === 'motion') {
+            <app-motion></app-motion>
+          }
+
+          <!-- 14. CHAT / JCODE -->
+          @if (activeTab() === 'chat') {
+            <app-chat></app-chat>
+          }
+
+          <!-- 15. INVESTMENTS & IBKR -->
+          @if (activeTab() === 'investments') {
+            <app-investments></app-investments>
+          }
+
+          <!-- 16. SESSIONS (WHATSAPP) -->
+          @if (activeTab() === 'sessions') {
+            <app-sessions></app-sessions>
+          }
         </main>
       }
     </div>
   `,
-  styles: `
-    .dashboard-container {
-      min-height: 90vh;
-      background: #080c14;
+  styles: [`
+    :host {
+      display: block;
       color: #e2e8f0;
+      background: #090d16;
+      min-height: 100vh;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .dashboard-container {
+      max-width: 1440px;
+      margin: 0 auto;
       padding: 1.5rem 2rem 4rem;
-      font-family: 'Inter', system-ui, sans-serif;
     }
 
     .dashboard-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding-bottom: 1.5rem;
+      padding-bottom: 1.25rem;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      margin-bottom: 2rem;
+      margin-bottom: 1rem;
     }
 
     .brand-group h1 {
       font-size: 1.35rem;
       font-weight: 700;
       letter-spacing: -0.02em;
-      margin: 0 0 0.4rem 0;
-      color: #ffffff;
+      margin: 0 0 0.4rem;
+      color: #f8fafc;
     }
 
-    .cloud-badge {
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       font-size: 0.75rem;
+      font-weight: 500;
+      padding: 3px 8px;
+      border-radius: 9999px;
       background: rgba(56, 189, 248, 0.12);
       color: #38bdf8;
       border: 1px solid rgba(56, 189, 248, 0.25);
-      border-radius: 9999px;
-      padding: 0.2rem 0.6rem;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
     }
 
     .dot {
-      width: 7px;
-      height: 7px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
     }
-    .dot.live { background: #10b981; box-shadow: 0 0 8px #10b981; }
-    .dot.stale { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
-
-    .auth-bar {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
+    .dot.live {
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
     }
 
-    .btn-login, .btn-primary-auth {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: #ffffff;
-      color: #0f172a;
-      font-weight: 600;
-      font-size: 0.85rem;
-      padding: 0.5rem 1rem;
-      border-radius: 8px;
-      border: none;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    .btn-login:hover, .btn-primary-auth:hover { background: #f1f5f9; }
-
+    /* AUTH CONTROLS */
     .user-pill {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 12px;
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.1);
-      padding: 0.35rem 0.85rem;
-      border-radius: 8px;
+      padding: 4px 6px 4px 12px;
+      border-radius: 9999px;
     }
-    .user-name { font-size: 0.85rem; font-weight: 500; }
+    .user-name {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #f1f5f9;
+    }
     .btn-logout {
-      background: none;
+      background: rgba(255, 255, 255, 0.1);
       border: none;
       color: #94a3b8;
       font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 9999px;
       cursor: pointer;
+      transition: all 0.2s;
     }
-    .btn-logout:hover { color: #f87171; }
+    .btn-logout:hover {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+    }
 
+    .btn-login, .btn-login-hero {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: #0078d4;
+      color: #ffffff;
+      border: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.55rem 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-login:hover, .btn-login-hero:hover {
+      background: #106ebe;
+    }
+
+    /* TAB NAVIGATION */
+    .dashboard-tabs {
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      position: sticky;
+      top: 0;
+      background: rgba(9, 13, 22, 0.95);
+      backdrop-filter: blur(8px);
+      z-index: 20;
+    }
+    .tabs-scroll {
+      display: flex;
+      gap: 4px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+      scrollbar-width: thin;
+    }
+    .tabs-scroll::-webkit-scrollbar {
+      height: 4px;
+    }
+    .tabs-scroll::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 2px;
+    }
+
+    .tab-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: #94a3b8;
+      padding: 0.6rem 0.9rem;
+      font-size: 0.825rem;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+    .tab-btn:hover {
+      color: #f1f5f9;
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .tab-btn.active {
+      color: #38bdf8;
+      border-bottom-color: #38bdf8;
+      background: rgba(56, 189, 248, 0.06);
+    }
+    .tab-badge {
+      font-size: 0.65rem;
+      background: rgba(56, 189, 248, 0.2);
+      color: #38bdf8;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+
+    /* TAB VIEWPORT */
+    .tab-viewport {
+      min-height: 600px;
+    }
+
+    /* UNAUTH HERO */
     .unauth-hero {
       text-align: center;
+      padding: 4rem 2rem;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px dashed rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      margin-top: 2rem;
+    }
+    .lock-icon {
+      color: #38bdf8;
+      margin-bottom: 1rem;
+    }
+    .unauth-hero h2 {
+      font-size: 1.35rem;
+      color: #f8fafc;
+      margin: 0 0 0.5rem;
+    }
+    .unauth-hero p {
       max-width: 540px;
-      margin: 6rem auto;
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px;
-      padding: 3rem 2rem;
-    }
-    .lock-icon span { font-size: 3rem; color: #38bdf8; margin-bottom: 1rem; }
-    .unauth-hero h2 { font-size: 1.4rem; margin-bottom: 0.75rem; }
-    .unauth-hero p { font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.75rem; }
-    .btn-primary-auth { margin: 0 auto; padding: 0.7rem 1.5rem; font-size: 0.95rem; }
-
-    .section-title-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin: 2rem 0 1rem;
-    }
-    .section-title-row h2 {
-      font-size: 1.05rem;
-      font-weight: 600;
-      color: #cbd5e1;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin: 0;
-    }
-    .freshness-indicator {
-      font-size: 0.8rem;
+      margin: 0 auto 1.5rem;
       color: #94a3b8;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
+      font-size: 0.9rem;
+      line-height: 1.5;
     }
 
+    /* OVERVIEW VIEW STYLES */
     .kpi-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 1rem;
+      margin-bottom: 2rem;
     }
     .kpi-card {
-      background: #0f172a;
-      border: 1px solid rgba(255, 255, 255, 0.07);
-      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
       padding: 1.25rem;
-      display: flex;
-      flex-direction: column;
+      border-radius: 10px;
     }
-    .kpi-label { font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.5rem; }
-    .kpi-val { font-size: 1.9rem; font-weight: 700; color: #ffffff; }
-    .kpi-val.highlight { color: #38bdf8; }
-    .kpi-val.warn { color: #f59e0b; }
-    .kpi-val.alert { color: #ef4444; }
-    .kpi-sub { font-size: 0.72rem; color: #64748b; margin-top: 0.4rem; }
+    .kpi-label {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .kpi-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin: 0.35rem 0 0.2rem;
+    }
+    .kpi-value.danger { color: #ef4444; }
+    .status-running-val { color: #f59e0b; }
+    .kpi-sub {
+      font-size: 0.75rem;
+      color: #64748b;
+    }
 
-    .hardware-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 1.25rem;
+    /* DEVICE STRIP */
+    .device-strip {
+      margin-bottom: 2.5rem;
     }
-    .hw-card {
-      background: #0f172a;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px;
-      padding: 1.25rem;
-    }
-    .hw-card.border-stale { border-color: rgba(245, 158, 11, 0.4); }
-    .hw-card.border-offline { border-color: rgba(239, 68, 68, 0.4); }
-    .hw-header {
+    .strip-header {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
+      align-items: center;
       margin-bottom: 1rem;
     }
-    .hw-header h3 { font-size: 1.05rem; margin: 0 0 0.2rem; }
-    .hw-source { font-size: 0.75rem; color: #64748b; font-family: monospace; }
-
-    .badge {
-      font-size: 0.72rem;
-      font-weight: 600;
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
+    .strip-header h3 {
+      font-size: 1.05rem;
+      margin: 0;
+      color: #f1f5f9;
     }
-    .badge.live { background: rgba(16, 185, 129, 0.15); color: #10b981; }
-    .badge.stale { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
-    .badge.offline { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-    .badge.info { background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
-
-    .offline-warning {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      background: rgba(239, 68, 68, 0.08);
-      border: 1px solid rgba(239, 68, 68, 0.2);
-      padding: 0.85rem;
-      border-radius: 8px;
-      color: #fca5a5;
+    .device-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1rem;
     }
-    .offline-warning strong { display: block; font-size: 0.85rem; }
-    .offline-warning p { margin: 0.2rem 0 0; font-size: 0.75rem; color: #f87171; }
-
-    .telemetry-stats { display: flex; flex-direction: column; gap: 0.5rem; }
-    .stat-row {
+    .device-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+    }
+    .device-card.device-offline {
+      border-left: 3px solid #ef4444;
+      background: rgba(239, 68, 68, 0.02);
+    }
+    .card-top {
       display: flex;
       justify-content: space-between;
-      padding: 0.4rem 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-      font-size: 0.85rem;
+      align-items: center;
+      margin-bottom: 0.75rem;
     }
-    .stat-row span { color: #94a3b8; }
-
-    .task-table-card {
-      background: #0f172a;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px;
-      overflow: hidden;
-    }
-    .task-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-    .task-table th, .task-table td {
-      padding: 0.85rem 1rem;
-      text-align: left;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    }
-    .task-table th { background: rgba(255, 255, 255, 0.02); color: #94a3b8; font-weight: 600; }
-    .task-type { font-weight: 600; color: #38bdf8; }
-    .task-corr code { background: rgba(255, 255, 255, 0.06); padding: 0.15rem 0.35rem; border-radius: 4px; font-size: 0.78rem; }
-    .status-pill {
-      font-size: 0.72rem;
+    .device-name {
+      font-size: 0.9rem;
       font-weight: 600;
-      padding: 0.2rem 0.5rem;
-      border-radius: 9999px;
-      text-transform: uppercase;
+      color: #f8fafc;
     }
-    .status-queued { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; }
-    .status-assigned { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+    .status-indicator {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+    }
+    .status-indicator.online {
+      background: rgba(16, 185, 129, 0.15);
+      color: #10b981;
+    }
+    .status-indicator.stale {
+      background: rgba(245, 158, 11, 0.15);
+      color: #f59e0b;
+    }
+    .fail-closed-notice p {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin: 0 0 0.35rem;
+    }
+    .fail-closed-notice small {
+      font-size: 0.7rem;
+      color: #64748b;
+    }
+
+    /* TASKS SECTION */
+    .tasks-section {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+      padding: 1.25rem;
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .section-header h3 {
+      font-size: 1.05rem;
+      margin: 0;
+      color: #f1f5f9;
+    }
+    .task-count {
+      font-size: 0.75rem;
+      color: #94a3b8;
+    }
+    .task-table-wrapper {
+      overflow-x: auto;
+    }
+    .task-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.825rem;
+      text-align: left;
+    }
+    .task-table th {
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      color: #94a3b8;
+      font-weight: 500;
+    }
+    .task-table td {
+      padding: 0.65rem 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: #cbd5e1;
+    }
+    .cell-id code {
+      font-family: monospace;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.1);
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    .cell-payload code {
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      max-width: 250px;
+      display: inline-block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .pill-type {
+      background: rgba(255, 255, 255, 0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+    }
+    .pill-status {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .status-queued { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
     .status-running { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
     .status-succeeded { background: rgba(16, 185, 129, 0.15); color: #10b981; }
     .status-failed { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
@@ -473,7 +738,7 @@ interface DeviceState {
     }
     .btn-refresh:hover { background: rgba(255, 255, 255, 0.12); }
     .empty-state { padding: 2rem; text-align: center; color: #64748b; font-size: 0.9rem; }
-  `
+  `]
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   auth = inject(AzureAuthService);
@@ -481,6 +746,27 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private readonly API_BASE = 'https://api.kubotics.ch/api/v1';
   private pollInterval: any = null;
+
+  activeTab = signal<TabId>('overview');
+
+  tabs: TabItem[] = [
+    { id: 'overview', label: 'Cloud Orchestrator', icon: 'hub', badge: 'Cloud' },
+    { id: 'twin', label: 'Digital Twin (H2)', icon: 'view_in_ar' },
+    { id: 'investments', label: 'Investments & IBKR', icon: 'trending_up', badge: 'Live' },
+    { id: 'services', label: 'Services Manager', icon: 'settings_suggest' },
+    { id: 'system', label: 'Thermals & System', icon: 'thermostat' },
+    { id: 'management', label: 'Robot Management', icon: 'tune' },
+    { id: 'lidar', label: 'LiDAR Diagnostics', icon: 'radar' },
+    { id: 'motion', label: 'Motion Control', icon: 'gamepad' },
+    { id: 'vision', label: 'Vision & Cams', icon: 'videocam' },
+    { id: 'voice', label: 'Voice Bot', icon: 'mic' },
+    { id: 'chat', label: 'Jcode Chat', icon: 'chat' },
+    { id: 'sessions', label: 'WhatsApp Sessions', icon: 'forum' },
+    { id: 'ha', label: 'Home Assistant', icon: 'home' },
+    { id: 'training', label: 'RL Training', icon: 'model_training' },
+    { id: 'ollama', label: 'Ollama Models', icon: 'psychology' },
+    { id: 'software', label: 'Software Updates', icon: 'system_update' },
+  ];
 
   kpis = signal<DashboardKPIs | null>(null);
   summaryStale = signal<boolean>(false);
@@ -494,7 +780,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.loadAllData();
     // Poll every 10 seconds for live operations
     this.pollInterval = setInterval(() => {
-      if (this.auth.isAuthenticated()) {
+      if (this.auth.isAuthenticated() && this.activeTab() === 'overview') {
         this.loadAllData();
       }
     }, 10000);
@@ -502,6 +788,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     if (this.pollInterval) clearInterval(this.pollInterval);
+  }
+
+  setTab(tabId: TabId) {
+    this.activeTab.set(tabId);
+    if (tabId === 'overview') {
+      this.loadAllData();
+    }
   }
 
   loadAllData() {
