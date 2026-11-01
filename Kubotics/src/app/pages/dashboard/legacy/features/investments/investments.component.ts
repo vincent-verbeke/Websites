@@ -181,6 +181,45 @@ export interface TradingWatchBlock {
         </div>
       </div>
 
+      <!-- SUMMARY OVERVIEW: cash / invested / net ± (both books) -->
+      <div class="summary-cards">
+        <div class="scard">
+          <span class="scard-label">Cash (or equivalent)</span>
+          <span class="scard-val">
+            {{ feed()?.snapshot?.cash_chf != null ? (feed()?.snapshot?.cash_chf | number:'1.2-2') + ' CHF' : '—' }}
+          </span>
+          <span class="scard-sub">
+            @if (binanceUsdt() != null) {
+              + {{ binanceUsdt()! | number:'1.2-2' }} USDT liquid (Binance)
+            } @else {
+              Binance liquid: —
+            }
+          </span>
+        </div>
+        <div class="scard">
+          <span class="scard-label">Invested</span>
+          <span class="scard-val">
+            {{ feed()?.snapshot?.state?.meta?.invested_chf != null ? (feed()?.snapshot?.state?.meta?.invested_chf | number:'1.2-2') + ' CHF' : '—' }}
+          </span>
+          <span class="scard-sub">
+            {{ feed()?.snapshot?.state?.sleeves?.length || 0 }} IBKR sleeves (gates below)
+          </span>
+        </div>
+        <div class="scard">
+          <span class="scard-label">Net ± (mark-to-market)</span>
+          <span class="scard-val" [class.pos]="netChf() != null && netChf()! > 0" [class.neg]="netChf() != null && netChf()! < 0">
+            {{ netChf() != null ? (netChf()! > 0 ? '+' : '') + (netChf()! | number:'1.2-2') + ' CHF' : '—' }}
+          </span>
+          <span class="scard-sub">
+            @if (binanceNetUsd() != null) {
+              Binance since Nov 1: {{ (binanceNetUsd()! > 0 ? '+' : '') + (binanceNetUsd()! | number:'1.4-4') }} USDT
+            } @else {
+              equity − cash − invested (IBKR)
+            }
+          </span>
+        </div>
+      </div>
+
       <!-- POSITIONS TABLE -->
       <section class="sec-card">
         <div class="sec-header">
@@ -593,6 +632,25 @@ export class InvestmentsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     if (this.timer) clearInterval(this.timer);
+  }
+
+  /** Equity − cash − invested = unrealized net (mark-to-market, CHF). */
+  netChf(): number | null {
+    const s = this.feed()?.snapshot;
+    if (!s || s.equity_chf == null || s.cash_chf == null) return null;
+    const invested = s.state?.meta?.invested_chf;
+    if (invested == null) return null;
+    return Math.round((s.equity_chf - s.cash_chf - invested) * 100) / 100;
+  }
+
+  /** Binance liquid USDT from the watcher heartbeat. */
+  binanceUsdt(): number | null {
+    return this.feed()?.trading_watch?.last_check?.usdt ?? null;
+  }
+
+  /** Binance net since 2026-11-01 (USDT) from the per-asset totals. */
+  binanceNetUsd(): number | null {
+    return this.feed()?.trading_watch?.per_asset_since?.totals?.net_usd ?? null;
   }
 
   /** "3m ago" / "just now" for the last-check chip. */
