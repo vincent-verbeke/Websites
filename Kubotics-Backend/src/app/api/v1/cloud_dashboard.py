@@ -57,6 +57,14 @@ def require_ingest_token(
 # -----------------------------------------------------------------------------
 # SCHEDULER & TASK APIS (PC-A POLLS THESE)
 # -----------------------------------------------------------------------------
+class TaskCreateRequest(BaseModel):
+    event_id: str = Field(min_length=1, max_length=128, description="Idempotency key")
+    correlation_id: str = Field(min_length=1, max_length=128, description="Correlation identifier across run/tools")
+    type: str = Field(min_length=1, max_length=64, description="Task type identifier")
+    priority: int = Field(default=10, ge=1, le=100, description="Task priority (lower is higher priority)")
+    payload: dict = Field(default_factory=dict, description="Task input payload")
+
+
 class TaskClaimRequest(BaseModel):
     assignee: str = Field(min_length=1, description="Worker identity, e.g. pc-a-needle")
     lease_seconds: int = Field(default=300, ge=30, le=3600)
@@ -109,6 +117,35 @@ async def list_tasks(
     result = await db.execute(query)
     tasks = result.scalars().all()
     return {"tasks": tasks, "count": len(tasks)}
+
+
+@router.post("/tasks", dependencies=[Depends(require_scheduler_token)], status_code=status.HTTP_201_CREATED)
+async def create_task(
+    payload: TaskCreateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Enqueue a new scheduled task with strict event_id idempotency.
+    
+    If a task with the same event_id already exists, returns the existing task (HTTP 200).
+    """
+    # Idempotency check on event_id
+    existing = await db.execute(select(ScheduledTask).where(ScheduledTask.event_id == payload.event_id))
+    existing_task = existing.scalars().first()
+    if existing_task:
+        return {"ok": True, "created": False, "task": existing_task}
+
+    new_task = ScheduledTask(
+        event_id=payload.event_id,
+        correlation_id=payload.correlation_id,
+        type=payload.type,
+        priority=payload.priority,
+        payload=payload.payload,
+        status="queued",
+    )
+    db.add(new_task)
+    await db.commit()
+    await db.refresh(new_task)
+    return {"ok": True, "created": True, "task": new_task}
 
 
 @router.post("/tasks/{task_id}/claim", dependencies=[Depends(require_scheduler_token)])
@@ -175,6 +212,47 @@ async def update_task_status(
     await db.commit()
     await db.refresh(task)
     return {"ok": True, "task": task}
+
+
+class EventCreateRequest(BaseModel):
+    event_id: str = Field(min_length=1, max_length=128, description="Unique inbound event idempotency key")
+    channel: str = Field(min_length=1, max_length=32, description="Channel (website, telegram, whatsapp, email)")
+    sender_id: str = Field(min_length=1, max_length=128, description="Sender identifier")
+    payload: dict = Field(default_factory=dict, description="Event raw or normalized payload")
+    utm_source: str | None = None
+    utm_medium: str | None = None
+    utm_campaign: str | None = None
+    utm_content: str | None = None
+    utm_term: str | None = None
+
+
+@router.post("/events", dependencies=[Depends(require_scheduler_token)], status_code=status.HTTP_201_CREATED)
+async def create_inbound_event(
+    payload: EventCreateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Ingest a normalized inbound event (idempotent via event_id)."""
+    existing = await db.execute(select(InboundEvent).where(InboundEvent.event_id == payload.event_id))
+    existing_event = existing.scalars().first()
+    if existing_event:
+        return {"ok": True, "created": False, "event": existing_event}
+
+    new_event = InboundEvent(
+        event_id=payload.event_id,
+        channel=payload.channel,
+        sender_id=payload.sender_id,
+        payload=payload.payload,
+        utm_source=payload.utm_source,
+        utm_medium=payload.utm_medium,
+        utm_campaign=payload.utm_campaign,
+        utm_content=payload.utm_content,
+        utm_term=payload.utm_term,
+        status="received",
+    )
+    db.add(new_event)
+    await db.commit()
+    await db.refresh(new_event)
+    return {"ok": True, "created": True, "event": new_event}
 
 
 @router.get("/events", dependencies=[Depends(require_scheduler_token)])
