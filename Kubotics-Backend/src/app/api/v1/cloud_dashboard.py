@@ -400,3 +400,113 @@ async def get_device_telemetry(
         "updated_at": item.updated_at.isoformat() if item.updated_at else None,
         "payload": item.payload,
     }
+
+# -----------------------------------------------------------------------------
+# DASHBOARD LEADS & CONVERSATIONS MANAGEMENT (GTM & AUDIT)
+# -----------------------------------------------------------------------------
+@router.get("/dashboard/leads")
+async def list_dashboard_leads(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = 50,
+):
+    """List GTM inbound leads with contact channels and organization."""
+    query = (
+        select(Contact)
+        .where(Contact.lifecycle_stage == "lead")
+        .order_by(Contact.created_at.desc())
+        .limit(limit)
+    )
+    res = await db.execute(query)
+    contacts = res.scalars().all()
+
+    items = []
+    for c in contacts:
+        # Load associated phone/email channels
+        await db.refresh(c, ["channels", "organizations_link"])
+        phone = next((ch.value for ch in c.channels if "phone" in ch.channel_type or ch.channel_type == "whatsapp"), None)
+        email = next((ch.value for ch in c.channels if ch.channel_type == "email"), None)
+        
+        items.append({
+            "id": str(c.id),
+            "first_name": c.first_name,
+            "last_name": c.last_name,
+            "job_title": c.job_title,
+            "email": email,
+            "phone": phone,
+            "lead_score": c.lead_score,
+            "lifecycle_stage": c.lifecycle_stage,
+            "ai_summary": c.ai_summary,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        })
+    return {"leads": items, "count": len(items)}
+
+
+@router.delete("/dashboard/leads/{lead_id}")
+async def delete_dashboard_lead(
+    lead_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Delete a test or obsolete lead."""
+    try:
+        lid = uuid.UUID(lead_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid lead UUID")
+
+    contact = await db.get(Contact, lid)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    await db.delete(contact)
+    await db.commit()
+    return {"ok": True, "deleted_id": lead_id}
+
+
+@router.get("/dashboard/conversations")
+async def list_dashboard_conversations(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = 50,
+):
+    """List inbound conversations across WhatsApp, Web Chat, Telegram."""
+    query = (
+        select(Conversation)
+        .order_by(Conversation.started_at.desc())
+        .limit(limit)
+    )
+    res = await db.execute(query)
+    convs = res.scalars().all()
+
+    items = []
+    for conv in convs:
+        await db.refresh(conv, ["contact", "messages"])
+        last_msg = conv.messages[-1].content if conv.messages else None
+        sender_phone = conv.external_conversation_id
+        items.append({
+            "id": str(conv.id),
+            "channel": conv.channel,
+            "status": conv.status,
+            "sender": sender_phone or (f"{conv.contact.first_name or ''} {conv.contact.last_name or ''}".strip() if conv.contact else "Anonymous"),
+            "message_count": len(conv.messages),
+            "last_message": last_msg,
+            "started_at": conv.started_at.isoformat() if conv.started_at else None,
+        })
+    return {"conversations": items, "count": len(items)}
+
+
+@router.delete("/dashboard/conversations/{conversation_id}")
+async def delete_dashboard_conversation(
+    conversation_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Delete a test conversation and its associated messages."""
+    try:
+        cid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid conversation UUID")
+
+    conv = await db.get(Conversation, cid)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    await db.delete(conv)
+    await db.commit()
+    return {"ok": True, "deleted_id": conversation_id}
