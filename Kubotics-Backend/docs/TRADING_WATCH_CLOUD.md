@@ -141,3 +141,36 @@ SNS SMS result recorded in §9.
   that places the trade, else drift alerts fire (intended).
 - SNS SMS enablement: AWS console → SNS → SMS → spending limit; then set
   `TRADING_WATCH_SMS_ENABLED=true`.
+
+## 11. Frontend integration — Investments tab (Vincent, 2026-11-01 19:22)
+
+*"integrate this also in the frontend in the investments tab below the IBKR
+investments — you can implement the changes in backend and frontend."*
+
+**Backend** (zero new endpoints, zero new auth paths):
+- `GET /api/v1/investments` (and `/dashboard/investments`) now embeds a
+  `trading_watch` block in **both** response shapes (cached + offline):
+  `{enabled, sms_enabled, interval_s, binance_keys_configured,
+  last_check, recent_alerts[≤5], error?}`.
+  - `last_check` = process-local heartbeat written by every `run_once`
+    (ts/ok/legs/usdt/problems); resets on deploy — the UI labels it
+    "since last deploy" when absent.
+  - `recent_alerts` = newest 5 `inbound_events` rows (channel
+    `trading_watch`): `{event_id, created_at, problems[], test}`.
+  - The block is wrapped in try/except — an error can never break the IBKR
+    feed (`{"error": TypeName}` instead).
+- `GET /api/v1/trading/watch/status` now returns the **same block** plus
+  `cooldown_s`, `expected_perp`, `last_alert` (back-compat keys kept).
+
+**Frontend** (`Kubotics/src/app/pages/dashboard/legacy/features/investments/investments.component.ts`):
+- New interfaces `TradingWatchBlock` / `TradingAlertItem` / `TradingWatchCheck`
+  and `InvestmentsFeedResponse.trading_watch`.
+- New `sec-card` **"Binance Trading Watcher"** rendered *below* the IBKR
+  sleeves section: chips (enabled / keys / SMS / last-check age via `ageOf()`)
+  and a recent-alerts table (When · Problems · TEST|ALERT), empty state
+  "No alerts — every watcher check is green ✓".
+- No additional HTTP call: the block piggybacks the existing 15 s poll.
+
+**Verified:** backend `uv run pytest tests/` → 22 passed; `npm run build`
+clean; post-deploy `GET /api/v1/investments` contains `trading_watch` with a
+live `last_check`; dashboard tab visually checked in a real browser.

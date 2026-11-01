@@ -611,7 +611,15 @@ async def get_investments_feed(
     """
     Dashboard read feed for IBKR Investments tab.
     Calculates server-side staleness (stale if now - updated_at > 60s).
+    Also embeds the trading-watcher block (Vincent 2026-11-01 19:22) so the
+    Investments tab can render it below the IBKR sections — see
+    Kubotics-Backend/docs/TRADING_WATCH_CLOUD.md §11.
     """
+    try:
+        from app.services import trading_watch as _tw_svc
+        tw_block = await _tw_svc.dashboard_block(db)
+    except Exception as e:  # noqa: BLE001 — never break the IBKR feed
+        tw_block = {"error": type(e).__name__}
     result = await db.execute(
         select(DeviceSnapshotCache).where(DeviceSnapshotCache.dataset == "ibkr_investments")
     )
@@ -625,6 +633,7 @@ async def get_investments_feed(
             "stale": True,
             "offline": True,
             "age_seconds": None,
+            "trading_watch": tw_block,
         }
 
     now = datetime.now(UTC)
@@ -638,4 +647,5 @@ async def get_investments_feed(
         "stale": is_stale,
         "offline": age > (stale_threshold_seconds * 3),
         "age_seconds": round(age, 1),
+        "trading_watch": tw_block,
     }

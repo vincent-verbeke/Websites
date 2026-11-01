@@ -9,12 +9,10 @@ GET  /trading/watch/status — enable flags + most recent alert (if any).
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import desc, select
 
 from app.api.v1.cloud_dashboard import require_scheduler_token
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
-from app.models.tasks import InboundEvent
 from app.services import trading_watch
 
 router = APIRouter(prefix="/trading", tags=["trading-watch"])
@@ -30,23 +28,14 @@ async def trading_watch_test() -> dict:
 
 @router.get("/watch/status", dependencies=[Depends(require_scheduler_token)])
 async def trading_watch_status() -> dict:
+    """Full watcher status: flags + last_check heartbeat + recent alerts
+    (same shape as the `trading_watch` block embedded in /investments)."""
     async with AsyncSessionLocal() as db:
-        row = (await db.execute(
-            select(InboundEvent)
-            .where(InboundEvent.channel == trading_watch.CHANNEL)
-            .order_by(desc(InboundEvent.created_at))
-            .limit(1))).scalars().first()
+        block = await trading_watch.dashboard_block(db)
+    alerts = block.get("recent_alerts") or []
     return {
-        "enabled": settings.TRADING_WATCH_ENABLED,
-        "interval_s": settings.TRADING_WATCH_INTERVAL_S,
+        **block,
         "cooldown_s": settings.TRADING_WATCH_ALERT_COOLDOWN_S,
-        "sms_enabled": settings.TRADING_WATCH_SMS_ENABLED,
-        "binance_keys_configured": bool(settings.BINANCE_API_KEY
-                                        and settings.BINANCE_API_SECRET),
         "expected_perp": settings.TRADING_WATCH_EXPECTED_PERP.split(","),
-        "last_alert": None if row is None else {
-            "event_id": row.event_id,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
-            "payload": row.payload,
-        },
+        "last_alert": alerts[0] if alerts else None,
     }

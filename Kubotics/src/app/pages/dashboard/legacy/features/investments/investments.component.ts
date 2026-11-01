@@ -61,6 +61,33 @@ export interface InvestmentsFeedResponse {
   stale: boolean;
   offline: boolean;
   age_seconds: number | null;
+  trading_watch?: TradingWatchBlock | null;
+}
+
+export interface TradingAlertItem {
+  event_id: string | null;
+  created_at: string | null;
+  problems: string[];
+  test: boolean;
+}
+
+export interface TradingWatchCheck {
+  ts?: string;
+  ok?: boolean;
+  legs?: number;
+  usdt?: number;
+  problems?: string[];
+}
+
+/** Binance trading-watcher slice embedded in GET /investments (backend §11). */
+export interface TradingWatchBlock {
+  enabled?: boolean;
+  sms_enabled?: boolean;
+  interval_s?: number;
+  binance_keys_configured?: boolean;
+  last_check?: TradingWatchCheck | null;
+  recent_alerts?: TradingAlertItem[];
+  error?: string;
 }
 
 @Component({
@@ -247,6 +274,74 @@ export interface InvestmentsFeedResponse {
           </table>
         </div>
       </section>
+
+      <!-- BINANCE TRADING WATCHER — below IBKR per Vincent (2026-11-01 19:22) -->
+      <section class="sec-card">
+        <div class="sec-header">
+          <h3>Binance Trading Watcher</h3>
+          <span class="sec-meta">
+            cloud · checks every {{ feed()?.trading_watch?.interval_s || '—' }}s · read-only
+          </span>
+        </div>
+        <div class="bar">
+          @if (feed()?.trading_watch?.enabled) {
+            <span class="chip ok">● Watcher enabled</span>
+          } @else {
+            <span class="chip danger">● Watcher disabled</span>
+          }
+          @if (feed()?.trading_watch?.binance_keys_configured) {
+            <span class="chip ok">Keys configured</span>
+          } @else {
+            <span class="chip danger">Keys missing</span>
+          }
+          @if (feed()?.trading_watch?.sms_enabled) {
+            <span class="chip ok">SMS alerts on</span>
+          } @else {
+            <span class="chip">SMS off</span>
+          }
+          @if (feed()?.trading_watch?.last_check; as lc) {
+            <span class="chip" [class.ok]="lc.ok" [class.danger]="!lc.ok"
+                  [title]="lc.problems?.join(' · ') || ''">
+              Last check: {{ lc.ok ? 'OK' : 'PROBLEM' }} · {{ lc.legs ?? '—' }} legs · {{ ageOf(lc.ts) }}
+            </span>
+          } @else {
+            <span class="chip stale">No check yet (since last deploy)</span>
+          }
+        </div>
+        @if (feed()?.trading_watch?.error) {
+          <div class="empty-state">Watcher status unavailable: {{ feed()?.trading_watch?.error }}</div>
+        }
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Problems</th>
+                <th>Type</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (a of feed()?.trading_watch?.recent_alerts || []; track a.event_id) {
+                <tr>
+                  <td>{{ a.created_at ? (a.created_at | date:'MMM d, HH:mm') : '—' }}</td>
+                  <td>
+                    @for (prob of a.problems; track $index) {
+                      <div>• {{ prob }}</div>
+                    } @empty {
+                      <span class="dim">—</span>
+                    }
+                  </td>
+                  <td><span class="chip" [class.stale]="a.test">{{ a.test ? 'TEST' : 'ALERT' }}</span></td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="3" class="empty-state">No alerts — every watcher check is green ✓</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   `,
   styles: [`
@@ -405,6 +500,16 @@ export class InvestmentsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     if (this.timer) clearInterval(this.timer);
+  }
+
+  /** "3m ago" / "just now" for the last-check chip. */
+  ageOf(ts?: string): string {
+    if (!ts) return '—';
+    const s = Math.max(0, Math.floor((Date.now() - Date.parse(ts)) / 1000));
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return Math.floor(s / 86400) + 'd ago';
   }
 
   load(): void {

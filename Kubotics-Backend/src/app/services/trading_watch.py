@@ -221,15 +221,18 @@ async def run_once(test: bool = False) -> dict:
         except Exception as e:  # noqa: BLE001
             problems.append(f"Binance feed error: {type(e).__name__}: {str(e)[:120]}")
     if not problems and not test:
+        _record(True, summary, [])
         logger.info("[trading-watch] ok — %s", summary)
         return {"ok": True, "summary": summary}
     if test:
         problems.append("channel test requested via POST /trading/watch/test")
     async with AsyncSessionLocal() as db:
         if not test and await _cooldown_active(db):
+            _record(False, summary, problems)
             logger.info("[trading-watch] problems suppressed by cooldown: %s", problems)
             return {"suppressed": True, "problems": problems}
         result = await _persist_and_notify(problems, summary, test=test)
+        _record(False, summary, problems)
     return {"alerted": True, "problems": problems, **result}
 
 
@@ -244,3 +247,53 @@ async def watch_loop(interval_s: int | None = None) -> None:
         except Exception:
             logger.exception("[trading-watch] cycle crashed")
         await asyncio.sleep(interval)
+
+
+# ---------------------------------------------------------------------------
+# Dashboard (Investments tab) integration — Vincent 2026-11-01 19:22
+# ---------------------------------------------------------------------------
+
+_last_check: dict = {}  # process-local heartbeat for the UI (resets on deploy)
+
+
+def _record(ok: bool, summary: dict, problems: list[str]) -> None:
+    """Persist an in-memory hint of the most recent check for the dashboard."""
+    _last_check.clear()
+    _last_check.update(ts=datetime.now(UTC).isoformat(), ok=ok,
+                       legs=summary.get("perps"), usdt=summary.get("usdt"),
+                       problems=list(problems[:5]))
+
+
+def shape_alerts(rows) -> list[dict]:
+    """InboundEvent rows -> dashboard alert items (pure, unit-tested)."""
+    out: list[dict] = []
+    for r in rows[:5]:
+        pl = getattr(r, "payload", None) or {}
+        created = getattr(r, "created_at", None)
+        out.append({
+            "event_id": getattr(r, "event_id", None),
+            "created_at": created.isoformat() if created else None,
+            "problems": list(pl.get("problems") or []),
+            "test": bool(pl.get("test")),
+        })
+    return out
+
+
+async def dashboard_block(db) -> dict:
+    """Trading-watcher slice embedded in GET /api/v1/investments so the
+    Investments tab renders it below the IBKR sections with zero extra
+    auth/service plumbing (same polling cadence)."""
+    q = (select(InboundEvent)
+         .where(InboundEvent.channel == CHANNEL)
+         .order_by(desc(InboundEvent.created_at))
+         .limit(5))
+    rows = (await db.execute(q)).scalars().all()
+    return {
+        "enabled": settings.TRADING_WATCH_ENABLED,
+        "sms_enabled": settings.TRADING_WATCH_SMS_ENABLED,
+        "interval_s": settings.TRADING_WATCH_INTERVAL_S,
+        "binance_keys_configured": bool(settings.BINANCE_API_KEY
+                                        and settings.BINANCE_API_SECRET),
+        "last_check": dict(_last_check) or None,
+        "recent_alerts": shape_alerts(rows),
+    }

@@ -108,3 +108,32 @@ def test_signed_qs_shape_never_contains_secret():
 def test_sms_disabled_by_default_without_boto3():
     assert settings.TRADING_WATCH_SMS_ENABLED is False
     assert tw._send_sms("any text") == "disabled"
+
+
+def test_shape_alerts_orders_and_trims():
+    from datetime import datetime as dt, UTC
+    from types import SimpleNamespace
+    rows = [
+        SimpleNamespace(event_id="trading-alert-1", created_at=dt(2026, 11, 1, 18, 24, tzinfo=UTC),
+                        payload={"problems": ["hedge broken", "second"], "test": False}),
+        SimpleNamespace(event_id="trading-alert-2", created_at=dt(2026, 11, 1, 18, 25, tzinfo=UTC),
+                        payload={"problems": ["channel test"], "test": True}),
+        SimpleNamespace(event_id=None, created_at=None, payload={}),
+    ]
+    out = tw.shape_alerts(rows)
+    assert len(out) == 3
+    assert out[0]["problems"] == ["hedge broken", "second"] and out[0]["test"] is False
+    assert out[1]["test"] is True
+    assert out[2]["event_id"] is None and out[2]["created_at"] is None
+    assert out[0]["created_at"].startswith("2026-11-01T18:24")
+
+
+def test_last_check_heartbeat_recorded():
+    tw._record(True, {"perps": 13, "usdt": 26.97}, [])
+    assert tw._last_check["ok"] is True
+    assert tw._last_check["legs"] == 13 and tw._last_check["usdt"] == 26.97
+    assert tw._last_check["ts"].endswith("+00:00") or "T" in tw._last_check["ts"]
+    tw._record(False, {"perps": 12}, ["NEW perp positions vs expected: ['X']"])
+    assert tw._last_check["ok"] is False
+    assert tw._last_check["problems"] == ["NEW perp positions vs expected: ['X']"]
+    assert tw._last_check["legs"] == 12
