@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = [
         "https://kubotics.ch",
         "https://www.kubotics.ch",
+        "http://kubotics.ch",
+        "http://www.kubotics.ch",
+        "https://qbotics.ch",
+        "https://www.qbotics.ch",
+        "http://qbotics.ch",
+        "http://www.qbotics.ch",
         "http://localhost:4200",
         "http://127.0.0.1:4200",
     ]

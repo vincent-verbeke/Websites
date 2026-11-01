@@ -1,6 +1,6 @@
 import { Component, signal, inject, OnInit, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
-import { RouterOutlet } from '@angular/router';
+import { RouterOutlet, Router } from '@angular/router';
 import { IntroCubeComponent } from './features/intro-cube/intro-cube';
 import { HeaderComponent } from './components/header/header';
 import { FooterComponent } from './components/footer/footer';
@@ -66,6 +66,7 @@ import { SeoService } from './core/services/seo';
 })
 export class AppComponent implements OnInit {
   isIntroFinished = signal(false);
+  router = inject(Router);
   i18n = inject(I18nService);
   seo = inject(SeoService);
   platformId = inject(PLATFORM_ID);
@@ -80,8 +81,12 @@ export class AppComponent implements OnInit {
 
   ngOnInit() {
     if (this.isBrowser) {
+      // Avoid intro cube on sub-landing pages (e.g., /automation/*, /robotics/*)
+      const currentPath = window.location.pathname;
+      const isSubRoute = currentPath !== '/' && currentPath !== '' && !currentPath.startsWith('/#');
       const seen = sessionStorage.getItem('kubotics_intro_seen');
-      if (seen === 'true') {
+
+      if (isSubRoute || seen === 'true') {
         this.isIntroFinished.set(true);
       }
     }
