@@ -23,7 +23,7 @@ test depends on.
 
 | # | Gap | Impact | Owner |
 |---|-----|--------|-------|
-| B1 | **Backend deploy of `a990349` fails at import** (`cloud_dashboard.py:17` imports non-existent `Lead`) → `/api/v1/dashboard/summary`, `/api/v1/tasks`, `/api/v1/events` = 404; prod safely serving `:7` | Cloud dashboard + scheduler API + agent-output endpoint not live; §8 of the website-agent prompt has the traceback + suggested fix | website agent (fix pending) |
+| B1 | ~~Backend deploy of `a990349` fails at import~~ **RESOLVED 13:20 by Jcode hotfix** (Lead import + double `/v1` prefix + prod table creation; 3 defects total — see prompt §8 update). Prod verification pending the deploy of the fix | Was blocking: cloud dashboard + scheduler API + agent-output endpoint | fixed by Jcode, website agent may supersede |
 | B2 | **Attribution accepted but dropped**: frontend captures `utm_source/medium/campaign`, `gclid`, `referrer_url`; `InboundLeadCreate` accepts them; `process_inbound_lead` never persists them and `Contact` has no such columns | §12 P0 "persist lead source/campaign/UTM" + §10.3 attribution **unmet** → click/lead attribution impossible → **do not start paid spend** (§8 Day-1 gate) | website agent (schema + service mapping) |
 | B3 | **No consent / suppression fields** in backend (0 matches for consent/suppression/first_touch on Contact; `InboundEvent` from `a990349` has first/last touch only for events) | §12 P0 privacy/contact-permission open; WhatsApp/Telegram opt-in record incomplete | website agent |
 | B4 | **Campaign metrics ingestion absent** (`campaign_metrics` 0 matches) | Needle daily evaluation (§9) has no metric source yet → first evaluation cannot be evidence-based | backend/needle owner |

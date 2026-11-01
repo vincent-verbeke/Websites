@@ -209,3 +209,36 @@ ImportError: cannot import name 'Lead' from 'app.models.entities'
   `GET /api/v1/dashboard/summary` answering (401 without token is fine —
   anything but 404/502 means the new routers loaded), then check the ECS
   deployment shows `COMPLETED`.
+
+### §8 update — **RESOLVED by Jcode hotfix, 2026-11-01 13:20** (supersede freely)
+
+Three defects were blocking the deploy; all fixed, locally validated with
+TestClient route probes (see evidence below), pushed as one commit:
+
+1. **ImportError `Lead`** (original §8): count now uses
+   `Contact.lifecycle_stage == 'lead'` (how `lead_service` actually stores
+   leads). Keep or replace with a dedicated `Lead` model — but then add a
+   migration.
+2. **Double `/v1` prefix** (new): `APIRouter(prefix="/v1")` inside a router
+   already mounted at `/api/v1` made every documented path live at
+   `/api/v1/v1/...` — the frontend's `/api/v1/tasks` and
+   `/api/v1/dashboard/summary` would 404 even after fix 1. Prefix removed.
+3. **New tables never created in prod** (new): prod runs `DEBUG=false` and
+   the repo ships no alembic versions, so `lifespan`'s `create_all` never ran
+   and `scheduled_tasks/inbound_events/device_snapshot_cache/agent_outputs`
+   would not exist in RDS (500 on first use). `create_all` now runs in every
+   environment, wrapped so a DB hiccup can't block boot. **Replace with
+   alembic migrations** when you set up the migration workflow (alembic is
+   already a dependency).
+
+Validation evidence (local, same venv/DB as the service): `/health` 200,
+`/api/v1/tasks` 401 (routed + token enforced), `/api/v1/v1/tasks` 404
+(old path gone), `/api/v1/events` 401, `/api/v1/dashboard/summary` 200
+(`kpis/is_stale/updated_at`), `/api/v1/agent/output` 405 on GET (POST-only),
+all four new tables present.
+
+**CI note:** `deploy.yml` has no `paths:` filter — every push to `main`
+(including docs-only) rebuilds and redeploys the backend (observed:
+task `:9` triggered by a docs commit at 13:07, crash-cycle, breaker rolled
+back). Please add a `paths: [Kubotics-Backend/**, .github/**]` filter so
+docs and frontend pushes don't churn ECS.
