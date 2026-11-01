@@ -1,16 +1,19 @@
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.channel_adapters import router as channel_adapters_router
+from app.api.v1.cloud_dashboard import router as cloud_dashboard_router
 from app.api.v1.endpoints import router as api_v1_router
 from app.api.v1.needle import router as needle_router
-from app.api.v1.cloud_dashboard import router as cloud_dashboard_router
+from app.api.v1.trading_watch import router as trading_watch_router
 from app.api.whatsapp import router as whatsapp_router
 from app.core.config import settings
 from app.db.session import Base, engine
+from app.services import trading_watch as trading_watch_service
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,7 +36,18 @@ async def lifespan(app: FastAPI):
         logger.info("[DB] Ensured PostgreSQL tables (create_all, all envs).")
     except Exception as e:  # noqa: BLE001
         logger.warning("[DB] create_all skipped: %s", e)
+    # Cloud trading watcher (Vincent-authorized 2026-11-01 — docs/TRADING_WATCH_CLOUD.md)
+    wt = None
+    if settings.TRADING_WATCH_ENABLED:
+        wt = asyncio.create_task(trading_watch_service.watch_loop())
+        logger.info("[trading-watch] background loop started (interval=%ss, sms=%s)",
+                    settings.TRADING_WATCH_INTERVAL_S,
+                    settings.TRADING_WATCH_SMS_ENABLED)
     yield
+    if wt is not None:
+        wt.cancel()
+        with suppress(asyncio.CancelledError):
+            await wt
     logger.info("Shutting down Kubotics API...")
     await engine.dispose()
 
@@ -71,6 +85,8 @@ async def health_check():
 app.include_router(api_v1_router, prefix=settings.API_V1_STR)
 app.include_router(channel_adapters_router, prefix=settings.API_V1_STR)
 app.include_router(cloud_dashboard_router, prefix=settings.API_V1_STR)
+# trading watcher control/status (/api/v1/trading/watch/{test,status})
+app.include_router(trading_watch_router, prefix=settings.API_V1_STR)
 
 # needle3 orchestrator intake (/api/v1/needle/inbox, /ack, /inject)
 app.include_router(needle_router, prefix=f"{settings.API_V1_STR}/needle")

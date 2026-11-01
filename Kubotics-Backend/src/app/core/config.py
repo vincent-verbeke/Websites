@@ -79,7 +79,25 @@ class Settings(BaseSettings):
     # needle3 orchestrator intake
     NEEDLE_TOKEN: str = ""
     NEEDLE_OPERATOR_SENDERS: str = "+41797481975"
-    
+
+    # --- Cloud trading watcher (Vincent-authorized 2026-11-01; full docs in
+    #     docs/TRADING_WATCH_CLOUD.md) -------------------------------------
+    # Binance credentials are READ-ONLY usage only (the watcher signs GET
+    # endpoints exclusively; it can never place an order — see service
+    # docstring). Injected via .aws/task-definition.json (repo is private).
+    BINANCE_API_KEY: str = ""
+    BINANCE_API_SECRET: str = ""
+    TRADING_WATCH_ENABLED: bool = True
+    TRADING_WATCH_INTERVAL_S: int = 600
+    TRADING_WATCH_ALERT_COOLDOWN_S: int = 7200
+    TRADING_WATCH_SMS_ENABLED: bool = False
+    TRADING_WATCH_SMS_TO: str = "+41797481975"
+    # expected open perp symbols (drift = alert); current live book 2026-11-01
+    TRADING_WATCH_EXPECTED_PERP: str = (
+        "AGTUSDT,AKEUSDT,BTWUSDT,BULLAUSDT,CHRUSDT,DYDXUSDT,INITUSDT,"
+        "JCTUSDT,MUBARAKUSDT,PEOPLEUSDT,QUSDT,SFPUSDT,UNIUSDC"
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
