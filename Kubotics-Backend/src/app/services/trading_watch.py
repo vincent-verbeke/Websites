@@ -31,7 +31,7 @@ import hmac
 import logging
 import time
 import urllib.parse
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import desc, select
@@ -218,6 +218,27 @@ async def run_once(test: bool = False) -> dict:
                        "usdt": round(spot.get("USDT", 0.0), 2),
                        "checked_at": datetime.now(UTC).isoformat()}
             problems += evaluate(perps, spot, rates)
+            # per-asset cumulated income (dashboard details, non-critical)
+            try:
+                inc = await fetch_income_rows(PER_ASSET_SINCE_MS)
+                agg = aggregate_income(inc)
+                pos = {q.get("symbol"): float(q["positionAmt"]) for q in perps}
+                for a in agg["assets"]:
+                    a["position"] = pos.pop(a["symbol"], None)
+                for sym, amt in pos.items():   # open but no income rows yet
+                    agg["assets"].append(
+                        {"symbol": sym, "funding_usd": 0.0, "fees_usd": 0.0,
+                         "realized_usd": 0.0, "other_usd": 0.0, "net_usd": 0.0,
+                         "events": 0, "position": amt})
+                agg["assets"].sort(key=lambda a: a["symbol"])
+                _per_asset.clear()
+                _per_asset.update(agg)
+            except Exception as ie:  # noqa: BLE001 — details are best-effort
+                logger.warning("[trading-watch] per-asset income failed: %s", ie)
+                _per_asset.clear()
+                _per_asset.update({"since": PER_ASSET_SINCE.isoformat(),
+                                   "computed_at": datetime.now(UTC).isoformat(),
+                                   "error": type(ie).__name__})
         except Exception as e:  # noqa: BLE001
             problems.append(f"Binance feed error: {type(e).__name__}: {str(e)[:120]}")
     if not problems and not test:
@@ -296,4 +317,78 @@ async def dashboard_block(db) -> dict:
                                         and settings.BINANCE_API_SECRET),
         "last_check": dict(_last_check) or None,
         "recent_alerts": shape_alerts(rows),
+        "per_asset_since": dict(_per_asset) or None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Per-asset cumulated income since 2026-11-01 (dashboard details, Vincent
+# 2026-11-01 19:41) — aggregated once per watcher cycle, read by the block.
+# ---------------------------------------------------------------------------
+
+CET = timezone(timedelta(hours=1))            # UTC+1 (November, after DST end)
+PER_ASSET_SINCE = datetime(2026, 11, 1, 0, 0, 0, tzinfo=CET)
+PER_ASSET_SINCE_MS = int(PER_ASSET_SINCE.timestamp() * 1000)
+_per_asset: dict = {}  # last aggregation (process-local, refreshed each cycle)
+
+
+async def fetch_income_rows(since_ms: int, max_pages: int = 10) -> list[dict]:
+    """Signed GET /papi/v1/um/income, paged backwards until `since_ms`."""
+    rows: list[dict] = []
+    end_ms: int | None = None
+    async with httpx.AsyncClient(timeout=15) as client:
+        for _ in range(max_pages):
+            params: dict = {"startTime": since_ms, "limit": 1000}
+            if end_ms is not None:
+                params["endTime"] = end_ms
+            qs, hdr = _signed_qs(params)
+            r = await client.get(f"{PAPI}/papi/v1/um/income?{qs}", headers=hdr)
+            r.raise_for_status()
+            page = r.json()
+            if not isinstance(page, list) or not page:
+                break
+            rows.extend(page)
+            if len(page) < 1000:
+                break
+            end_ms = min(int(x.get("time") or since_ms) for x in page) - 1
+            if end_ms <= since_ms:
+                break
+    return [x for x in rows if int(x.get("time") or 0) >= since_ms]
+
+
+def aggregate_income(rows: list[dict]) -> dict:
+    """Pure: income rows -> per-asset cumulated buckets (USDT)."""
+    buckets: dict[str, dict] = {}
+    for x in rows:
+        sym = x.get("symbol") or "?"
+        b = buckets.setdefault(sym, {
+            "symbol": sym, "funding_usd": 0.0, "fees_usd": 0.0,
+            "realized_usd": 0.0, "other_usd": 0.0, "events": 0})
+        amt = float(x.get("income") or 0)
+        kind = x.get("incomeType")
+        if kind == "FUNDING_FEE":
+            b["funding_usd"] += amt
+        elif kind == "COMMISSION":
+            b["fees_usd"] += amt          # signed as Binance reports (<=0)
+        elif kind == "REALIZED_PNL":
+            b["realized_usd"] += amt
+        else:
+            b["other_usd"] += amt
+        b["events"] += 1
+    assets = sorted(buckets.values(), key=lambda b: b["symbol"])
+    totals = {"funding_usd": 0.0, "fees_usd": 0.0, "realized_usd": 0.0,
+              "other_usd": 0.0, "net_usd": 0.0, "events": 0}
+    for b in assets:
+        b["net_usd"] = (b["funding_usd"] + b["fees_usd"]
+                        + b["realized_usd"] + b["other_usd"])
+        for k in ("funding_usd", "fees_usd", "realized_usd", "other_usd", "net_usd"):
+            b[k] = round(b[k], 6)
+            totals[k] = round(totals[k] + b[k], 6)
+        totals["events"] += b["events"]
+    return {
+        "since": PER_ASSET_SINCE.isoformat(),
+        "computed_at": datetime.now(UTC).isoformat(),
+        "assets": assets,
+        "totals": totals,
+        "rows": len(rows),
     }

@@ -79,6 +79,33 @@ export interface TradingWatchCheck {
   problems?: string[];
 }
 
+/** Per-asset cumulated Binance income (since 2026-11-01, USDT). */
+export interface PerAssetRow {
+  symbol: string;
+  funding_usd: number;
+  fees_usd: number;
+  realized_usd: number;
+  other_usd: number;
+  net_usd: number;
+  events: number;
+  position?: number | null;
+}
+
+export interface PerAssetSince {
+  since?: string;
+  computed_at?: string;
+  assets?: PerAssetRow[];
+  totals?: {
+    funding_usd?: number;
+    fees_usd?: number;
+    realized_usd?: number;
+    net_usd?: number;
+    events?: number;
+  };
+  rows?: number;
+  error?: string;
+}
+
 /** Binance trading-watcher slice embedded in GET /investments (backend §11). */
 export interface TradingWatchBlock {
   enabled?: boolean;
@@ -87,6 +114,7 @@ export interface TradingWatchBlock {
   binance_keys_configured?: boolean;
   last_check?: TradingWatchCheck | null;
   recent_alerts?: TradingAlertItem[];
+  per_asset_since?: PerAssetSince | null;
   error?: string;
 }
 
@@ -341,6 +369,68 @@ export interface TradingWatchBlock {
             </tbody>
           </table>
         </div>
+
+        <!-- PER-ASSET DETAILS since 01.11.2026 (cumulated, USDT) -->
+        @if (feed()?.trading_watch?.per_asset_since; as pa) {
+          <div class="sec-sub">
+            Per-asset cumulated since {{ pa.since ? (pa.since | date: 'MMM d, y') : 'Nov 1, 2026' }}
+            (USDT, funding + fees + realized)
+            @if (pa.computed_at) {
+              <span class="dim"> · computed {{ ageOf(pa.computed_at) }}</span>
+            }
+          </div>
+          @if (pa.error) {
+            <div class="empty-state">Per-asset detail unavailable: {{ pa.error }}</div>
+          } @else {
+            <div class="tbl-wrap">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th>Asset</th>
+                    <th class="c-num">Funding</th>
+                    <th class="c-num">Fees</th>
+                    <th class="c-num">Realized</th>
+                    <th class="c-num">Net</th>
+                    <th class="c-num">Position</th>
+                    <th class="c-num">Events</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (a of pa.assets || []; track a.symbol) {
+                    <tr>
+                      <td class="font-bold text-white">{{ a.symbol }}</td>
+                      <td class="c-num" [class.pos]="a.funding_usd > 0" [class.neg]="a.funding_usd < 0">{{ a.funding_usd | number:'1.4-4' }}</td>
+                      <td class="c-num" [class.pos]="a.fees_usd > 0" [class.neg]="a.fees_usd < 0">{{ a.fees_usd | number:'1.4-4' }}</td>
+                      <td class="c-num" [class.pos]="a.realized_usd > 0" [class.neg]="a.realized_usd < 0">{{ a.realized_usd | number:'1.4-4' }}</td>
+                      <td class="c-num font-bold" [class.pos]="a.net_usd > 0" [class.neg]="a.net_usd < 0">{{ a.net_usd | number:'1.4-4' }}</td>
+                      <td class="c-num">{{ a.position != null ? (a.position | number:'1.0-4') : '—' }}</td>
+                      <td class="c-num dim">{{ a.events }}</td>
+                    </tr>
+                  } @empty {
+                    <tr>
+                      <td colspan="7" class="empty-state">No income events since Nov 1, 2026.</td>
+                    </tr>
+                  }
+                </tbody>
+                @if (pa.totals?.net_usd != null) {
+                  <tfoot>
+                    <tr>
+                      <td class="font-bold text-white">TOTAL</td>
+                      <td class="c-num font-bold" [class.pos]="(pa.totals?.funding_usd || 0) > 0">{{ pa.totals?.funding_usd | number:'1.4-4' }}</td>
+                      <td class="c-num font-bold" [class.neg]="(pa.totals?.fees_usd || 0) < 0">{{ pa.totals?.fees_usd | number:'1.4-4' }}</td>
+                      <td class="c-num font-bold" [class.pos]="(pa.totals?.realized_usd || 0) > 0">{{ pa.totals?.realized_usd | number:'1.4-4' }}</td>
+                      <td class="c-num font-bold" [class.pos]="(pa.totals?.net_usd || 0) > 0" [class.neg]="(pa.totals?.net_usd || 0) < 0">{{ pa.totals?.net_usd | number:'1.4-4' }}</td>
+                      <td class="c-num dim">—</td>
+                      <td class="c-num dim">{{ pa.totals?.events }}</td>
+                    </tr>
+                  </tfoot>
+                }
+              </table>
+            </div>
+          }
+        } @else {
+          <div class="empty-state">Per-asset detail not computed yet (arrives with the next watcher cycle).</div>
+        }
       </section>
     </div>
   `,
@@ -469,6 +559,9 @@ export interface TradingWatchBlock {
       color: #cbd5e1;
     }
     .c-num { text-align: right; white-space: nowrap; }
+    .sec-sub { margin-top: 1rem; font-size: 0.85rem; color: #94a3b8; }
+    .pos { color: #10b981; }
+    .neg { color: #f87171; }
     .dim { color: #64748b; }
     .text-white { color: #f8fafc; }
     .font-bold { font-weight: 600; }

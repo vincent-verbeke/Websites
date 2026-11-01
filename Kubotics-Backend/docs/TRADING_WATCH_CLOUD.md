@@ -174,3 +174,22 @@ investments — you can implement the changes in backend and frontend."*
 **Verified:** backend `uv run pytest tests/` → 22 passed; `npm run build`
 clean; post-deploy `GET /api/v1/investments` contains `trading_watch` with a
 live `last_check`; dashboard tab visually checked in a real browser.
+
+### §11a — Per-asset details since 2026-11-01 + gate string fix (19:41–19:45)
+
+- **Per-asset cumulated income:** each watcher cycle additionally aggregates
+  signed `GET /papi/v1/um/income` (paged, `startTime = 2026-11-01 00:00 CET`)
+  into `block.per_asset_since = {since, computed_at, rows, assets[], totals}` —
+  per symbol: `funding_usd, fees_usd (signed), realized_usd, other_usd,
+  net_usd, events, position (open perp amt)`. Failures set `error` in the
+  block and never alert (details are best-effort). Pure core:
+  `aggregate_income()` (unit-tested).
+- **Frontend:** the watcher card gained a "Per-asset cumulated since Nov 1,
+  2026 (USDT)" table with green/red signs and a TOTAL row; rides the same
+  15 s poll.
+- **Gate `[object Object]` fix (pusher side, contract §10 clarification):**
+  `ibkr_pusher.state_payload()` now emits `gate` as the **string verdict**
+  (`BUY` iff trend ∈ {increasing, sideways}, else `WAIT` — the daily_invest
+  rule) and keeps the raw object as `gate_detail`. The dashboard template
+  (`sl.gate === 'BUY'` chips) therefore renders correctly; deployed by the
+  next 10 s pusher cycle. Pusher tests: 16/16.

@@ -137,3 +137,29 @@ def test_last_check_heartbeat_recorded():
     assert tw._last_check["ok"] is False
     assert tw._last_check["problems"] == ["NEW perp positions vs expected: ['X']"]
     assert tw._last_check["legs"] == 12
+
+
+def test_aggregate_income_per_asset_since_nov1():
+    rows = [
+        {"symbol": "CHRUSDT", "incomeType": "FUNDING_FEE", "income": "1.25"},
+        {"symbol": "CHRUSDT", "incomeType": "FUNDING_FEE", "income": "0.75"},
+        {"symbol": "CHRUSDT", "incomeType": "COMMISSION", "income": "-0.10"},
+        {"symbol": "QUSDT", "incomeType": "REALIZED_PNL", "income": "0.50"},
+        {"symbol": "QUSDT", "incomeType": "COMMISSION", "income": "-0.05"},
+        {"symbol": "AKEUSDT", "incomeType": "TRANSFER", "income": "2.0"},   # other bucket
+        {"symbol": None, "incomeType": "FUNDING_FEE", "income": "0.01"},    # -> "?"
+    ]
+    out = tw.aggregate_income(rows)
+    assert out["since"].startswith("2026-11-01")
+    by = {a["symbol"]: a for a in out["assets"]}
+    assert by["CHRUSDT"]["funding_usd"] == 2.0
+    assert by["CHRUSDT"]["fees_usd"] == -0.10
+    assert by["CHRUSDT"]["net_usd"] == 1.90
+    assert by["CHRUSDT"]["events"] == 3
+    assert by["QUSDT"]["realized_usd"] == 0.50 and by["QUSDT"]["net_usd"] == 0.45
+    assert by["AKEUSDT"]["other_usd"] == 2.0
+    assert by["?"]["funding_usd"] == 0.01
+    assert out["totals"]["net_usd"] == round(1.90 + 0.45 + 2.0 + 0.01, 6)
+    assert out["totals"]["events"] == 7
+    assert out["rows"] == 7
+    assert out["assets"] == sorted(out["assets"], key=lambda a: a["symbol"])
