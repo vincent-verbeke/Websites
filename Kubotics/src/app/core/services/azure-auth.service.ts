@@ -95,10 +95,33 @@ export class AzureAuthService {
     }
   }
 
+  /**
+   * Android/iOS browsers turn popup windows into TABS, which breaks MSAL's
+   * popup completion (opener/tab correlation): the user lands back on
+   * /dashboard in a NEW tab that never receives the account — exactly the
+   * "new tab, same content, not logged in" symptom Vincent saw on his
+   * Android Chrome tablet (2026-11-01). Mobile browsers therefore use the
+   * full-page redirect flow (single document — the proven
+   * handleRedirectPromise path in initMsal picks the account up from
+   * localStorage on return). Desktop keeps loginPopup unchanged.
+   */
+  private static isMobileBrowser(): boolean {
+    return typeof navigator !== 'undefined'
+      && /android|ipad|iphone|ipod|mobile/i.test(navigator.userAgent || '');
+  }
+
   async login(): Promise<void> {
     if (!this.msalInstance) return;
     this.isLoading.set(true);
     this.clearStaleInteractionState();
+    if (AzureAuthService.isMobileBrowser()) {
+      // navigates away — initMsal() handles the redirect return
+      await this.msalInstance.loginRedirect({
+        scopes: ['User.Read', 'openid', 'profile', 'email'],
+        redirectUri: window.location.origin + '/dashboard'
+      });
+      return;
+    }
     try {
       const response = await this.msalInstance.loginPopup({
         scopes: ['User.Read', 'openid', 'profile', 'email'],
@@ -124,6 +147,10 @@ export class AzureAuthService {
     const account = this.currentAccount();
     this.isAuthenticated.set(false);
     this.currentAccount.set(null);
+    if (AzureAuthService.isMobileBrowser()) {
+      await this.msalInstance.logoutRedirect({ account: account || undefined });
+      return;
+    }
     await this.msalInstance.logoutPopup({ account: account || undefined });
   }
 

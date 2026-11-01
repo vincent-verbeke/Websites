@@ -193,3 +193,30 @@ live `last_check`; dashboard tab visually checked in a real browser.
   rule) and keeps the raw object as `gate_detail`. The dashboard template
   (`sl.gate === 'BUY'` chips) therefore renders correctly; deployed by the
   next 10 s pusher cycle. Pusher tests: 16/16.
+
+## 12. Tablet (Android Chrome) dashboard login — root cause & fix (19:53→21:04)
+
+**Symptom (Vincent):** tapping Login on the Android-Chrome tablet "opens a
+new tab with the same content, not logged in".
+
+**Root cause:** `AzureAuthService.login()` used MSAL **`loginPopup`**.
+Android Chrome has no popup windows — `window.open` becomes a **new tab**,
+and MSAL's popup-completion handshake (opener ↔ popup correlation, popup
+close signalling) does not resolve reliably there: the new tab completes the
+Entra redirect but the auth result never lands in the initiating context, so
+`getAllAccounts()` stays empty → dashboard renders logged-out. Desktop
+Chrome (popups = real windows) works, which is why only the tablet showed it.
+
+**Fix** (`Kubotics/src/app/core/services/azure-auth.service.ts`):
+- `isMobileBrowser()` (Android/iPad/iPhone UA) → **`loginRedirect` /
+  `logoutRedirect`** — full-page flow, single document, no popup handshake.
+  The return leg (`/dashboard?code=…&state=…`) is handled by the **existing,
+  already-proven** `handleRedirectPromise()` branch in `initMsal()`, with the
+  account persisted in `localStorage` (cross-load survives).
+- Desktop keeps `loginPopup` unchanged (verified working).
+
+**Verification:** `npm run build` clean; behavior verified in Chrome by
+emulating the Android UA and asserting the login click navigates the **same
+tab** to `login.microsoftonline.com` (no new tab). Final proof = Vincent's
+tablet: tap Login → single-tab Entra → returns to /dashboard logged in
+(report if anything still misbehaves; next lever = device-code flow).
