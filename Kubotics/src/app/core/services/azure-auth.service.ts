@@ -34,13 +34,29 @@ export class AzureAuthService {
     }
   }
 
+  private clearStaleInteractionState(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      // Clear any stuck MSAL interaction flags left over from previous attempts
+      for (const storage of [localStorage, sessionStorage]) {
+        for (let i = 0; i < storage.length; i++) {
+          const key = storage.key(i);
+          if (key && (key.includes('interaction.status') || key.includes('msal.interaction'))) {
+            storage.removeItem(key);
+          }
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
   private async initMsal(): Promise<void> {
     try {
+      this.clearStaleInteractionState();
       this.msalInstance = new PublicClientApplication(MSAL_CONFIG);
       await this.msalInstance.initialize();
 
-      // Only attempt to process redirect promise if the URL hash/query contains MSAL response parameters (code, error, state)
-      // and NOT an internal popup response
       const currentUrl = window.location.href;
       const isRedirectResponse = (currentUrl.includes('code=') || currentUrl.includes('error=')) && currentUrl.includes('state=');
       
@@ -51,11 +67,17 @@ export class AzureAuthService {
             this.msalInstance.setActiveAccount(response.account);
             this.currentAccount.set(response.account);
             this.isAuthenticated.set(true);
-            // Clean up hash/query parameters from URL bar
             window.history.replaceState({}, document.title, window.location.pathname);
           }
         } catch (redirectErr) {
           console.warn('[AzureAuth] Redirect promise handled with warning:', redirectErr);
+        }
+      } else {
+        // Safe check for promise to ensure internal queue clears
+        try {
+          await this.msalInstance.handleRedirectPromise();
+        } catch {
+          // ignore when no redirect was pending
         }
       }
 
@@ -76,6 +98,7 @@ export class AzureAuthService {
   async login(): Promise<void> {
     if (!this.msalInstance) return;
     this.isLoading.set(true);
+    this.clearStaleInteractionState();
     try {
       const response = await this.msalInstance.loginPopup({
         scopes: ['User.Read', 'openid', 'profile', 'email'],
@@ -88,12 +111,8 @@ export class AzureAuthService {
       }
     } catch (err: any) {
       console.warn('[AzureAuth] Popup login error:', err);
-      // Only fallback to redirect if popup was explicitly blocked by browser
-      if (err.errorCode === 'popup_window_error' || err.message?.includes('popup')) {
-        await this.msalInstance.loginRedirect({
-          scopes: ['User.Read', 'openid', 'profile', 'email'],
-          redirectUri: window.location.origin + '/dashboard'
-        });
+      if (err.errorCode === 'interaction_in_progress') {
+        this.clearStaleInteractionState();
       }
     } finally {
       this.isLoading.set(false);
