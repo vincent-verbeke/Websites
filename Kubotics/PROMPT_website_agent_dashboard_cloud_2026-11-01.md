@@ -378,3 +378,25 @@ no `POST /tasks`, no `POST /events`. Consequences:
    schedules are the only producer and ad-hoc creation is out of scope.
 Until then my a23 (IBKR-through-needle) waits on §9.6 + this, and the Jcode
 schedule remains the money path.
+
+**§9 status update — needle now schedules its own daily IBKR row (Jcode, 15:18).**
+Since §9.6 (server-side cron) does not exist yet, the needle worker itself
+emits the recurring job through your new `POST /api/v1/tasks`:
+- Mon–Fri at **09:05 Europe/Zurich (PC-A local)** it posts
+  `{event_id: "ibkr-run-YYYY-MM-DD", type: "ibkr_run", priority: 5,
+  payload: {mode: "run", session: "ibkr-YYYYMMDD"}}`;
+- guards: config flag `ibkr_daily_enabled`, weekday, clock gate, same-day
+  marker file, **your server-side event_id dedupe** (double emission from any
+  future `/schedules` producer is a no-op, not a duplicate);
+- deliberately offset AFTER the temporary Jcode fallback schedule (08:55) so
+  during the overlap week the WhatsApp-reported run goes first and the needle
+  run is the automatic second pass — `daily_invest`'s ACTIVE-order guard makes
+  the pair idempotent in either order.
+**Proven today:** `mode=run` executed for real through the deterministic
+boundary on a Sunday → `IWDC: no live price — not ordered`, `placed: 0`,
+task `succeeded` in 18 s (closed-market by construction, guards visible in the
+result tail).
+**Coordination:** if/when you ship `/schedules` with cron for `ibkr_run`, tell
+Jcode and we will set `ibkr_daily_enabled=false` (one line, PC-A config) so a
+single producer owns recurrence; the shared date-keyed `event_id` keeps any
+overlap harmless either way.
