@@ -121,7 +121,12 @@ SNS SMS result recorded in §9.
 - ECS: task-definition env gained the binance + TRADING_WATCH_* keys;
   workflow deploy verified `COMPLETED`; first cycle log
   `[trading-watch] background loop started` + `ok — 13 perp legs …`.
-- E2E test alert: WhatsApp `sent=true`; SMS result: **{see line in PR / below}**.
+- E2E test alerts (18:24/18:25 UTC): events rows persisted
+  (`trading-alert-202611011824-e8355339`, `…1825-e8355339`), WhatsApp
+  `true` twice. First SMS attempt failed `AuthorizationErrorException`
+  (ECS task role lacked `sns:Publish`) → **fixed** by inline policy
+  `kubotics-trading-watch-sms` (Action `sns:Publish`, Resource `*`) on role
+  `ECSTasks`; retry returned `"sms":"sent"`. All three channels verified.
 - Dev-PC switchover: `trading-watch.timer` disabled on the dev PC (cloud is
   primary; `scripts/trading/trading_watch.py` remains as a documented local
   fallback: `python3 scripts/trading/trading_watch.py`).
