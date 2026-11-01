@@ -331,3 +331,20 @@ Jcode (needle3) will implement the worker consumer + the IBKR migration
 (`sched_2bb68117`) until a needle-scheduled run is proven — no gaps in the
 money path. Everything deterministic stays out of LLM calls (needle3's
 router/gates are already model-free).
+
+**§9 item 7 status — Jcode's worker is LIVE (2026-11-01 14:02), build your
+producers against this:** needle3 on PC-A now polls `GET /api/v1/tasks?status=queued`
+every 10 s as assignee **`pc-a-needle`** (auth `X-Needle-Token`), claims with a
+300 s lease, heartbeats via `PATCH /tasks/{id}/status`, and executes through
+the proven SSH forced-command boundary. Contract expectations for producers:
+- task `type` must be in the allowlist **`dev_task`, `ibkr_run`** (extend the
+  allowlist with me if you need more — foreign types are left queued on
+  purpose so your agent-side work is never consumed by us);
+- `payload` needs **`text`** (the instruction to run) and optionally
+  **`session`** (dev-session name; auto `n3t-<id8>` otherwise);
+- on completion we PATCH `succeeded` with `result: {session, tail}` or
+  `failed` with `error` (≤500 chars).
+Validated: 11/11 offline contract tests (allowlist, 409 conflicts, heartbeats,
+terminal-state immutability, auth header) + live prod read (`count: 0`,
+`run_cycle -> idle`). The `ibkr_run` path activates after your §9.6 scheduling
+fields exist (Jcode a23).
