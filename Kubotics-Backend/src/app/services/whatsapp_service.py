@@ -59,11 +59,14 @@ class WhatsAppService:
             logger.error(f"[WhatsApp] Failed to download media bytes: {media_res.status_code}")
             return None
 
-    async def send_text_message(self, recipient_phone: str, text: str) -> bool:
-        """Send a standard text message back to a WhatsApp user."""
+    async def send_text_message(self, recipient_phone: str, text: str) -> tuple[bool, str | None, dict | None]:
+        """Send a standard text message back to a WhatsApp user.
+        
+        Returns: (success: bool, wamid: str | None, raw_response: dict | None)
+        """
         if not self.is_configured:
             logger.warning("[WhatsApp] Service not fully configured; message dispatch skipped.")
-            return False
+            return False, None, {"error": "service_not_configured"}
 
         headers = {
             "Authorization": f"Bearer {self.access_token}",
@@ -83,11 +86,14 @@ class WhatsAppService:
                 headers=headers,
                 json=payload,
             )
+            data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
             if resp.status_code in (200, 201):
                 logger.info(f"[WhatsApp] Text sent to {recipient_phone}")
-                return True
+                messages = data.get("messages", [])
+                wamid = messages[0].get("id") if messages else None
+                return True, wamid, data
             logger.error(f"[WhatsApp] Send text error ({resp.status_code}): {resp.text}")
-            return False
+            return False, None, data
 
     async def send_audio_message(self, recipient_phone: str, audio_bytes: bytes, filename: str = "voice_note.mp3") -> bool:
         """Upload audio and send as a WhatsApp voice/audio message."""

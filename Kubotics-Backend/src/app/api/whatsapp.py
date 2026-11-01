@@ -39,7 +39,100 @@ from app.services.whatsapp_service import whatsapp_service
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["WhatsApp Webhook"])
 
-VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "kubotics_wa_verify_token_2026")
+from pydantic import BaseModel, Field
+from datetime import UTC, datetime
+
+# Global tracker for send health
+_last_send_status: dict[str, Any] = {
+    "last_send_at": None,
+    "last_recipient": None,
+    "last_success": None,
+    "last_error": None,
+}
+
+
+def _require_send_token(
+    authorization: str | None = Header(None),
+    x_needle_token: str | None = Header(None, alias="X-Needle-Token"),
+) -> None:
+    """Enforce authorization for WhatsApp outbound send endpoint."""
+    expected = settings.NEEDLE_TOKEN or settings.API_SECRET_KEY
+    if not expected:
+        return
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split("Bearer ", 1)[1].strip()
+    elif x_needle_token:
+        token = x_needle_token.strip()
+    
+    if token != expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Valid Bearer token or X-Needle-Token required"
+        )
+
+
+class SendMessagePayload(BaseModel):
+    session: str | None = None
+    to: str | None = None
+    text: str = Field(min_length=1)
+
+
+@router.post("/send")
+@router.post("/api/whatsapp/send")
+async def send_whatsapp_message(
+    payload: SendMessagePayload,
+    _auth: None = Depends(_require_send_token),
+):
+    """
+    Outbound send endpoint replacing PC-A wa_core.py (port 8444).
+    Accepts:
+      - {"session": "<label>", "to": "<e.164>", "text": "..."}
+      - or {"session": "...", "text": "..."} defaulting to configured operator phone.
+    Returns: {"ok": true, "wamid": "..."}
+    Fails with 502 on Meta Graph failure so callers can retry.
+    """
+    recipient = payload.to
+    if not recipient:
+        operator_senders = _needle_operator_senders()
+        if operator_senders:
+            recipient = next(iter(operator_senders))
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Recipient phone number ('to') is required and no default operator sender is configured."
+            )
+
+    success, wamid, raw = await whatsapp_service.send_text_message(recipient, payload.text)
+
+    now = datetime.now(UTC).isoformat()
+    _last_send_status["last_send_at"] = now
+    _last_send_status["last_recipient"] = recipient[-4:].rjust(len(recipient), "*")  # masked
+    _last_send_status["last_success"] = success
+
+    if not success:
+        _last_send_status["last_error"] = str(raw)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"error": "Meta Graph API message dispatch failed", "meta_response": raw}
+        )
+
+    _last_send_status["last_error"] = None
+    return {"ok": True, "wamid": wamid, "to": recipient, "sent_at": now}
+
+
+@router.get("/send/health")
+@router.get("/api/whatsapp/send/health")
+async def send_health():
+    """Returns send client configuration status with NO secrets exposed."""
+    return {
+        "status": "healthy" if whatsapp_service.is_configured else "unconfigured",
+        "configured": whatsapp_service.is_configured,
+        "phone_number_id_set": bool(whatsapp_service.phone_number_id),
+        "access_token_set": bool(whatsapp_service.access_token),
+        "api_version": whatsapp_service.api_version,
+        "last_send": _last_send_status,
+    }
 
 
 # -----------------------------------------------------------------------------
