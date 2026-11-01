@@ -38,6 +38,29 @@ interface DeviceState {
   payload?: any;
 }
 
+interface LeadItem {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  job_title: string | null;
+  email: string | null;
+  phone: string | null;
+  lead_score: number;
+  lifecycle_stage: string;
+  ai_summary: string | null;
+  created_at: string | null;
+}
+
+interface ConversationItem {
+  id: string;
+  channel: string;
+  status: string;
+  sender: string;
+  message_count: number;
+  last_message: string | null;
+  started_at: string | null;
+}
+
 type TabId =
   | 'overview'
   | 'twin'
@@ -146,18 +169,26 @@ interface TabItem {
           <!-- 1. OVERVIEW / CLOUD ORCHESTRATION -->
           @if (activeTab() === 'overview') {
             <div class="overview-view">
-              <!-- KPI SECTION -->
+              <!-- KPI SECTION (CLICKABLE CARDS) -->
               <section class="kpi-grid">
-                <div class="kpi-card">
-                  <div class="kpi-label">Total GTM Leads</div>
+                <div class="kpi-card interactive" [class.selected]="selectedView() === 'leads'" (click)="toggleView('leads')">
+                  <div class="kpi-header-row">
+                    <div class="kpi-label">Total GTM Leads</div>
+                    <span class="click-hint">{{ selectedView() === 'leads' ? 'Hide ▲' : 'View & Clean ▼' }}</span>
+                  </div>
                   <div class="kpi-value">{{ kpis()?.total_leads ?? '—' }}</div>
-                  <div class="kpi-sub">HubSpot & Outreach Sync</div>
+                  <div class="kpi-sub">HubSpot & Outreach Sync (Click to inspect)</div>
                 </div>
-                <div class="kpi-card">
-                  <div class="kpi-label">WhatsApp Conversations</div>
+
+                <div class="kpi-card interactive" [class.selected]="selectedView() === 'conversations'" (click)="toggleView('conversations')">
+                  <div class="kpi-header-row">
+                    <div class="kpi-label">Conversations</div>
+                    <span class="click-hint">{{ selectedView() === 'conversations' ? 'Hide ▲' : 'View & Clean ▼' }}</span>
+                  </div>
                   <div class="kpi-value">{{ kpis()?.conversations ?? '—' }}</div>
-                  <div class="kpi-sub">Automated Sales & Inquiries</div>
+                  <div class="kpi-sub">WhatsApp & Multi-channel (Click to inspect)</div>
                 </div>
+
                 <div class="kpi-card">
                   <div class="kpi-label">Tasks Queued</div>
                   <div class="kpi-value">{{ kpis()?.tasks_queued ?? 0 }}</div>
@@ -176,6 +207,113 @@ interface TabItem {
                   <div class="kpi-sub">Requires triage</div>
                 </div>
               </section>
+
+              <!-- DRILL-DOWN PANEL: GTM LEADS -->
+              @if (selectedView() === 'leads') {
+                <section class="drilldown-section">
+                  <div class="section-header">
+                    <div>
+                      <h3>Inbound GTM Leads</h3>
+                      <p class="section-desc">Inspect registered leads, test submissions, and cleanup records.</p>
+                    </div>
+                    <button class="btn-refresh" (click)="fetchLeads()">Refresh Leads</button>
+                  </div>
+                  <div class="task-table-wrapper">
+                    <table class="task-table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Contact (Email / Phone)</th>
+                          <th>Title</th>
+                          <th>Score</th>
+                          <th>AI Summary / Note</th>
+                          <th>Created</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (lead of leads(); track lead.id) {
+                          <tr>
+                            <td class="font-medium text-white">
+                              {{ (lead.first_name || lead.last_name) ? (lead.first_name + ' ' + (lead.last_name || '')) : 'Anonymous Lead' }}
+                            </td>
+                            <td>
+                              <div>{{ lead.email || 'No email' }}</div>
+                              <small class="text-muted">{{ lead.phone || 'No phone' }}</small>
+                            </td>
+                            <td>{{ lead.job_title || '—' }}</td>
+                            <td>
+                              <span class="badge score-badge">{{ lead.lead_score }}</span>
+                            </td>
+                            <td class="cell-payload">
+                              <span [title]="lead.ai_summary || ''">{{ lead.ai_summary || 'No summary' }}</span>
+                            </td>
+                            <td>{{ lead.created_at ? (lead.created_at | date:'short') : '—' }}</td>
+                            <td>
+                              <button class="btn-danger-sm" (click)="deleteLead(lead.id)">Delete</button>
+                            </td>
+                          </tr>
+                        } @empty {
+                          <tr>
+                            <td colspan="7" class="empty-state">No leads found in database. Inbound form submissions and outreach replies will appear here.</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              }
+
+              <!-- DRILL-DOWN PANEL: CONVERSATIONS -->
+              @if (selectedView() === 'conversations') {
+                <section class="drilldown-section">
+                  <div class="section-header">
+                    <div>
+                      <h3>Inbound WhatsApp & Multi-Channel Conversations</h3>
+                      <p class="section-desc">Active conversations, messages history, and test thread cleanup.</p>
+                    </div>
+                    <button class="btn-refresh" (click)="fetchConversations()">Refresh Conversations</button>
+                  </div>
+                  <div class="task-table-wrapper">
+                    <table class="task-table">
+                      <thead>
+                        <tr>
+                          <th>Sender / Phone</th>
+                          <th>Channel</th>
+                          <th>Status</th>
+                          <th>Messages</th>
+                          <th>Last Message Snippet</th>
+                          <th>Started</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (conv of conversations(); track conv.id) {
+                          <tr>
+                            <td class="font-medium text-white">{{ conv.sender }}</td>
+                            <td><span class="pill-type">{{ conv.channel }}</span></td>
+                            <td>
+                              <span class="pill-status status-{{ conv.status }}">{{ conv.status }}</span>
+                            </td>
+                            <td>{{ conv.message_count }}</td>
+                            <td class="cell-payload">
+                              <span [title]="conv.last_message || ''">{{ conv.last_message || '—' }}</span>
+                            </td>
+                            <td>{{ conv.started_at ? (conv.started_at | date:'short') : '—' }}</td>
+                            <td>
+                              <button class="btn-danger-sm" (click)="deleteConversation(conv.id)">Delete</button>
+                            </td>
+                          </tr>
+                        } @empty {
+                          <tr>
+                            <td colspan="7" class="empty-state">No conversations found. Inbound messages from WhatsApp or web chat will appear here.</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              }
 
               <!-- EDGE DEVICE TELEMETRY STRIP (Fail-closed) -->
               <section class="device-strip">
@@ -404,6 +542,11 @@ interface TabItem {
       color: #38bdf8;
       border: 1px solid rgba(56, 189, 248, 0.25);
     }
+    .score-badge {
+      background: rgba(16, 185, 129, 0.12);
+      color: #10b981;
+      border-color: rgba(16, 185, 129, 0.25);
+    }
 
     .dot {
       width: 6px;
@@ -556,13 +699,36 @@ interface TabItem {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 1rem;
-      margin-bottom: 2rem;
+      margin-bottom: 1.5rem;
     }
     .kpi-card {
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid rgba(255, 255, 255, 0.06);
       padding: 1.25rem;
       border-radius: 10px;
+      transition: all 0.2s ease;
+    }
+    .kpi-card.interactive {
+      cursor: pointer;
+    }
+    .kpi-card.interactive:hover {
+      background: rgba(56, 189, 248, 0.05);
+      border-color: rgba(56, 189, 248, 0.3);
+    }
+    .kpi-card.selected {
+      background: rgba(56, 189, 248, 0.08);
+      border-color: #38bdf8;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.15);
+    }
+    .kpi-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .click-hint {
+      font-size: 0.7rem;
+      color: #38bdf8;
+      font-weight: 500;
     }
     .kpi-label {
       font-size: 0.75rem;
@@ -582,6 +748,25 @@ interface TabItem {
     .kpi-sub {
       font-size: 0.75rem;
       color: #64748b;
+    }
+
+    /* DRILLDOWN SECTION */
+    .drilldown-section {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 2rem;
+      animation: fadeIn 0.2s ease-in-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .section-desc {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin: 0.25rem 0 0;
     }
 
     /* DEVICE STRIP */
@@ -700,11 +885,16 @@ interface TabItem {
       padding: 1px 4px;
       border-radius: 3px;
     }
+    .cell-payload {
+      max-width: 250px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .cell-payload code {
       font-family: monospace;
       font-size: 0.75rem;
       color: #94a3b8;
-      max-width: 250px;
       display: inline-block;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -722,7 +912,7 @@ interface TabItem {
       padding: 2px 6px;
       border-radius: 4px;
     }
-    .status-queued { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+    .status-active, .status-queued { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
     .status-running { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
     .status-succeeded { background: rgba(16, 185, 129, 0.15); color: #10b981; }
     .status-failed { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
@@ -737,7 +927,21 @@ interface TabItem {
       cursor: pointer;
     }
     .btn-refresh:hover { background: rgba(255, 255, 255, 0.12); }
+    .btn-danger-sm {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #ef4444;
+      padding: 0.25rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-danger-sm:hover {
+      background: rgba(239, 68, 68, 0.25);
+    }
     .empty-state { padding: 2rem; text-align: center; color: #64748b; font-size: 0.9rem; }
+    .text-muted { color: #64748b; font-size: 0.75rem; }
   `]
 })
 export class DashboardComponent implements OnInit, OnDestroy {
@@ -748,6 +952,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private pollInterval: any = null;
 
   activeTab = signal<TabId>('overview');
+  selectedView = signal<'none' | 'leads' | 'conversations'>('none');
 
   tabs: TabItem[] = [
     { id: 'overview', label: 'Cloud Orchestrator', icon: 'hub', badge: 'Cloud' },
@@ -771,6 +976,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   kpis = signal<DashboardKPIs | null>(null);
   summaryStale = signal<boolean>(false);
   summaryTime = signal<string>('');
+
+  leads = signal<LeadItem[]>([]);
+  conversations = signal<ConversationItem[]>([]);
 
   h2State = signal<DeviceState | null>(null);
   cncState = signal<DeviceState | null>(null);
@@ -797,12 +1005,27 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 
+  toggleView(view: 'leads' | 'conversations') {
+    if (this.selectedView() === view) {
+      this.selectedView.set('none');
+    } else {
+      this.selectedView.set(view);
+      if (view === 'leads') {
+        this.fetchLeads();
+      } else {
+        this.fetchConversations();
+      }
+    }
+  }
+
   loadAllData() {
     this.fetchSummary();
     this.fetchDeviceTelemetry('robot_h2_state', this.h2State);
     this.fetchDeviceTelemetry('cnc_cell_1', this.cncState);
     if (this.auth.isAuthenticated()) {
       this.fetchTasks();
+      if (this.selectedView() === 'leads') this.fetchLeads();
+      if (this.selectedView() === 'conversations') this.fetchConversations();
     }
   }
 
@@ -814,6 +1037,42 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.summaryTime.set(new Date(res.updated_at).toLocaleTimeString());
       },
       error: () => this.summaryStale.set(true)
+    });
+  }
+
+  fetchLeads() {
+    this.http.get<{ leads: LeadItem[] }>(`${this.API_BASE}/dashboard/leads`).subscribe({
+      next: (res) => this.leads.set(res.leads || []),
+      error: () => this.leads.set([])
+    });
+  }
+
+  deleteLead(leadId: string) {
+    if (!confirm('Are you sure you want to delete this lead?')) return;
+    this.http.delete(`${this.API_BASE}/dashboard/leads/${leadId}`).subscribe({
+      next: () => {
+        this.fetchLeads();
+        this.fetchSummary();
+      },
+      error: (err) => alert('Failed to delete lead: ' + (err.error?.detail || err.message))
+    });
+  }
+
+  fetchConversations() {
+    this.http.get<{ conversations: ConversationItem[] }>(`${this.API_BASE}/dashboard/conversations`).subscribe({
+      next: (res) => this.conversations.set(res.conversations || []),
+      error: () => this.conversations.set([])
+    });
+  }
+
+  deleteConversation(conversationId: string) {
+    if (!confirm('Are you sure you want to delete this conversation?')) return;
+    this.http.delete(`${this.API_BASE}/dashboard/conversations/${conversationId}`).subscribe({
+      next: () => {
+        this.fetchConversations();
+        this.fetchSummary();
+      },
+      error: (err) => alert('Failed to delete conversation: ' + (err.error?.detail || err.message))
     });
   }
 
