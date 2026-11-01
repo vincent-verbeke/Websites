@@ -6,5 +6,12 @@ models so ``Base.metadata.create_all`` (local DEBUG lifespan in app.main)
 always creates ``needle_inbox`` too.
 """
 from app.models.needle import NeedleInbox
+from app.models.tasks import InboundEvent, ScheduledTask, DeviceSnapshotCache, AgentOutput
 
-__all__ = ["NeedleInbox"]
+__all__ = [
+    "NeedleInbox",
+    "InboundEvent",
+    "ScheduledTask",
+    "DeviceSnapshotCache",
+    "AgentOutput",
+]

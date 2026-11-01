@@ -22,6 +22,10 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/automation-discovery/automation-discovery').then(m => m.AutomationDiscoveryPageComponent)
   },
   {
+    path: 'dashboard',
+    loadComponent: () => import('./pages/dashboard/dashboard').then(m => m.DashboardComponent)
+  },
+  {
     path: '**',
     redirectTo: ''
   }
