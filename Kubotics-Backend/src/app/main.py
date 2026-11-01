@@ -19,11 +19,20 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing Kubotics Autonomous Platform API...")
-    # In local development mode, automatically create tables if not existing
-    if settings.DEBUG:
+    # Create missing tables idempotently in EVERY environment: prod runs
+    # DEBUG=false and the repo ships no alembic migrations, so new models
+    # (ScheduledTask/InboundEvent/DeviceSnapshotCache/AgentOutput) would never
+    # exist in the RDS schema (500s on first use). create_all only creates
+    # absent tables — it never alters or drops existing ones. Failures are
+    # logged, not fatal (preserves the old DEBUG-gated resilience: the app
+    # still boots and /health answers if the DB is briefly unreachable).
+    # (Jcode hotfix 2026-11-01, prompt §8 — replace with alembic migrations.)
+    try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        logger.info("[DB] Verified PostgreSQL tables.")
+        logger.info("[DB] Ensured PostgreSQL tables (create_all, all envs).")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[DB] create_all skipped: %s", e)
     yield
     logger.info("Shutting down Kubotics API...")
     await engine.dispose()

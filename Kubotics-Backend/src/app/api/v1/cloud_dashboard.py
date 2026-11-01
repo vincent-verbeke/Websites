@@ -14,9 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.tasks import InboundEvent, ScheduledTask, DeviceSnapshotCache, AgentOutput
-from app.models.entities import Lead, Conversation, Organization
+from app.models.entities import Contact, Conversation, Organization
 
-router = APIRouter(prefix="/v1", tags=["Cloud Dashboard & Scheduler"])
+# NOTE: no router-level prefix — main.py already mounts this router under
+# settings.API_V1_STR; a "/v1" prefix here produced /api/v1/v1/... and the
+# frontend's documented paths (/api/v1/tasks, /api/v1/dashboard/summary) 404'd.
+# (Jcode hotfix 2026-11-01, prompt §8; verified with TestClient route probes.)
+router = APIRouter(tags=["Cloud Dashboard & Scheduler"])
 
 
 # -----------------------------------------------------------------------------
@@ -241,7 +245,13 @@ async def get_dashboard_summary(
     now = datetime.now(UTC)
     
     # Lead metrics
-    leads_count = (await db.execute(select(func.count(Lead.id)))).scalar() or 0
+    # CRM leads are stored as Contact rows with lifecycle_stage="lead"
+    # (see services/lead_service.process_inbound_lead); there is no Lead
+    # table. Interim fix by Jcode 2026-11-01 (prompt §8 option 1) — supersede
+    # with a dedicated Lead model if the design calls for it.
+    leads_count = (await db.execute(
+        select(func.count(Contact.id)).where(Contact.lifecycle_stage == "lead")
+    )).scalar() or 0
     convs_count = (await db.execute(select(func.count(Conversation.id)))).scalar() or 0
     
     # Task queue metrics
