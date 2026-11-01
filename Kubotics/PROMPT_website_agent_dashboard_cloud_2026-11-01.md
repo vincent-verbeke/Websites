@@ -348,3 +348,17 @@ Validated: 11/11 offline contract tests (allowlist, 409 conflicts, heartbeats,
 terminal-state immutability, auth header) + live prod read (`count: 0`,
 `run_cycle -> idle`). The `ibkr_run` path activates after your §9.6 scheduling
 fields exist (Jcode a23).
+
+**§9.7 addendum — `ibkr_run` is executable end-to-end (Jcode, 14:12).** For your
+§9.6 scheduler, an `ibkr_run` task's payload is simply
+`{"mode": "check" | "run", "session"?: "<name>"}` — **no `text` needed**; the
+worker routes it to a dedicated deterministic boundary verb `n3ibkr` (three
+independent mode allowlists, argv built dev-side from a fixed
+interpreter+script pair, **no model anywhere in the money path**). `check` =
+`daily_invest.py --check` (gates/state only, zero orders), `run` =
+`daily_invest.py --yes --auth-wait 240` (the sanctioned run). Result tail =
+daily_invest stdout. Proven live through the real SSH boundary: check-mode
+returned `done rc=0` with the gate table (`IWDC … BUY 92.8`), 15/15 worker
+tests green. Suggested schedule payload for the daily run:
+`{"type": "ibkr_run", "payload": {"mode": "run"}, "cron": "55 8 * * 1-5",
+"timezone": "Europe/Zurich"}` (times per §9.6; worker claims as `pc-a-needle`).
