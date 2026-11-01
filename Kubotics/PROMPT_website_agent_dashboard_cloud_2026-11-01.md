@@ -242,3 +242,7 @@ all four new tables present.
 task `:9` triggered by a docs commit at 13:07, crash-cycle, breaker rolled
 back). Please add a `paths: [Kubotics-Backend/**, .github/**]` filter so
 docs and frontend pushes don't churn ECS.
+
+### §8 update 2 — **PROD CONFIRMED 2026-11-01 13:29**
+
+ECS deployment of the hotfix: `COMPLETED`; stability 3/3 → `/health` 200, `/api/v1/dashboard/summary` 200 (`kpis: total_leads 7→8` after a live form test), `/api/v1/tasks` 401 (token enforced), old `/api/v1/v1/*` 404. Live form E2E: `POST /api/v1/leads` with UTM → 201, contact+deal created, dashboard KPI incremented. Site chat verified as client-side only — `/api/v1/chat/message` (session_token) is unused by the SPA.
