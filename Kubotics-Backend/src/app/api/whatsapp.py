@@ -40,6 +40,8 @@ from app.services.whatsapp_service import whatsapp_service
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["WhatsApp Webhook"])
 
+VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "kubotics_wa_verify_token_2026")
+
 from pydantic import BaseModel, Field
 from datetime import UTC, datetime
 
