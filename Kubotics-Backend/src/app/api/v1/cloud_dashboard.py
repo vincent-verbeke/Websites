@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.tasks import InboundEvent, ScheduledTask, DeviceSnapshotCache, AgentOutput
-from app.models.entities import Contact, Conversation, Organization
+from app.models.entities import Contact, Conversation, Organization, ContactMailPhone, Message
 
 # NOTE: no router-level prefix — main.py already mounts this router under
 # settings.API_V1_STR; a "/v1" prefix here produced /api/v1/v1/... and the
@@ -421,11 +421,21 @@ async def list_dashboard_leads(
 
     items = []
     for c in contacts:
-        # Load associated phone/email channels
-        await db.refresh(c, ["channels", "organizations_link"])
-        phone = next((ch.value for ch in c.channels if "phone" in ch.channel_type or ch.channel_type == "whatsapp"), None)
-        email = next((ch.value for ch in c.channels if ch.channel_type == "email"), None)
-        
+        # Directly query ContactMailPhone records to reliably fetch email and phone in async SQLAlchemy
+        channels_res = await db.execute(
+            select(ContactMailPhone).where(ContactMailPhone.contact_id == c.id)
+        )
+        channels = channels_res.scalars().all()
+
+        phone = next(
+            (ch.value for ch in channels if "phone" in ch.channel_type.lower() or ch.channel_type.lower() == "whatsapp"),
+            None
+        )
+        email = next(
+            (ch.value for ch in channels if ch.channel_type.lower() == "email"),
+            None
+        )
+
         items.append({
             "id": str(c.id),
             "first_name": c.first_name,
@@ -446,7 +456,7 @@ async def delete_dashboard_lead(
     lead_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Delete a test or obsolete lead."""
+    """Delete a test or obsolete lead and its associated channels."""
     try:
         lid = uuid.UUID(lead_id)
     except ValueError:
@@ -477,15 +487,38 @@ async def list_dashboard_conversations(
 
     items = []
     for conv in convs:
-        await db.refresh(conv, ["contact", "messages"])
-        last_msg = conv.messages[-1].content if conv.messages else None
+        # Fetch associated contact and messages directly
+        contact_obj = None
+        if conv.contact_id:
+            contact_obj = await db.get(Contact, conv.contact_id)
+
+        msg_res = await db.execute(
+            select(Message)
+            .where(Message.conversation_id == conv.id)
+            .order_by(Message.created_at.desc())
+            .limit(1)
+        )
+        last_msg_row = msg_res.scalars().first()
+        last_msg = last_msg_row.content if last_msg_row else None
+
+        msg_count_res = await db.execute(
+            select(func.count(Message.id)).where(Message.conversation_id == conv.id)
+        )
+        msg_count = msg_count_res.scalar() or 0
+
         sender_phone = conv.external_conversation_id
+        sender_name = (
+            f"{contact_obj.first_name or ''} {contact_obj.last_name or ''}".strip()
+            if contact_obj
+            else None
+        )
+
         items.append({
             "id": str(conv.id),
             "channel": conv.channel,
             "status": conv.status,
-            "sender": sender_phone or (f"{conv.contact.first_name or ''} {conv.contact.last_name or ''}".strip() if conv.contact else "Anonymous"),
-            "message_count": len(conv.messages),
+            "sender": sender_phone or sender_name or "Anonymous",
+            "message_count": msg_count,
             "last_message": last_msg,
             "started_at": conv.started_at.isoformat() if conv.started_at else None,
         })
