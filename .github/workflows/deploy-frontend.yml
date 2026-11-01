@@ -52,9 +52,22 @@ jobs:
 
       - name: Invalidate CloudFront Distribution Cache
         env:
-          CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID || 'ICRGTZB3K1PMXENDBQIPCDOHNN' }}
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
         run: |
           set -euo pipefail
-          DIST_ID="${CLOUDFRONT_DISTRIBUTION_ID:-ICRGTZB3K1PMXENDBQIPCDOHNN}"
-          echo "Invalidating CloudFront cache for distribution $DIST_ID..."
-          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+          DIST_ID="$CLOUDFRONT_DISTRIBUTION_ID"
+          if [ -z "$DIST_ID" ]; then
+            echo "CLOUDFRONT_DISTRIBUTION_ID secret not provided, looking up distribution for www.kubotics.ch dynamically..."
+            DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items && contains(Aliases.Items, 'www.kubotics.ch')].Id | [0]" --output text)
+            if [ -z "$DIST_ID" ] || [ "$DIST_ID" = "None" ]; then
+              DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?DomainName=='d2pfd09n89i3ec.cloudfront.net'].Id | [0]" --output text)
+            fi
+          fi
+
+          if [ -n "$DIST_ID" ] && [ "$DIST_ID" != "None" ]; then
+            echo "Invalidating CloudFront cache for distribution $DIST_ID..."
+            aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+          else
+            echo "ERROR: Could not determine CloudFront distribution ID for www.kubotics.ch."
+            exit 1
+          fi
