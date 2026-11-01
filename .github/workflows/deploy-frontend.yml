@@ -11,7 +11,7 @@ on:
 
 env:
   AWS_REGION: eu-central-1
-  S3_BUCKET: kubotics-web-frontend
+  S3_BUCKET: kubotics
 
 jobs:
   deploy-frontend:
