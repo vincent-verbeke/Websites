@@ -265,3 +265,69 @@ ECS deployment of the hotfix: `COMPLETED`; stability 3/3 → `/health` 200, `/ap
 - `needle3` on PC-A already sends with `Bearer <NEEDLE_TOKEN>` and
   `send_url=https://api.kubotics.ch/api/whatsapp/send` (cutover verified with
   a `wamid` receipt at 13:35).
+
+## 9. Work queue for the website agent — Vincent-approved 2026-11-01 13:53 (this supersedes ad-hoc asks)
+
+Do **not** re-implement anything in §7.3/§8 (done by Jcode, marked interim).
+Vincent's decisions baked in: **C2** spend caps + approval gate also in the
+dashboard UI; **C3** *Needle becomes the single orchestrator, independent of
+external LLM; the IBKR schedule moves under it too.*
+
+### P0 — spend gate (Day-1 blockers)
+1. **Persist attribution (readiness B2).** Columns on the lead/contact record
+   for `utm_source/medium/campaign`, `gclid`, `referrer_url`, **first_touch
+   (immutable)**, `last_touch`; map them in `lead_service`; expose in reads for
+   the dashboard. *Accept: form POST with UTM query visible via a read endpoint
+   within the same minute.*
+2. **Consent + suppression (B3).** Consent state + timestamp on the contact;
+   suppression list enforced by every outbound path (container send API,
+   Telegram/Teams adapters, agent sends). *Accept: suppressed contact produces
+   no send attempt (502/200 both blocked earlier).*
+3. **Spend caps + approval gate incl. DASHBOARD UI (B5, C2).** Enforce
+   CHF 100 total / CHF 70 Search server-side; tasks entering `needs_approval`
+   for: campaign create, budget increase, external publish (GTM §6.4);
+   dashboard shows remaining caps + Approve/Reject controls that PATCH the
+   task; audit rows for decision + actor. *Accept: over-cap action without an
+   approval record is rejected at the API, and the approval button moves
+   queued → running from the UI.*
+
+### P0 — ops hygiene
+4. **CI paths filters**: `deploy.yml` → `[Kubotics-Backend/**, .github/**]`;
+   `deploy-frontend.yml` → `[Kubotics/**, .github/**]`. Today every docs push
+   rebuilds and redeploys ECS (observed 3 churn rollouts on 2026-11-01).
+5. **Alembic baseline**: replace the `create_all`-in-all-envs shim (Jcode
+   interim in `main.py`) with migrations covering the tasks tables; then
+   decide: keep the `Contact.lifecycle_stage='lead'` count (interim) or add a
+   real `Lead` model + backfill.
+
+### P1 — single-orchestrator architecture (C3)
+6. **Scheduling on `ScheduledTask`** (missing today — the model has only
+   lease/heartbeat/status): add `run_at` (one-shot), `cron` + `timezone`
+   (default `Europe/Zurich`), recurrence materialization into queued tasks;
+   `GET /tasks?due=true` filter; `POST/GET/DELETE /api/v1/schedules` CRUD;
+   documented task types incl. **`ibkr_run`** and `campaign_eval`.
+7. **Freeze the worker contract** (README/OpenAPI, prompt §6.3): exact
+   shapes for `GET /tasks`, `POST /tasks/{id}/claim`, `PATCH
+   /tasks/{id}/status`, `POST /agent/output` — Jcode implements the needle3
+   consumer against it and consumes item 6 for IBKR.
+8. **Control/streams channel** replacing PC-A `edge_app` relay: Bearer
+   snapshot ingest (`POST /api/v1/ingest/{dataset}`) + queued control commands
+   the dev side pulls (fail-closed, never queued-blind) — unblocks retiring
+   `edge_app:8001`.
+9. **Campaign metrics ingestion (B4)** + the metrics endpoint Needle's daily
+   evaluation reads (GTM §9 checklist).
+
+### P1 — cleanup / decisions
+10. **WhatsApp secrets**: repo literals + `deploy.yml` layering are in place;
+    add GitHub secrets when you have portal access (rotation order in §7.3
+    addendum). Decide: keep `/api/v1/chat/message` (unused by the SPA,
+    requires an unissued `session_token`) or remove it.
+11. **Booking E2E** owner: Vincent clicks through the booking page (a19);
+    you verify the resulting lead + Teams meeting rows land in Postgres.
+
+### Interface note (both sides)
+Jcode (needle3) will implement the worker consumer + the IBKR migration
+**after items 6–7 land**, and the IBKR run stays on the Jcode schedule
+(`sched_2bb68117`) until a needle-scheduled run is proven — no gaps in the
+money path. Everything deterministic stays out of LLM calls (needle3's
+router/gates are already model-free).
