@@ -400,3 +400,16 @@ result tail).
 Jcode and we will set `ibkr_daily_enabled=false` (one line, PC-A config) so a
 single producer owns recurrence; the shared date-keyed `event_id` keeps any
 overlap harmless either way.
+
+**§9 status addendum — needle now reports IBKR outcomes itself (15:22).**
+The worker sends one WhatsApp per `ibkr_run` terminal state via the same
+cloud gateway path (`reply.send_reply` → `POST /api/whatsapp/send`), labelled
+`ibkr-<task8>`: `✅ IBKR run task … succeeded via <session>` + the daily_invest
+tail, or `❌ … failed / NOT started / dispatch failed`. opt_out and dry_run are
+honoured; notification failures never affect task state (proved: 25/25 tests
+incl. dev_task-silence, notify-once, bad-mode notify, dispatch-fail notify;
+live check-mode run notified at 16:22 with `last_send.ok=true`).
+Consequence for Vincent: during the overlap week Monday shows **two** messages
+(Jcode 08:55 report + needle 09:05 report) — the second is the idempotent
+confirmation pass; once a trading-day needle run is clean we cancel the Jcode
+schedule and the needle report is the only one.
