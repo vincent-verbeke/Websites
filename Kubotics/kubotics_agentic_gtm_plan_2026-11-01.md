@@ -10,6 +10,35 @@
 
 ---
 
+## 0. Implementation status — shipped 1 November 2026 (commit `40d5446`, pushed to `main`)
+
+Delivered by the website/backend agent and code-verified by Jcode:
+
+- **Updated booking URL** — set to `https://bookings.cloud.microsoft/book/KuboticsGet2Know@kuroliv.ch/?ismsaljsauthenabled` in:
+  - frontend lead-agent service and booking-link triggers
+  - backend `api/v1` meeting fallback endpoints and agent core
+  (replaces the previous `outlook.office.com/bookwithme/...` link)
+- **Dedicated topic landing pages**, each with an interactive problem-intake card and direct question actions:
+  - `/automation/cnc-machine-tending`
+  - `/automation/invoice-processing`
+  - `/robotics/unitree-h2-test-day`
+  - `/automation/discovery`
+- **In-chat booking flow** — structured contact-capture card (Name, Email, Phone, Company, Preferred Date/Slot) ensuring complete lead ingestion into PostgreSQL and native Microsoft Teams meeting generation.
+- **Git:** pushed to `github.com:vincent-verbeke/Websites.git` (`main`), commit `40d5446`.
+
+Follow-up same day (commit `a990349`): cloud `/dashboard`, scheduler API
+(`tasks`, `events`, `agent/output`, `ingest`) and Entra ID login — frontend
+deployed and verified on the CDN; **backend half currently failing to deploy**
+(see `PROMPT_website_agent_dashboard_cloud_2026-11-01.md` §8 and
+`GTM_TEST_READINESS_2026-11-01.md` B1).
+
+Impact on this plan:
+- §8 Day 1 item *"Build / publish the dedicated CNC machine-tending landing page"* → **satisfied** (page shipped; keep the quality gate of §2/§5.4 in the verification pass).
+- §8 Day 1 item *"Test website CTA … form"* → now covers four topic pages plus the in-chat booking card; the E2E conversion-route check (P0) must include all four URLs and the Teams-meeting creation path.
+- The in-chat booking card is the first **complete** lead-capture path into PostgreSQL — verify UTM/first-touch attribution on it before paid spend (§10.3); **currently blocked: UTM fields are accepted but not persisted (readiness B2).**
+
+---
+
 ## 1. Executive recommendation
 
 Kubotics has a credible technical proposition and a substantially improved website. The next step is not to add more marketing automation. It is to turn the website and its acquisition channels into a measurable sales system.

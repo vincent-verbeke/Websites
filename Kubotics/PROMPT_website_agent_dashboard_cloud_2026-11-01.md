@@ -127,3 +127,85 @@
    (needle3) will implement against**.
 4. Short cutover note: what stops running on PC-A and when, and the rollback
    (PC-A dashboard returns with one systemctl command until decommissioned).
+
+## 7. Integration plan updates — Vincent's decisions, 2026-11-01 (binding)
+
+1. **AWS only.** There is **no Azure container** ("we have no azure
+   containers => All on AWS"); do not design for Azure. Everything (backend,
+   WhatsApp, dashboard, send path) targets the existing AWS ECS container
+   `api.kubotics.ch`. Anything you find that references an Azure container
+   target should be re-pointed to AWS. (Entra ID / M365 auth stays — that is
+   identity, not hosting.)
+2. **Integrate the WhatsApp send path into the container.** Add the send API
+   to `Kubotics-Backend` — this is the contract PC-A (needle3) and other
+   callers will be re-pointed to:
+   - `POST /api/whatsapp/send` — `Authorization: Bearer <SEND_TOKEN>`,
+     JSON `{"session": "<label>", "to": "<e.164>", "text": "..."}`; also
+     accept needle3's current shape `{"session","text"}` with `to`
+     defaulting to the configured operator number →
+     `{"ok": true, "wamid": "..."}`
+   - `GET /api/whatsapp/send/health` → token/config presence + last-send
+     status, **no secrets in the response**
+   - Failure semantics: answer non-2xx (502) when the Graph API call failed,
+     so callers retry; 2xx only after Meta accepted the message. Bounded
+     retry on transient Graph errors. Document the choice in the README.
+   - Cutover: once live, Jcode switches PC-A needle3 `send_url` from
+     `http://192.168.1.199:8444/api/whatsapp/send` to
+     `https://api.kubotics.ch/api/whatsapp/send`. **Flag this endpoint in
+     the PR description** so both sides move the same day.
+3. **Consolidate the Meta access-token holders in the same move.** Today two
+   holders exist: `ros2_reusable_stack/scripts/whatsapp/wa_config.json`
+   (dev PC) and `~/wa-edge/edge_config.json` (PC-A). Target state: **one
+   holder — the container.** Sequence: (a) land the send API, (b) rotate the
+   Meta token in the WABA, (c) store the new token only in the ECS task
+   definition / secrets, (d) callers (`wa.py` from Jcode sessions, `wa_core`
+   on PC-A, needle3) switch to the container endpoint, (e) old files emptied
+   and marked deprecated — **do not delete them in the same PR** (rollback
+   needs them for one week). Announce the rotation window to Jcode so no
+   scheduled run fires with a stale token (IBKR reports + watchdog alerts use
+   `wa.py` today).
+4. **Needle + WhatsApp verify tokens stay as-is** (validated identical
+   between ECS task env and local `.env` on 2026-11-01) — no rotation needed
+   in this move.
+5. **Infra facts you can rely on (fixed/verified 2026-11-01):** CloudFront
+   now forwards all viewer headers and query strings to the origin (managed
+   origin-request policy `AllViewer` on `api.kubotics.ch`) — previously
+   `X-Needle-Token` and query params were silently stripped; the ECS service
+   now has its target group **attached** (ECS registers/deregisters task ENIs
+   itself); deployment circuit breaker with rollback is active and was
+   observed auto-rolling back a failed deploy at 13:02 with prod at 200
+   throughout. Do not remove the origin-request policy or detach the load
+   balancer when touching CI/CD.
+
+## 8. P0 breakage from commit `a990349` — backend deploy is failing (Jcode, 2026-11-01 12:52)
+
+The ECS deployment of `kubotics-backend-task:8` (image `a9903496…`) crashes at
+import, so the new dashboard/scheduler API **is not live**:
+
+```
+File "/app/src/app/main.py", line 10, in <module>
+  from app.api.v1.cloud_dashboard import router as cloud_dashboard_router
+File "/app/src/app/api/v1/cloud_dashboard.py", line 17, in <module>
+  from app.models.entities import Lead, Conversation, Organization
+ImportError: cannot import name 'Lead' from 'app.models.entities'
+```
+
+- `class Lead` does not exist anywhere in the backend (only
+  `LeadProcessingService` and the `LeadResponse` schema); the `lead_service`
+  persists inbound leads as **`Contact` rows with `lifecycle_stage='lead'`**,
+  and there is no `leads` table in Postgres.
+- `Lead` is used in exactly one place: line 244
+  `leads_count = (await db.execute(select(func.count(Lead.id)))).scalar() or 0`.
+- Suggested fix (pick one and state the choice in the PR):
+  1. **Preferred:** `leads_count = count(Contact.id).where(Contact.lifecycle_stage == 'lead')`
+     (matches how `lead_service.process_inbound_lead` actually stores leads),
+  2. or add the `Lead` model/table you intended and keep line 244 — then it
+     needs a migration + backfill decision.
+- Blast radius so far: **prod stayed up** on the previous task def (`:7`,
+  health 200 the whole time) because `minimumHealthyPercent=100`; the
+  deployment circuit breaker is armed and will roll the failed revision back.
+  Expect CI `wait-for-service-stability` to fail on this run.
+- Verification once fixed: `GET https://api.kubotics.ch/health` 200 **and**
+  `GET /api/v1/dashboard/summary` answering (401 without token is fine —
+  anything but 404/502 means the new routers loaded), then check the ECS
+  deployment shows `COMPLETED`.

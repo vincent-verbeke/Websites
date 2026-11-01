@@ -1,112 +1,120 @@
-# WhatsApp gateway → Azure container: migration review
+# WhatsApp gateway migration review — Azure question vs. AWS reality
 
-_Status: review only, nothing migrated. Prepared 2026-11-01 by Jcode from a live
-inventory of the running systems. Open questions are at the end._
+_Review only; updated 2026-11-01 13:05 CET after live validation. Original
+version written 11:00 the same morning; §4 answers recorded from Vincent's
+11:43 reply; restored after an accidental `git checkout` reverted the
+previous revision (docs now committed)._
 
-## 1. What "the WhatsApp gateway" is today (as-built inventory)
+## TL;DR
 
-Three machines are involved. **Nothing on this box talks to Azure today** — there
-is no `az` CLI, no `~/.azure`, no Azure host in Tailscale/SSH, and no Azure
-artifact in either repo (the Kubotics production deploy is **AWS ECS Fargate**,
-see `README.md` §1/§4/§5).
+- **No Azure container exists** (Vincent confirmed 2026-11-01: "we have no
+  azure containers => All on AWS"). The only Azure material is M365/Entra
+  credentials (used by the new dashboard login).
+- The **cloud container is AWS**: ECS Fargate
+  `kubotics-cluster/kubotics-backend-service` (task def
+  `kubotics-backend-task`, eu-central-1) behind CloudFront + ALB at
+  **`https://api.kubotics.ch`**. Validated: **WhatsApp webhook and the Needle
+  intake both run in that container.**
+- The practical migration = **consolidating the remaining PC-A pieces onto
+  the AWS container**, per Vincent's decisions in §4 (all of them are now
+  mirrored into the website agent's spec, `../Kubotics/PROMPT_website_agent_dashboard_cloud_2026-11-01.md`
+  §7).
 
-| # | Component | Where | How it runs | Holds secrets? |
-|---|-----------|-------|-------------|----------------|
-| 1 | `wa_core.py serve` — Cloud API client + inbox store (send_text, send_template, verify/hub.challenge, ingest, unread/mark_read). "The ONLY component holding the Meta token" (its own docstring) | PC-A `~/wa-edge`, port **8444** (`/api/whatsapp/send`) | **Orphan process** — `wa-core.service` unit file exists in `~/wa-edge/units/` but is *not installed* (`systemctl --user is-enabled wa-core` → not-found) | Yes: `edge_config.json` → `wa_token`, `verify_token`, `phone_number_id`, `send_token`, `allowed_senders`, `default_to` |
-| 2 | Router + webhook front (`webhook_front:app` on 127.0.0.1:8443, unit comment: *"public allowlist - the funnel target"*) | PC-A `~/wa-edge`, units `wa-router`, `wa-webhook` | **Not installed / not running** | Reads `edge.env` (H2_* upstreams) |
-| 3 | `edge_app` dashboard host/relay (relays control POSTs to the dev PC, caches reads, exposes `/api/whatsapp/` passthrough) | PC-A `~/wa-web`, port **8001** | Orphan uvicorn process | `web.env`, M365 certs |
-| 4 | `scripts/whatsapp/wa.py` — second, independent Cloud API client (stdlib), used by Jcode sessions, `daily_invest.py`, `ibkr_watch_static.py` | dev PC (this box) | Called ad-hoc per send | Yes: `scripts/whatsapp/wa_config.json` → access token, `phone_number_id`, `waba_id`, `opt_out` |
-| 5 | Inbound webhook receiver (Meta `GET/POST /api/whatsapp/webhook`, verify challenge, operator lane → `needle_inbox`) | **Kubotics-Backend**, port **8000** (this box, now a systemd unit) + same code in the AWS ECS container (`api.kubotics.ch`) | `kubotics-backend.service` (created 2026-11-01, enabled, Linger=yes) | `.env`: `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `NEEDLE_TOKEN`, `NEEDLE_OPERATOR_SENDERS` |
-| 6 | needle3 orchestrator (polls inbox, dispatches dev sessions, replies) | PC-A, port n/a (outbound only) | `needle3.service` (enabled 2026-11-01) → polls `http://192.168.1.161:8000` | `needle_token`, `send_token` |
+## 1. As-built inventory (validated 2026-11-01)
 
-Supporting state that is **file-based and shared**:
-`~/wa-edge/store/inbox.json` (read by needle3's SMALL-conid flow),
-`store/opt_out.json`, `store/reply_map.jsonl`, `web/chat/inbox.json` (dev PC).
+| # | Component | Runs where | Status |
+|---|-----------|-----------|--------|
+| 1 | **WhatsApp webhook receiver** `GET\|POST /api/whatsapp/webhook` (verify challenge, operator lane → `needle_inbox`) | **AWS ECS container** (`api.kubotics.ch`) | ✅ challenge 200 through CDN, 401 without needle token |
+| 2 | **Needle intake** `/api/v1/needle/{inbox,ack,inject}` + `X-Needle-Token` | **AWS ECS container** | ✅ 200 with task-def token; **PC-A needle3 polls the cloud** (`backend: OK (latest_id=4, unseen=0)`) |
+| 3 | `wa_core.py` — Cloud API **send** client + inbox store (`/api/whatsapp/send`, port 8444) | PC-A `~/wa-edge`, **orphan process** (unit files exist, never installed) | ⚠️ to move into the container (decision 2), then retire |
+| 4 | Router + `webhook_front` (unit `wa-webhook`) | PC-A | ⚠️ not installed, not running |
+| 5 | `edge_app` dashboard host/relay (port 8001) | PC-A, orphan uvicorn | 🔄 moving to the cloud — see prompt (dashboard work delivered as `a990349`, backend half currently broken, prompt §8) |
+| 6 | `wa.py` — independent Cloud API client (Jcode sessions, `daily_invest`, watchers) | dev PC | ✅ works anywhere; token holder #2 to be consolidated |
+| 7 | needle3 scheduler + **watchdog** (new 2026-11-01) | PC-A `needle3.service`, `n3_watchdog.timer` (15 min) | ✅ polling cloud, `dry_run=false`, opt-out-aware alerts |
 
-## 2. Defects found during the review (independent of the migration)
+Token/secret reality:
+- `NEEDLE_TOKEN`: ECS task-def env and local `.env` are the **same value**
+  (hash-compared) — no rotation needed.
+- `WHATSAPP_VERIFY_TOKEN`: identical too (challenge verified 200 through the
+  CDN).
+- Meta **access** token: two holders today (`wa_config.json` on dev PC,
+  `edge_config.json` on PC-A) → consolidate into the container (decision 3).
 
-1. **PC-A gateway processes are unsupervised.** Unit files exist under
-   `~/wa-edge/units/` but were never installed → `wa_core` (8444) and `edge_app`
-   (8001) are orphan processes: no `Restart=`, no boot start, silent death.
-2. **Inbound store is stale:** `store/inbox.json` last written **2026-10-26 13:27**,
-   i.e. inbound WhatsApp ingestion stopped the same week needle lost actions.
-3. **Two Meta-token holders** (`wa_config.json` on dev PC, `edge_config.json` on
-   PC-A) plus a third inside Kubotics-Backend `.env` — token rotation must touch
-   all three, and audit/24h-window behaviour differs between them.
-4. **Needle intake backend was down 2026-10-26 20:36 → 2026-11-01 11:51**
-   (15,577 connection-refused polls). Fixed today: `kubotics-backend.service`
-   now runs it permanently; `needle3.service` enabled; `dry_run` turned off
+## 2. Defects found and fixed on 2026-11-01 (chronological)
+
+1. **Needle intake backend down 2026-10-26 20:36 → 2026-11-01 11:51**
+   (15,577 refused polls; the "lost actions" week). Fixed: local
+   `kubotics-backend.service` as bridge, then needle3 re-pointed to
+   `https://api.kubotics.ch`.
+2. **CloudFront stripped `X-Needle-Token` and query strings** from
+   `api.kubotics.ch` (cache policy whitelisted only 5 headers, no origin
+   request policy) → needle 401, WhatsApp verify 403, and any header/query
+   API call failed (plausible cause of the GTM P0 conversion-route failures).
+   **Fixed:** managed origin-request policy `AllViewer` attached (deployed
+   12:16); rollback snapshot at `~/.jcode/scratch/api_kubotics_cf_config_rollback.json`.
+   Verified: needle 200/401 with/without token, verify challenge 200,
+   distinct bodies per `after_id`, `x-cache: Miss` (API not cached).
+3. **`api.kubotics.ch` outage 12:17–12:30 (502/504).** Cause: the ECS
+   **service had no load balancer attached** (`loadBalancers: []`) — target
+   registration was a stale manual entry, invisible until the first redeploy.
+   **Fixed:** target group attached (`containerName=kubotics-backend`,
+   `containerPort=8000`) so ECS manages registration; stale IP deregistered.
+   Verified: health 200, targets healthy.
+4. **`a990349` backend deploy fails at import** (`cloud_dashboard.py:17`
+   imports non-existent `Lead`) — full traceback + fix options in the website
+   agent's prompt **§8**; prod unaffected (see 5).
+5. **Circuit breaker proven live 13:02:** *"deployment failed: tasks failed
+   to start" → rolling back*, prod health 200 the whole time. (It was already
+   enabled with `rollback:true, threshold 50%` — it had been inert only
+   because of #3; no action needed, only an optional alarm.)
+6. **needle3 `dry_run=true`** left over from 10-25 tests → set `false`
    (backup `needle3.json.bak_pre_dryrun_fix_20261101`).
-5. **Meta webhook target is unverifiable from this machine** — the local token
-   has no `subscribed_apps` permission (Graph returns "#100 nonexisting field").
-   `https://api.kubotics.ch/api/whatsapp/webhook` answers (403 = route alive,
-   verify-token mismatch vs local token), so production AWS is at least
-   *capable* of receiving it. Whoever controls the Meta App Dashboard must
-   confirm the current callback URL.
+7. **Needle watchdog added** (`n3_watchdog.timer`, every 15 min): error-burst
+   (≥20/20 min with no info events) + backend reachability, alerts via PC-A
+   send API with 2 h cooldown, opt-out respected, `--simulate` validated.
 
-## 3. What the Azure container needs (checklist)
+## 3. What moving the rest to the cloud needs (AWS target)
 
-**A. Inputs I still need from you (blocking):**
-- Which container: subscription / resource group / container name or FQDN,
-  and whether it already runs an image or is empty. I could not discover it
-  from this machine (no `az` CLI, no Azure credentials, no Azure host on the
-  tailnet). `az login` (or a service principal + `AZURE_*` env) is required
-  before I can inspect or deploy to it.
-- Whether the container has (or can get) a **public HTTPS endpoint with a real
-  certificate** — Meta webhooks require public HTTPS (the tailnet funnel only
-  covers `kuroliv-ros.tail8c17d3.ts.net → 127.0.0.1:8001`, i.e. the dashboard).
-- Which side moves: (i) full gateway (inbound webhook **and** send API), or
-  (ii) send-only, keeping Meta → AWS/local webhook.
+**Done:** webhook receiver + needle intake in the container, needle3 polling
+the cloud, CDN header/query forwarding, ECS↔LB registration, watchdog,
+circuit breaker validated.
 
-**B. Image/runtime contents (all identified, all portable):**
-- `wa_edge` app = `wa_core.py` (+ router + `webhook_front` if inbound moves).
-  Stdlib-only Python + a venv → small image; Docker base `python:3.12-slim`.
-- Config/secret set to mount: `edge_config.json` keys (`wa_token`,
-  `verify_token`, `phone_number_id`, `send_token`, `allowed_senders`,
-  `default_to`, `api_base`, `send_api`) → prefer Key Vault / container env,
-  never baked into the image.
-- Persistent volume for `store/` (inbox, opt_out, reply_map) — or replace the
-  files with the Postgres `needle_inbox` table to remove file coupling.
-- Healthcheck endpoint (`/healthz`) + outbound 443 to `graph.facebook.com`.
+**Remaining (ordered):**
+1. **Send API in the container** — contract specified in the website agent's
+   prompt §7.2 (`POST /api/whatsapp/send`, `GET /api/whatsapp/send/health`,
+   failure semantics, same-day cutover flag). When it lands: Jcode switches
+   needle3 `send_url`, verifies one real round-trip, keeps PC-A fallback 1 week.
+2. **Token consolidation** — two Meta access-token holders → container only;
+   sequence + rotation-window notice in prompt §7.3.
+3. **Dashboard** SPA + relay replacement — spec in the prompt (§2/§3): task
+   queue, GTM metrics, fail-closed telemetry, outbound-pull control channel.
+4. **Meta webhook target** — confirm the active callback URL in the Meta App
+   Dashboard (local token lacks `subscribed_apps`); cut over with 24 h dual-run
+   if it is not `https://api.kubotics.ch/api/whatsapp/webhook`.
+5. **Alarm/notification** (optional): CloudWatch `UnHealthyHostCount >= 1` →
+   SNS/WhatsApp so incidents page instead of being noticed by hand.
+6. **Shared file state** (`store/inbox.json`, `opt_out.json`,
+   `reply_map.jsonl`) — replace with API reads or keep a thin sync before
+   retiring `wa_core`.
 
-**C. Callers that must be re-pointed (and tested):**
-1. `needle3` on PC-A: `send_url http://192.168.1.199:8444/api/whatsapp/send`
-   → Azure URL (+ token). Keep `opt_out_path` semantics.
-2. `needle3.small_from_inbox()` greps **PC-A local** `store/inbox.json` →
-   needs the store to stay on PC-A, or an API on the container it can query.
-3. `wa.py` callers on the dev PC (IBKR runs, watchers) → either keep `wa.py`
-   as-is (it talks to Meta directly and works anywhere) or point it at the
-   container to have one token holder.
-4. Kubotics-Backend operator lane (webhook → `needle_inbox`) + needle3's poll
-   URL `http://192.168.1.161:8000` — unchanged if the webhook stays where it
-   is, but must change if the container also takes over intake.
+## 4. Open questions → **answers recorded 2026-11-01 (Vincent)**
 
-**D. Meta side:** App Dashboard → WhatsApp → Configuration → webhook callback
-URL + verify token update, subscribe `messages` field; keep the old callback
-until the new one answers `hub.challenge` (zero-downtime cutover, same trick as
-the `GET /webhook` verifier already in the code).
-
-**E. Cutover plan (recommended order):**
-1. Provision container, deploy send API only, point *one* non-critical caller
-   (Jcode `wa.py` notify path) at it, verify a delivery receipt (`wamid`).
-2. Move `needle3 send_url`, watch one real reply round-trip.
-3. Move inbound webhook (Meta callback change) with the local receiver left
-   running as a fallback for 24h; compare `needle_inbox` rows.
-4. Decommission PC-A orphan processes only after 7 days of clean traffic;
-   install the systemd units in the meantime as the fallback safety net.
-
-**F. Ops concerns to decide:** region (EU/CH for data residency), always-on
-cost vs the current free home-lab setup, log/metric pipeline (today: journal +
-`store/*.jsonl` only), secret rotation runbook covering the three token holders.
-
-## 4. Open questions
-
-1. **Which Azure container?** (name/subscription/endpoint, or confirm you want
-   me to create one and with what tooling — `az` CLI is not installed here.)
-2. Is production staying on **AWS ECS** (`api.kubotics.ch`) — i.e. is Azure
-   meant to *replace* the PC-A gateway only, or also the ECS backend?
-3. Should the three Meta-token holders be **consolidated** to the container
-   during this migration (recommended) or kept independent?
-4. Consent to the two resilience fixes already staged: PC-A `wa-*` systemd units
-   installed+enabled (currently orphaned), and `dry_run=false` (done today,
-   backup kept) so needle replies actually go out.
+1. ~~Azure or AWS?~~ **ANSWERED: AWS only — "we have no azure containers =>
+   All on AWS."** Integration-plan updates added to the website agent's spec
+   as prompt **§7.1** (no Azure design paths anywhere).
+2. ~~Send path?~~ **ANSWERED: PC-A's send path switches to
+   `https://api.kubotics.ch/api/whatsapp/send` once integrated** — endpoint
+   contract + cutover coordination in prompt §7.2; Jcode performs the PC-A
+   switch when the PR lands.
+3. ~~Token consolidation?~~ **ANSWERED: yes, consolidate in the same move** —
+   sequence in prompt §7.3, rotation window announced to Jcode so no
+   scheduled run fires with a stale token.
+4. **PC-A `wa-*` systemd unit install — DEFERRED by Vincent** ("review after
+   other questions first"). Script staged, unexecuted at
+   `~/.jcode/scratch/pca_wa_units_install.sh`; re-raise after the send-path
+   cutover (units for `wa_core` become moot if the container replaces it).
+5. ~~ECS circuit breaker~~ **RESOLVED — already enabled**
+   (`rollback:true`, threshold 50%); it needed the load balancer attached to
+   receive a health signal (fixed §2.3) and **proved itself live at 13:02**
+   by auto-rolling back the failed `a990349` deployment with prod at 200
+   throughout. Optional alarm = open item 5 above.
