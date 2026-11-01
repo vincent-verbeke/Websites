@@ -641,7 +641,19 @@ Keep the conversation natural. Do not ask eight questions in one form. Ask one u
 - Build / publish the dedicated CNC machine-tending landing page or use a clearly isolated section if the page cannot be completed.
 - Confirm Needle can trigger a test evaluation and that the resulting agent run is auditable.
 
-**Gate:** Do not activate paid spend until test conversions and attribution are working.
+**Pre-checked 2026-11-01 (Jcode, ahead of Day 1)** — evidence in `GTM_TEST_READINESS_2026-11-01.md`:
+
+| Day-1 item | Status | Evidence |
+|---|---|---|
+| Confirm ICP + offer | ⏳ pending Vincent | no confirmation on record |
+| Test CTA / assessment / ROI / form / WhatsApp / Telegram | 🔶 partial | all 5 pages 200; **form PASS live** (201 → contact+deal, dashboard `total_leads 7→8`); **WhatsApp PASS** (webhook verify 200; needle inject → reply HTTP 200 in 4 s); assessment/ROI submissions + Telegram not exercised; **booking card → Teams pending** (real-browser, readiness B7) |
+| PostgreSQL persistence / source attribution / duplicate handling | 🔶 persistence ✓, **attribution ✗** | contact/company/deal rows created; UTM+gclid+referrer accepted by API schema but **dropped before persistence (B2)**; dedupe not exercised (test lead created a fresh org) |
+| Consent / privacy wording + suppression | ✗ open (B3) | no consent/suppression fields in backend code; WhatsApp opt_out flag exists only on the send side |
+| Set up campaign and conversion events | ⏳ not started | no ad account work yet (owner: Vincent); site conversion events unverified |
+| CNC machine-tending landing page | ✅ done | shipped in `40d5446`, page 200 with correct title |
+| Needle test evaluation, auditable | ✅ **done early** | 2026-11-01 13:13: injected event → cloud `needle_inbox` → PC-A route decision → WhatsApp reply (all ids in `needle3.db` events + row #5 `done`); audit tables `agent_runs/agent_tool_calls/agent_actions` present |
+
+**Gate:** Do not activate paid spend until test conversions and attribution are working. **Current gate status: CLOSED** — conversions now verified (form + chat path), **attribution (B2), consent (B3) and spend caps (B5) still open** (owners: website agent + Vincent).
 
 ### Day 2 — Tuesday: launch
 
