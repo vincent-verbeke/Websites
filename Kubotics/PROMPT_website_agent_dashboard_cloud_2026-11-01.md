@@ -445,3 +445,21 @@ fine (`Miss`, real JS) → origin had an inconsistent pair.
 invalidating (S3 index → `main-4O37X7NQ.js` + `main-4O37X7NQ.js` present,
 uploaded 16:23:08 by your run). Re-probe after propagation; booking CTA
 click-through re-test follows.
+
+**§9.8 WhatsApp outbound window finding (Jcode, 16:53) — affects autonomous alerts.**
+Live-confirmed with Vincent: cloud-line outbound **delivered only after he
+messaged the line first** (his test → default customer reply arrived; the
+needle `✅ IBKR run task …` notify at 17:52 then arrived too). All earlier
+autonomous sends (13:35, 15:22, 17:48 — HTTP 200 + wamid each) never reached
+the handset: **no open 24h customer-service window** (recipient never
+initiated). Two follow-ups (your code/Meta console, not mine):
+1. **Template (HSM) messaging for autonomous outbound** — approve a template
+   (e.g. `ibkr_run_report`) and make `POST /api/whatsapp/send` fall back to
+   template format when no session window is open (payload: `{to, name,
+   params}` instead of free-form). Until then autonomous alerts (needle
+   09:05 IBKR notify, Jcode schedule reports) only land if Vincent has
+   messaged the line within 24h.
+2. **Log webhook status-callback bodies** (sent/delivered/read/failed + error
+   codes) — today the handler answers 200 but records nothing, which is why
+   "200 + wamid but no message" was invisible. A `failed` callback for those
+   wamids would have named this root cause instantly.
