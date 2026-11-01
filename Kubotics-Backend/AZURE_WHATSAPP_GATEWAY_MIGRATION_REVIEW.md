@@ -75,9 +75,13 @@ Token/secret reality:
 
 ## 3. What moving the rest to the cloud needs (AWS target)
 
-**Done:** webhook receiver + needle intake in the container, needle3 polling
-the cloud, CDN header/query forwarding, ECS↔LB registration, watchdog,
-circuit breaker validated.
+**Done:** webhook receiver + needle intake in the container (**migration
+validated 2026-11-01 13:27+: Meta verify challenge 200, needle inbox 200,
+inbound logs show Meta GET verify 200**), needle3 polling the cloud, CDN
+header/query forwarding, ECS↔LB registration, watchdog, circuit breaker,
+**send path cutover 13:35** (task def :15 carries the Meta send credentials,
+needle3 `send_url` → `https://api.kubotics.ch/api/whatsapp/send`, real
+round-trip `wamid.HBgL…` delivered; PC-A :8444 has no consumers left).
 
 **Remaining (ordered):**
 1. **Send API in the container** — contract specified in the website agent's
@@ -102,14 +106,16 @@ circuit breaker validated.
 1. ~~Azure or AWS?~~ **ANSWERED: AWS only — "we have no azure containers =>
    All on AWS."** Integration-plan updates added to the website agent's spec
    as prompt **§7.1** (no Azure design paths anywhere).
-2. ~~Send path?~~ **ANSWERED: PC-A's send path switches to
-   `https://api.kubotics.ch/api/whatsapp/send` once integrated** — endpoint
-   contract + cutover coordination in prompt §7.2; Jcode performs the PC-A
-   switch when the PR lands.
+2. ~~Send path?~~ **ANSWERED + EXECUTED 2026-11-01 13:35**: needle3 now posts to
+   `https://api.kubotics.ch/api/whatsapp/send` (verified `wamid` receipt); PC-A
+   `wa_core` kept running as fallback for the 1-week soak, then retired (a21).
 3. ~~Token consolidation?~~ **ANSWERED: yes, consolidate in the same move** —
    sequence in prompt §7.3, rotation window announced to Jcode so no
    scheduled run fires with a stale token.
-4. **PC-A `wa-*` systemd unit install — DEFERRED by Vincent** ("review after
+4. **PC-A `wa-*` systemd unit install — recommend CANCEL (validated 13:36):**
+   after the webhook+intake+send migration nothing needs `wa_core`, so
+   installing units would supervise services we are about to retire.
+   Original deferral by Vincent: ("review after
    other questions first"). Script staged, unexecuted at
    `~/.jcode/scratch/pca_wa_units_install.sh`; re-raise after the send-path
    cutover (units for `wa_core` become moot if the container replaces it).
