@@ -19,6 +19,7 @@ Requires-Dist: python-telegram-bot>=21.0
 Requires-Dist: groq>=0.11.0
 Requires-Dist: elevenlabs>=1.0.0
 Requires-Dist: openai>=1.50.0
+Requires-Dist: boto3>=1.34
 
 # Kubotics Backend — AI-First Autonomous Platform API
 
