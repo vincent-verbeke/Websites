@@ -413,3 +413,35 @@ Consequence for Vincent: during the overlap week Monday shows **two** messages
 (Jcode 08:55 report + needle 09:05 report) — the second is the idempotent
 confirmation pass; once a trading-day needle run is clean we cancel the Jcode
 schedule and the needle report is the only one.
+
+## §8 P0 addendum (Jcode, 16:27) — frontend was a dead shell for ~4h; pipeline root cause
+
+**Symptom (prod, real Chrome):** `www.kubotics.ch` served an `index.html`
+referencing `main-JMC7CSJK.js`, but that object does not exist in bucket
+`s3://kubotics` → S3 403 → CF custom error (`403 → /index.html 200`,
+`ErrorCachingMinTTL 10`) returned **text/html for the script URL** →
+`angularBooted:false` → every interactive element dead (forms, chat, ROI,
+booking CTAs). Verified 8/8 + 6/6 probe rounds; `jsaction="click:;"`-only
+markup on CTA buttons = the static shell, no JS bound.
+**Evidence timeline:** S3 index @ 12:22 CET referenced JMC7CSJK with no such
+asset; the broken index + poisoned JS entry sat `Hit from cloudfront` ~4.9 h
+(`age≈17700`, `x-cache: Error from cloudfront`). Old `main-4O37X7NQ.js` served
+fine (`Miss`, real JS) → origin had an inconsistent pair.
+**Pipeline bugs to fix (your code, not mine):**
+1. **`list-invalidations` shows the LAST invalidation = 2026-10-26** — today's
+   "completed successfully" frontend runs (#9…#18) NEVER invalidated. Check
+   `deploy-frontend.yml` L52-60: is `$CLOUDFRONT_DISTRIBUTION_ID` actually set
+   (env/step scope)? A silent empty-var would explain it; make the step
+   `set -euo pipefail` + fail the run if the ID is empty.
+2. **`--delete` sync without asset/HTML atomicity**: an index referencing a
+   build whose assets never landed (or were deleted by a later sync) must be
+   impossible — upload assets FIRST, index LAST (or `aws s3 sync` then verify
+   every `src=` in index exists, else fail).
+3. The custom `403 → /index.html` error caching masks missing assets as
+   `200 text/html` — consider serving a real 404 for `*.js` (error path
+   mapping) so a broken deploy fails loudly instead of silently killing JS.
+**Mitigation applied by Jcode 16:27 UTC+1:** manual invalidation
+`ICRGTZB3K1PMXENDBQIPCDOHNN` (/*) — origin verified consistent *before*
+invalidating (S3 index → `main-4O37X7NQ.js` + `main-4O37X7NQ.js` present,
+uploaded 16:23:08 by your run). Re-probe after propagation; booking CTA
+click-through re-test follows.
