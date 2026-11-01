@@ -92,6 +92,11 @@ jobs:
               "AZURE_CLIENT_CERT_THUMBPRINT": os.environ.get("AZURE_CLIENT_CERT_THUMBPRINT"),
               "TELEGRAM_BOT_TOKEN": os.environ.get("TELEGRAM_BOT_TOKEN"),
               "WHATSAPP_VERIFY_TOKEN": os.environ.get("WHATSAPP_VERIFY_TOKEN"),
+              # WhatsApp send credentials: repo JSON carries literal fallbacks
+              # (same precedent as NEEDLE_TOKEN); a GitHub secret with the same
+              # name overrides the literal when present (Jcode, 2026-11-01).
+              "WHATSAPP_ACCESS_TOKEN": os.environ.get("WHATSAPP_ACCESS_TOKEN"),
+              "WHATSAPP_PHONE_NUMBER_ID": os.environ.get("WHATSAPP_PHONE_NUMBER_ID"),
           }
 
           for k, v in secrets_to_inject.items():

@@ -246,3 +246,22 @@ docs and frontend pushes don't churn ECS.
 ### §8 update 2 — **PROD CONFIRMED 2026-11-01 13:29**
 
 ECS deployment of the hotfix: `COMPLETED`; stability 3/3 → `/health` 200, `/api/v1/dashboard/summary` 200 (`kpis: total_leads 7→8` after a live form test), `/api/v1/tasks` 401 (token enforced), old `/api/v1/v1/*` 404. Live form E2E: `POST /api/v1/leads` with UTM → 201, contact+deal created, dashboard KPI incremented. Site chat verified as client-side only — `/api/v1/chat/message` (session_token) is unused by the SPA.
+
+### §7.3 status addendum (Jcode, 2026-11-01 13:40) — do not undo these
+
+- **Send credentials are now IN the repo task definition** (`.aws/task-definition.json`
+  literals `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID`, same precedent
+  as `NEEDLE_TOKEN`) **and layered in `deploy.yml`** (a GitHub secret with the
+  same name overrides the literal automatically). Reason: a manual ECS task
+  def I registered (`:15`) was silently dropped when CI re-registered from the
+  repo (`:16`/`:17`) and the send client went back to `configured:false`.
+  If you add GitHub secrets later, nothing else needs changing.
+- **Token-holder inventory for the rotation step:** PC-A `edge_config.json`,
+  dev-PC `wa_config.json` and local `Kubotics-Backend/.env` all hold the
+  **same** Meta access token (206 chars, hash-verified identical). After the
+  WABA rotation: update the repo JSON literal (+ GitHub secret if added),
+  update `wa.py`'s `wa_config.json` (IBKR reports still use it), empty
+  `edge_config.json` (retirement `sched_dac894f2`, 2026-11-08).
+- `needle3` on PC-A already sends with `Bearer <NEEDLE_TOKEN>` and
+  `send_url=https://api.kubotics.ch/api/whatsapp/send` (cutover verified with
+  a `wamid` receipt at 13:35).
