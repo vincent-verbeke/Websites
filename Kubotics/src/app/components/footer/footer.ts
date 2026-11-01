@@ -1,15 +1,17 @@
 import { Component, inject, output } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { I18nService } from '../../core/services/i18n';
 import { LegalModalType } from '../legal-modal/legal-modal';
 
 @Component({
   selector: 'app-footer',
   standalone: true,
+  imports: [RouterLink],
   template: `
     <footer>
       <div class="container footer-content">
         <div class="footer-brand">
-          <div class="logo">KUBOTICS</div>
+          <a routerLink="/" class="logo">KUBOTICS</a>
           <p class="mission">Precision Engineered, Interaction-Ready, Stubborn Ingenuity</p>
           <p class="brand-owner">A Brand of KuroLIV GmbH</p>
         </div>
@@ -17,10 +19,11 @@ import { LegalModalType } from '../legal-modal/legal-modal';
         <div class="footer-links">
           <div class="link-group">
             <h4>{{ i18n.lang() === 'de-CH' ? 'Lösungen' : 'Solutions' }}</h4>
-            <a href="#solutions">{{ i18n.t('NAV.SOLUTIONS') }}</a>
-            <a href="#roi-calculator">{{ i18n.t('NAV.ROI') }}</a>
-            <a href="#readiness-assessment">{{ i18n.t('NAV.READINESS') }}</a>
-            <a href="#technology">{{ i18n.t('NAV.TECH') }}</a>
+            <a routerLink="/automation/cnc-machine-tending">CNC Maschinenbeschickung</a>
+            <a routerLink="/automation/invoice-processing">Rechnungsprüfung LLM</a>
+            <a routerLink="/robotics/unitree-h2-test-day">Unitree H2 Testtag</a>
+            <a routerLink="/automation/discovery">Automation Discovery</a>
+            <a routerLink="/" fragment="roi-calculator">{{ i18n.t('NAV.ROI') }}</a>
           </div>
 
           <div class="link-group">

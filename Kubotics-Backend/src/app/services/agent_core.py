@@ -181,7 +181,7 @@ class KuboticsAgentCore:
                 "Would you like to book a direct slot via Vincent's M365 Calendar?"
             )
             quick_replies = ["Book M365 Discovery Slot", "Download H2 Spec Sheet", "Pricing Inquiry"]
-            meeting_link = "https://outlook.office.com/bookwithme/user/vincent@kubotics.ch"
+            meeting_link = "https://bookings.cloud.microsoft/book/KuboticsGet2Know@kuroliv.ch/?ismsaljsauthenabled"
 
         elif "invoice" in lower or "rechnung" in lower or "scan" in lower:
             tool_calls.append({

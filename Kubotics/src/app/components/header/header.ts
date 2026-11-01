@@ -1,23 +1,25 @@
 import { Component, inject } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { I18nService, Lang } from '../../core/services/i18n';
 
 @Component({
   selector: 'app-header',
   standalone: true,
+  imports: [RouterLink],
   template: `
     <header class="glass">
       <div class="container nav-content">
-        <div class="logo">
+        <a routerLink="/" class="logo">
           <img src="/Logo_Cube.svg" alt="Kubotics Logo" class="logo-img">
           <span>KUBOTICS</span>
-        </div>
+        </a>
         <nav>
-          <a href="#solutions">{{ i18n.t('NAV.SOLUTIONS') }}</a>
-          <a href="#roi-calculator">{{ i18n.t('NAV.ROI') }}</a>
-          <a href="#readiness-assessment">{{ i18n.t('NAV.READINESS') }}</a>
-          <a href="#technology">{{ i18n.t('NAV.TECH') }}</a>
-          <a href="#company">{{ i18n.t('NAV.COMPANY') }}</a>
-          <a href="#contact" class="nav-contact-link">{{ i18n.t('NAV.CONTACT') }}</a>
+          <a routerLink="/" fragment="solutions">{{ i18n.t('NAV.SOLUTIONS') }}</a>
+          <a routerLink="/" fragment="roi-calculator">{{ i18n.t('NAV.ROI') }}</a>
+          <a routerLink="/" fragment="readiness-assessment">{{ i18n.t('NAV.READINESS') }}</a>
+          <a routerLink="/" fragment="technology">{{ i18n.t('NAV.TECH') }}</a>
+          <a routerLink="/" fragment="company">{{ i18n.t('NAV.COMPANY') }}</a>
+          <a routerLink="/" fragment="contact" class="nav-contact-link">{{ i18n.t('NAV.CONTACT') }}</a>
         </nav>
         <div class="lang-switch">
           <button (click)="i18n.setLanguage('de-CH')" [class.active]="i18n.lang() === 'de-CH'">DE</button>

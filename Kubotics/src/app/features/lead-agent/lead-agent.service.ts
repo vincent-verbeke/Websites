@@ -1,5 +1,6 @@
 import { Injectable, signal, inject, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
+import { KuboticsApiService } from '../../core/services/kubotics-api.service';
 
 export interface ChatMessage {
   id: string;
@@ -13,6 +14,9 @@ export interface ChatMessage {
     url: string;
     type: 'meeting' | 'external' | 'phone';
   };
+  showBookingForm?: boolean;
+  bookingTopic?: string;
+  isBooked?: boolean;
 }
 
 export interface LeadQualificationData {
@@ -34,13 +38,14 @@ export interface LeadQualificationData {
   gclid?: string;
 }
 
-const BOOKING_URL = 'https://bookings.cloud.microsoft/bookwithme/user/01a588e5abd843b3b10fed3701fd338c@kuroliv.ch/meetingtype/qdRffgQQckmT6Zj8NQZ03Q2?anonymous&ismsaljsauthenabled&ep=mlink';
+export const BOOKING_PAGE_URL = 'https://bookings.cloud.microsoft/book/KuboticsGet2Know@kuroliv.ch/?ismsaljsauthenabled';
 
 @Injectable({
   providedIn: 'root'
 })
 export class LeadAgentService {
   private platformId = inject(PLATFORM_ID);
+  private api = inject(KuboticsApiService);
   
   isOpen = signal<boolean>(false);
   isExpandedModal = signal<boolean>(false);
@@ -100,7 +105,6 @@ export class LeadAgentService {
     this.isOpen.update(v => {
       const next = !v;
       if (next) {
-        // When clicked from the floating bottom-right button, always open in compact corner mode!
         this.isExpandedModal.set(false);
       }
       return next;
@@ -158,37 +162,65 @@ export class LeadAgentService {
   }
 
   /**
-   * 4-Stage Sales Engineer State Machine:
-   * Discovery -> Qualification -> Recommendation -> Conversion & Booking
+   * Adaptive Sales Engineer State Machine:
+   * Recognizes booking requests, captured contacts, process qualifications, and intents.
    */
   private async processSalesEngineerReasoning(input: string): Promise<ChatMessage> {
     const lower = input.toLowerCase();
-    await new Promise(r => setTimeout(r, 650));
+    await new Promise(r => setTimeout(r, 450));
 
-    // 1. Email Capturing & Conversion
+    // Detect direct contact details: Email and/or Phone
     const emailMatch = input.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    if (emailMatch) {
-      const email = emailMatch[0];
-      this.qualification.update(q => ({ ...q, email }));
+    const phoneMatch = input.match(/(\+?[0-9]{2,3}[ -]?[0-9]{2,3}[ -]?[0-9]{3}[ -]?[0-9]{2,4}|07[6-9][ -]?[0-9]{3}[ -]?[0-9]{2}[ -]?[0-9]{2})/);
+
+    if (emailMatch || phoneMatch) {
+      if (emailMatch) this.qualification.update(q => ({ ...q, email: emailMatch[0] }));
+      if (phoneMatch) this.qualification.update(q => ({ ...q, phone: phoneMatch[0].trim() }));
+
       this.currentStage.set('conversion');
       this.syncLeadData();
+
+      const topic = this.qualification().interest || 'Automations-Potenzialanalyse';
+      return {
+        id: 'agent-' + Date.now(),
+        sender: 'agent',
+        stage: 'conversion',
+        text: `Vielen Dank für Ihre Kontaktdaten! Ich habe Ihre Angaben erfasst.\n\nDamit wir Ihren Termin direkt und verbindlich in Vincents Kalender eintragen können, wählen Sie bitte Ihr Wunschdatum:`,
+        timestamp: new Date(),
+        showBookingForm: true,
+        bookingTopic: topic,
+        quickReplies: ['Direkt im Kalender buchen', 'Via WhatsApp abstimmen', 'Später anrufen']
+      };
+    }
+
+    // Direct booking/consultation request intent
+    if (
+      lower.includes('beratung') || 
+      lower.includes('termin') || 
+      lower.includes('vincent') || 
+      lower.includes('call') || 
+      lower.includes('buchen') ||
+      lower.includes('meeting') ||
+      lower.includes('gespräch') ||
+      lower.includes('slot') ||
+      lower.includes('discovery')
+    ) {
+      this.currentStage.set('conversion');
+      const topic = this.qualification().recommendedSolution || this.qualification().interest || 'Discovery Call & Beratung';
 
       return {
         id: 'agent-' + Date.now(),
         sender: 'agent',
         stage: 'conversion',
-        text: `Vielen Dank! Ich habe ${email} vermerkt und die Machbarkeitsdaten für Sie vorbereitet.\n\nMöchten Sie direkt einen 30-minütigen technischen Strategie-Call mit Vincent Verbeke (Founder) im Microsoft 365 Kalender buchen oder bevorzugen Sie eine Abstimmung via WhatsApp?`,
+        text: `Sehr gerne! Für eine direkte Beratung mit Vincent Verbeke (Founder) erfassen wir nachfolgend kurz Ihre Kontaktdaten und Wunschzeit. Der Termin wird via Microsoft Teams direkt in Vincents Outlook-Kalender gebucht:`,
         timestamp: new Date(),
-        actionLink: {
-          label: 'M365 Discovery Slot buchen (Teams)',
-          url: BOOKING_URL,
-          type: 'meeting'
-        },
-        quickReplies: ['Slot im Kalender buchen', 'Via WhatsApp chatten (+41 78 220 68 96)', 'H2 Testtag fixieren']
+        showBookingForm: true,
+        bookingTopic: topic,
+        quickReplies: ['Via WhatsApp chatten (+41 78 220 68 96)', 'Frage zu Robotern stellen', 'Zurück']
       };
     }
 
-    // 2. Humanoid Robotics / Unitree H2 Discovery & Feasibility
+    // Humanoid Robotics / Unitree H2 Discovery & Feasibility
     if (lower.includes('h2') || lower.includes('humanoid') || lower.includes('testtag') || lower.includes('unitree')) {
       this.qualification.update(q => ({ 
         ...q, 
@@ -202,18 +234,13 @@ export class LeadAgentService {
         id: 'agent-' + Date.now(),
         sender: 'agent',
         stage: 'recommendation',
-        text: 'Empfehlung Kubotics Sales Engineering: Der Unitree H2 (31 Freiheitsgrade, 360Nm Drehmoment) eignet sich ideal für variable, menschliche Arbeitsumgebungen und F&E-Automatisierung.\n\nDer effizienteste nächste Schritt: Unser begleiteter Consulting- & Testtag in der Schweiz. Wir testen Ihren realen Prozess hands-on.\n\nFür welches Unternehmen prüfen Sie den Einsatz und wie erreichen wir Sie?',
+        text: 'Empfehlung Kubotics Sales Engineering: Der Unitree H2 (31 Freiheitsgrade, 360Nm Drehmoment) eignet sich ideal für variable menschliche Arbeitsumgebungen und F&E-Automatisierung.\n\nDer nächste konkrete Schritt: Unser begleiteter Consulting- & Testtag in der Schweiz. Wir testen Ihren realen Prozess hands-on.\n\nMöchten Sie einen Termin vereinbaren oder weitere Spezifikationen prüfen?',
         timestamp: new Date(),
-        actionLink: {
-          label: 'M365 Beratungstermin reservieren',
-          url: BOOKING_URL,
-          type: 'meeting'
-        },
-        quickReplies: ['E-Mail angeben', 'Preise / Turnkey Konditionen', 'WhatsApp Chat starten']
+        quickReplies: ['Testtag-Termin buchen', 'Preise & Turnkey Konditionen', 'WhatsApp Chat starten']
       };
     }
 
-    // 3. Machine Tending / Factory Robot Arms & CNC
+    // Machine Tending / Factory Robot Arms & CNC
     if (lower.includes('cnc') || lower.includes('beschickung') || lower.includes('arm') || lower.includes('cobot') || lower.includes('tending') || lower.includes('fabrik')) {
       this.qualification.update(q => ({ 
         ...q, 
@@ -227,14 +254,14 @@ export class LeadAgentService {
         id: 'agent-' + Date.now(),
         sender: 'agent',
         stage: 'recommendation',
-        text: 'Empfehlung Kubotics Sales Engineering: Für hochpräzise Maschinenbeschickung oder Werkstück-Handling empfehlen wir eine schlüsselfertige 6-Achs-Roboterarm- bzw. Cobot-Zelle.\n\nDamit entkoppeln Sie Ihre Maschinenlaufzeiten von personellen Schichten und erreichen typischerweise einen ROI innerhalb von 3 bis 6 Monaten.\n\nWie viele Zyklen oder Schichten fahren Sie aktuell pro Tag?',
+        text: 'Empfehlung Kubotics Sales Engineering: Für hochpräzise Maschinenbeschickung empfehlen wir eine schlüsselfertige 6-Achs-Roboterarm- oder Cobot-Zelle.\n\nDamit entkoppeln Sie Ihre Maschinenlaufzeiten von personellen Schichten und erreichen typischerweise einen ROI innerhalb von 3 bis 6 Monaten.\n\nWie viele Zyklen oder Schichten fahren Sie aktuell pro Tag?',
         timestamp: new Date(),
-        quickReplies: ['1-2 Schichten', '3-Schicht-Betrieb (24/7)', 'Direkten Termin buchen']
+        quickReplies: ['1-2 Schichten', '3-Schicht-Betrieb (24/7)', 'Beratungstermin mit Vincent']
       };
     }
 
-    // 4. Multimodal LLM Invoice & Document Processing
-    if (lower.includes('rechnung') || lower.includes('invoice') || lower.includes('beleg') || lower.includes('ocr') || lower.includes('scan')) {
+    // Multimodal LLM Invoice & Document Processing
+    if (lower.includes('rechnung') || lower.includes('invoice') || lower.includes('beleg') || lower.includes('ocr') || lower.includes('scan') || lower.includes('dokument')) {
       this.qualification.update(q => ({ 
         ...q, 
         interest: 'IT Automation',
@@ -247,47 +274,106 @@ export class LeadAgentService {
         id: 'agent-' + Date.now(),
         sender: 'agent',
         stage: 'recommendation',
-        text: 'Empfehlung Kubotics Sales Engineering: Unsere multimodale LLM-Extraktionspipeline liest eingehende und ausgehende Belege selbst aus minderwertigen Scans, Faxen oder zerknitterten Papierdokumenten fehlerfrei (>98.5%) direkt in Ihr ERP.\n\nBei über 400 Belegen/Monat sparen Sie jährlich über CHF 40\'000.- bei weniger als 3 Monaten Amortisationsdauer.\n\nDürfen wir Ihnen eine Test-Extraktion anhand Ihrer Beispielbelege demonstrieren?',
+        text: 'Empfehlung Kubotics Sales Engineering: Unsere multimodale LLM-Extraktionspipeline liest eingehende Belege selbst aus minderwertigen Scans oder zerknitterten Dokumenten fehlerfrei (>98.5%) direkt in Ihr ERP.\n\nBei über 400 Belegen/Monat sparen Sie jährlich über CHF 40\'000.- bei weniger als 3 Monaten Amortisation.\n\nMöchten Sie eine Test-Extraktion mit Ihren Musterbelegen durchführen oder einen Discovery Call vereinbaren?',
         timestamp: new Date(),
-        actionLink: {
-          label: 'Discovery Call mit Vincent Verbeke buchen',
-          url: BOOKING_URL,
-          type: 'meeting'
-        },
-        quickReplies: ['Testbelege einreichen', 'ERP Schnittstellen (SAP, Odoo)', 'Rückruf anfordern']
+        quickReplies: ['Discovery Call buchen', 'ERP Schnittstellen (SAP, Odoo)', 'Testbelege einreichen']
       };
     }
 
-    // 5. IT Resource Planning & ERP Workflow
-    if (lower.includes('planung') || lower.includes('erp') || lower.includes('ressource') || lower.includes('workflow') || lower.includes('schicht')) {
-      this.qualification.update(q => ({ 
-        ...q, 
-        interest: 'IT Automation',
-        processProblem: input,
-        recommendedSolution: 'Autonome ERP- & Personaleinsatzplanungs-Automation'
-      }));
+    // ERP / Quellsystem Qualification Handlers
+    if (lower.includes('sap') || lower.includes('dynamics') || lower.includes('odoo') || lower.includes('schnittstelle') || lower.includes('eigenentwicklung')) {
+      this.qualification.update(q => ({ ...q, notes: (q.notes ? q.notes + '; ' : '') + `Quellsystem: ${input}` }));
       this.currentStage.set('recommendation');
 
       return {
         id: 'agent-' + Date.now(),
         sender: 'agent',
         stage: 'recommendation',
-        text: 'Empfehlung Kubotics Sales Engineering: Wir verbinden operative IT-Systeme (ERP/MES) mit intelligenter Einsatzsteuerung, sodass Planungszeiten um bis zu 80% reduziert werden.\n\nWelches Quellsystem (z.B. SAP, Microsoft Dynamics, Odoo oder Eigenentwicklung) ist bei Ihnen im Einsatz?',
+        text: `Ausgezeichnet. Wir integrieren standardmässig via REST/GraphQL API, SFTP oder direkten Datenbank-Connectoren in Ihr ${input}-System.\n\nGerne prüfen wir die Schnittstelle in einem kurzen 30-minütigen technischen Strategiegespräch mit Vincent Verbeke:`,
         timestamp: new Date(),
-        quickReplies: ['SAP / Microsoft Dynamics', 'Odoo / Web-ERP', 'Individuelle Schnittstelle']
+        quickReplies: ['Termin buchen', 'WhatsApp Direktkontakt', 'Weitere Fragen stellen']
       };
     }
 
-    // 6. Discovery Stage default
+    // Shift / Volume / Bottleneck Qualification Handlers
+    if (lower.includes('schicht') || lower.includes('fehler') || lower.includes('personal') || lower.includes('mangel') || lower.includes('monat')) {
+      this.qualification.update(q => ({ ...q, processProblem: (q.processProblem ? q.processProblem + '; ' : '') + input }));
+      this.currentStage.set('recommendation');
+
+      return {
+        id: 'agent-' + Date.now(),
+        sender: 'agent',
+        stage: 'recommendation',
+        text: 'Genau hier greift unsere Schweizer Automationsmethodik: Wir entlasten Ihre Fachkräfte von repetitiver Taktarbeit und steigern die Produktivität planbar.\n\nSollen wir die Machbarkeit für Ihren Betrieb in einem unverbindlichen Beratungsgespräch prüfen?',
+        timestamp: new Date(),
+        quickReplies: ['Beratungstermin mit Vincent', 'Machbarkeitsbericht anfordern', 'WhatsApp starten']
+      };
+    }
+
+    // Adaptive General Discovery (only when no specific intent detected yet)
     this.currentStage.set('discovery');
     return {
       id: 'agent-' + Date.now(),
       sender: 'agent',
       stage: 'discovery',
-      text: 'Verstanden. Um die Machbarkeit und den ROI für Sie fundiert einzuschätzen: Welches manuelle Volumen oder welche Taktzeiten bindet dieser Prozess derzeit in Ihrem Betrieb?',
+      text: 'Verstanden. Um die Machbarkeit und den passenden Lösungsansatz für Sie fundiert einzuschätzen:\n\nWelche Kernherausforderung steht bei Ihnen im Vordergrund?',
       timestamp: new Date(),
-      quickReplies: ['Hohe manuelle Fehlerquote', 'Fachkräftemangel in der Schicht', 'Direkte Beratung mit Vincent']
+      quickReplies: ['CNC-Maschinenbeschickung', 'Unitree H2 Humanoid Testtag', 'Rechnungsverarbeitung LLM', 'Direkte Beratung mit Vincent']
     };
+  }
+
+  async executeInChatBooking(data: { name: string; email: string; phone: string; company?: string; date: string; time: string; topic?: string }): Promise<{ success: boolean; message: string; joinUrl?: string }> {
+    try {
+      const startDateTime = new Date(`${data.date}T${data.time}:00`);
+      const endDateTime = new Date(startDateTime.getTime() + 30 * 60000); // 30 mins
+
+      // 1. Ingest Lead into PostgreSQL RDS
+      await this.api.submitLead({
+        first_name: data.name.split(' ')[0],
+        last_name: data.name.split(' ').slice(1).join(' ') || undefined,
+        email: data.email,
+        phone: data.phone,
+        company_name: data.company,
+        primary_interest: data.topic || 'Discovery Call',
+        project_description: `Booked via in-chat scheduler for ${data.date} ${data.time}`,
+        utm_source: this.qualification().utmSource,
+        utm_medium: this.qualification().utmMedium,
+        utm_campaign: this.qualification().utmCampaign,
+        gclid: this.qualification().gclid
+      }).toPromise();
+
+      // 2. Schedule M365 Teams Meeting on Vincent's Outlook Calendar
+      const meetingRes = await this.api.scheduleMeeting({
+        contact_name: data.name,
+        contact_email: data.email,
+        company_name: data.company,
+        topic: data.topic || 'Kubotics Automation Discovery',
+        start_time: startDateTime.toISOString(),
+        end_time: endDateTime.toISOString(),
+        time_zone: 'Europe/Zurich'
+      }).toPromise();
+
+      // Update in-memory qualification
+      this.qualification.update(q => ({
+        ...q,
+        fullName: data.name,
+        email: data.email,
+        phone: data.phone,
+        company: data.company
+      }));
+
+      return {
+        success: true,
+        message: 'Ihr Termin wurde erfolgreich in Vincents M365 Kalender gebucht. Die Einladung mit Microsoft Teams Link wurde an Ihre E-Mail gesendet.',
+        joinUrl: meetingRes?.join_url
+      };
+    } catch (err: any) {
+      console.error('[LeadAgentService] Booking error:', err);
+      return {
+        success: false,
+        message: err?.error?.detail || 'Die Terminbuchung konnte nicht abgeschlossen werden. Bitte kontaktieren Sie uns direkt via WhatsApp (+41 78 220 68 96) oder E-Mail (sales@kubotics.ch).'
+      };
+    }
   }
 
   private saveSession() {
@@ -298,14 +384,25 @@ export class LeadAgentService {
 
   async syncLeadData() {
     const data = this.qualification();
-    const transcript = this.messages().map(m => `[${m.sender.toUpperCase()}]: ${m.text}`).join('\n');
+    if (!data.email && !data.phone) return;
 
-    const payload = {
-      ...data,
-      transcript,
-      timestamp: new Date().toISOString()
-    };
-
-    console.info('[LeadAgentService] Lead qualified and synchronized with Kubotics PostgreSQL DB & M365 Calendar workflow:', payload);
+    try {
+      await this.api.submitLead({
+        first_name: data.fullName?.split(' ')[0] || undefined,
+        last_name: data.fullName?.split(' ').slice(1).join(' ') || undefined,
+        email: data.email || 'lead-capture@kubotics.ch',
+        phone: data.phone,
+        company_name: data.company,
+        primary_interest: data.interest || 'Web Chat Inquiry',
+        project_description: data.processProblem || 'Chat qualified prospect',
+        utm_source: data.utmSource,
+        utm_medium: data.utmMedium,
+        utm_campaign: data.utmCampaign,
+        gclid: data.gclid
+      }).toPromise();
+      console.info('[LeadAgentService] Synchronized lead to PostgreSQL RDS crm schema.');
+    } catch (e) {
+      console.warn('[LeadAgentService] Non-critical sync warning:', e);
+    }
   }
 }

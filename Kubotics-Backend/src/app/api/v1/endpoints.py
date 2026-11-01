@@ -38,7 +38,7 @@ async def chat_interaction(payload: ChatMessagePayload, db: AsyncSession = Depen
             "Would you like to schedule an introductory slot with Vincent Verbeke or select a date via our M365 calendar?"
         )
         quick_replies = ["Book M365 Calendar", "Technical Specs", "Pricing"]
-        meeting_link = "https://outlook.office.com/bookwithme/user/vincent@kubotics.ch"
+        meeting_link = "https://bookings.cloud.microsoft/book/KuboticsGet2Know@kuroliv.ch/?ismsaljsauthenabled"
         qualified = True
     elif "invoice" in user_msg or "rechnung" in user_msg:
         reply = (
