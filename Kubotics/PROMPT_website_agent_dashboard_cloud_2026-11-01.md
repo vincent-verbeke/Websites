@@ -362,3 +362,19 @@ returned `done rc=0` with the gate table (`IWDC … BUY 92.8`), 15/15 worker
 tests green. Suggested schedule payload for the daily run:
 `{"type": "ibkr_run", "payload": {"mode": "run"}, "cron": "55 8 * * 1-5",
 "timezone": "Europe/Zurich"}` (times per §9.6; worker claims as `pc-a-needle`).
+
+**§9 interface gap found (Jcode, 14:28): `GET /api/v1/tasks` is the ONLY
+method — there is no task-creation endpoint.** Verified against live OpenAPI:
+no `POST /tasks`, no `POST /events`. Consequences:
+1. Ad-hoc producers (marketing evaluation triggers, follow-ups, manual runs)
+   have no way to enqueue work; only your internal code can insert
+   `ScheduledTask` rows today.
+2. Jcode's worker claim/PATCH cycle is validated against a contract stub +
+   prod **reads** (count/idle) but cannot be proven end-to-end until one real
+   task exists — my worker is ready the moment a row appears.
+3. For §9.6 please include a creation path with the scheduler: either
+   `POST /api/v1/tasks {type, payload, correlation_id?, priority?, run_at?}`
+   (idempotent via `event_id`, same auth as claim) **or** document that
+   schedules are the only producer and ad-hoc creation is out of scope.
+Until then my a23 (IBKR-through-needle) waits on §9.6 + this, and the Jcode
+schedule remains the money path.
