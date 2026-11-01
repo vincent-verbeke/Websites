@@ -40,14 +40,19 @@ export class AzureAuthService {
       await this.msalInstance.initialize();
 
       // Only attempt to process redirect promise if the URL hash/query contains MSAL response parameters (code, error, state)
+      // and NOT an internal popup response
       const currentUrl = window.location.href;
-      if (currentUrl.includes('code=') || currentUrl.includes('error=') || currentUrl.includes('state=')) {
+      const isRedirectResponse = (currentUrl.includes('code=') || currentUrl.includes('error=')) && currentUrl.includes('state=');
+      
+      if (isRedirectResponse) {
         try {
           const response = await this.msalInstance.handleRedirectPromise();
           if (response && response.account) {
             this.msalInstance.setActiveAccount(response.account);
             this.currentAccount.set(response.account);
             this.isAuthenticated.set(true);
+            // Clean up hash/query parameters from URL bar
+            window.history.replaceState({}, document.title, window.location.pathname);
           }
         } catch (redirectErr) {
           console.warn('[AzureAuth] Redirect promise handled with warning:', redirectErr);
@@ -73,18 +78,23 @@ export class AzureAuthService {
     this.isLoading.set(true);
     try {
       const response = await this.msalInstance.loginPopup({
-        scopes: ['User.Read', 'openid', 'profile', 'email']
+        scopes: ['User.Read', 'openid', 'profile', 'email'],
+        redirectUri: window.location.origin + '/dashboard'
       });
       if (response && response.account) {
         this.msalInstance.setActiveAccount(response.account);
         this.currentAccount.set(response.account);
         this.isAuthenticated.set(true);
       }
-    } catch (err) {
-      console.warn('[AzureAuth] Popup login failed, attempting redirect login:', err);
-      await this.msalInstance.loginRedirect({
-        scopes: ['User.Read', 'openid', 'profile', 'email']
-      });
+    } catch (err: any) {
+      console.warn('[AzureAuth] Popup login error:', err);
+      // Only fallback to redirect if popup was explicitly blocked by browser
+      if (err.errorCode === 'popup_window_error' || err.message?.includes('popup')) {
+        await this.msalInstance.loginRedirect({
+          scopes: ['User.Read', 'openid', 'profile', 'email'],
+          redirectUri: window.location.origin + '/dashboard'
+        });
+      }
     } finally {
       this.isLoading.set(false);
     }
