@@ -98,6 +98,11 @@ class Settings(BaseSettings):
         "JCTUSDT,MUBARAKUSDT,PEOPLEUSDT,QUSDT,SFPUSDT,UNIUSDC"
     )
 
+    # --- B5 spend caps + approval (docs §19; §6 hard boundary) ---
+    SPEND_TOTAL_CAP_CHF: float = 100.0        # per calendar month, all channels
+    SPEND_SEARCH_CAP_CHF: float = 70.0        # google search sub-cap
+    SPEND_APPROVAL_PHRASE: str = "APPROVE-SPEND"  # typed by Vincent in the UI
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -266,3 +266,55 @@ last 2 days, adherence incl. the +5000 CHF deposit status) and WhatsApps a
 reported through the daemon's existing "session done" reply. Guards: flag,
 48h marker cadence, hour gate, server-side event_id dedupe; tests 43/43.
 First run: 2026-11-02 ~20:00; Jcode self-check scheduled 20:05.
+
+## 16. B2 — lead attribution persisted (Vincent 2026-11-02 "do it yourself")
+
+- **Contact columns added** (idempotent startup migration in `main.py`, since
+  `create_all` never ALTERs and alembic is still pending per prompt §8):
+  `utm_source, utm_medium, utm_campaign, utm_content, utm_term, gclid,
+  referrer_url, first_touch_at, last_touch_at`.
+- `InboundLeadCreate` gained optional `utm_content`/`utm_term`; **every form
+  lead** now runs `apply_attribution()` (last-touch semantics: provided
+  values overwrite; first_touch stamped once; last_touch on every touch).
+- Unit-tested: `tests/test_marketing_guard.py` (attribution + touches).
+- **Note:** existing leads keep NULL attribution (only new leads are stamped);
+  events-level UTM (already working) remains the historical source.
+
+## 17. B3 — consent & suppression
+
+- **Contact columns:** `consent_status (unknown|lead_form|granted|denied,
+  default unknown), consent_source, consent_at, suppressed, suppression_reason`
+  (+ same startup migration).
+- Automatic sources: website form submission → `lead_form/website_form`;
+  inbound WhatsApp → `granted/<channel>_inbound` (the contact initiated the
+  conversation). Manual denial/suppression is set by the operator/dashboard
+  and must be respected by every future campaign sender (filter
+  `suppressed=false AND consent_status IN ('granted','lead_form')`).
+
+## 18. B4 — campaign metrics ingestion (needle's evaluation source)
+
+- Table `crm.campaign_metrics` (unique key campaign+channel+day) with
+  spend/impressions/clicks/leads/conversions + `extra` JSON.
+- `POST /api/v1/campaigns/metrics` — Bearer needle token, **idempotent
+  upsert**; `GET /api/v1/campaigns/metrics?date_from&date_to&campaign` —
+  rows + totals for the needle daily evaluation.
+- Validation in `normalize_metric()` (required campaign/channel/day,
+  parseable date, non-negative numbers) — unit-tested.
+
+## 19. B5 — spend caps + Vincent approval gate (§6 hard boundary)
+
+- Settings: `SPEND_TOTAL_CAP_CHF=100`, `SPEND_SEARCH_CAP_CHF=70`,
+  `SPEND_APPROVAL_PHRASE` (typed in the UI; never shipped in a bundle).
+- Tables: `spend_approvals` (pending → approved/rejected + decided_by/at),
+  `spend_records` (amount/channel/purpose/approval_id/source).
+- Flow (enforced in `spend_decision()` + `POST /spend/records`):
+  1. `POST /spend/approvals` → always **pending**
+  2. Vincent decides: `POST /spend/approvals/{id}/decision`
+     `{decision, phrase}` — **403 unless the phrase matches** (bearer token
+     AND phrase: machine auth + your explicit go)
+  3. `POST /spend/records` → **403 unless** an approved approval covers it
+     AND the amount fits the month-total cap (and the Google/Search sub-cap
+     for google-ish channels). GET `/spend/status` = caps, used, remaining,
+     approvals, records (dashboard feed).
+- Tests: approval-first, caps (total + search sub-cap), zero/negative,
+  metric normalization, month window — full suite **34 passed**.

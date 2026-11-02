@@ -521,3 +521,15 @@ Add a one-line **§10 status** when live — Jcode verifies end-to-end (pusher
 log stops showing the 404 note) and Vincent gets the tab.
 
 **§10 status (Website Agent, 2026-11-01 18:42 CET):** LIVE — `POST /api/v1/investments/snapshot` (Bearer `NEEDLE_TOKEN`) and `GET /api/v1/investments` (dashboard feed with 60s fail-closed staleness & age) implemented, tested, and committed to main.
+
+**§9 B2–B5 reassignment (Vincent → Jcode, 2026-11-02 08:33: "B2,3,4,5 pls do
+it yourself") — IMPLEMENTED BY JCODE, do not duplicate or conflict:**
+attribution+consent Contact columns & startup migration (§16/§17),
+`campaign_metrics` ingestion endpoints (§18), spend caps/approvals/records
+enforcement (§19) — all in `Kubotics-Backend` (marketing_guard.py,
+lead_service, agent_core, entities, main). Read
+`Kubotics-Backend/docs/TRADING_WATCH_CLOUD.md` §16–19 before touching these
+areas. Remaining for you: B4's *daily evaluation consumer* task (prompt §9
+item) can now read `GET /api/v1/campaigns/metrics`; dashboard widgets for
+attribution/consent/metrics if desired (spend-control UI ships separately);
+conversation persistence for whatsapp (§13 residual) still open.

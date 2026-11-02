@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.entities import (
@@ -119,6 +119,11 @@ class KuboticsAgentCore:
             first_name=envelope.external_username or f"User ({envelope.channel})",
             lifecycle_stage="lead",
             lead_score=15,
+            # B3 (docs §17): the contact initiated the conversation ->
+            # replying is consented; marketing stays separable via source.
+            consent_status=("granted" if envelope.channel == "whatsapp" else "unknown"),
+            consent_source=(f"{envelope.channel}_inbound" if envelope.channel == "whatsapp" else None),
+            consent_at=(datetime.now(UTC) if envelope.channel == "whatsapp" else None),
         )
         db.add(contact)
         await db.flush()

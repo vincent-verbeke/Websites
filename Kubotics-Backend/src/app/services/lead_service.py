@@ -1,7 +1,17 @@
 import logging
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import UTC, datetime
+
 from sqlalchemy import select
-from app.models.entities import Organization, Contact, OrganizationContact, ContactMailPhone, Address, Opportunity
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.entities import (
+    Address,
+    Contact,
+    ContactMailPhone,
+    Opportunity,
+    Organization,
+    OrganizationContact,
+)
 from app.schemas.dto import InboundLeadCreate, LeadResponse
 
 logger = logging.getLogger(__name__)
@@ -41,6 +51,9 @@ class LeadProcessingService:
         )
         db.add(contact)
         await db.flush()
+        # B2+B3 (docs §16/§17): persist UTM/gclid/referrer + form consent
+        apply_attribution(contact, payload)
+        apply_lead_form_consent(contact)
 
         # Link Contact to Organization if organization exists
         if organization:
@@ -112,3 +125,36 @@ class LeadProcessingService:
 
 
 lead_service = LeadProcessingService()
+
+
+
+# ---------------------------------------------------------------------------
+# B2/B3 helpers (Vincent 2026-11-02) — pure, unit-tested in
+# tests/test_marketing_guard.py. Docs §16/§17.
+# ---------------------------------------------------------------------------
+def apply_attribution(contact, payload, now=None) -> None:
+    """Copy marketing attribution from the lead payload onto the Contact.
+
+    Last-touch semantics: any provided non-null attribution value overwrites;
+    first_touch_at is stamped once, last_touch_at on every touch.
+    """
+    now = now or datetime.now(UTC)
+    for field in ("utm_source", "utm_medium", "utm_campaign", "utm_content",
+                  "utm_term", "gclid", "referrer_url"):
+        value = getattr(payload, field, None)
+        if value:
+            setattr(contact, field, value)
+    if any(getattr(payload, f, None) for f in
+           ("utm_source", "utm_medium", "utm_campaign", "gclid", "referrer_url")):
+        if getattr(contact, "first_touch_at", None) is None:
+            contact.first_touch_at = now
+        contact.last_touch_at = now
+
+
+def apply_lead_form_consent(contact, now=None) -> None:
+    """Website form submission = marketing interest record (docs §17)."""
+    now = now or datetime.now(UTC)
+    if getattr(contact, "consent_status", "unknown") in (None, "unknown"):
+        contact.consent_status = "lead_form"
+        contact.consent_source = "website_form"
+        contact.consent_at = now

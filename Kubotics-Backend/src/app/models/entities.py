@@ -1,20 +1,22 @@
 import uuid
 from datetime import datetime
+
 from sqlalchemy import (
-    Column,
-    String,
+    JSON,
     Boolean,
-    Integer,
-    Numeric,
-    Text,
+    CheckConstraint,
+    Column,
     DateTime,
     ForeignKey,
-    JSON,
-    CheckConstraint,
+    Integer,
+    Numeric,
+    String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+
 from app.db.session import Base
 
 
@@ -54,6 +56,26 @@ class Contact(Base):
     lifecycle_stage = Column(String(50), default="lead", nullable=False)
     lead_score = Column(Integer, default=10, nullable=False)
     ai_summary = Column(Text, nullable=True)
+
+    # --- B2 marketing attribution (Vincent 2026-11-02, docs §16) -----------
+    utm_source = Column(String(64), nullable=True)
+    utm_medium = Column(String(64), nullable=True)
+    utm_campaign = Column(String(128), nullable=True)
+    utm_content = Column(String(128), nullable=True)
+    utm_term = Column(String(128), nullable=True)
+    gclid = Column(String(256), nullable=True)
+    referrer_url = Column(Text, nullable=True)
+    first_touch_at = Column(DateTime(timezone=True), nullable=True)
+    last_touch_at = Column(DateTime(timezone=True), nullable=True)
+
+    # --- B3 consent / suppression (docs §17) -------------------------------
+    consent_status = Column(String(32), default="unknown", nullable=False)
+    #  unknown | lead_form | granted | denied
+    consent_source = Column(String(64), nullable=True)
+    consent_at = Column(DateTime(timezone=True), nullable=True)
+    suppressed = Column(Boolean, default=False, nullable=False)
+    suppression_reason = Column(String(255), nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -324,3 +346,61 @@ class Project(Base):
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     organization = relationship("Organization", back_populates="projects")
+
+
+
+# -----------------------------------------------------------------------------
+# GTM BLOCKERS B4/B5 (Vincent 2026-11-02 "pls do it yourself", docs §18/§19)
+# -----------------------------------------------------------------------------
+class CampaignMetric(Base):
+    """B4: campaign metrics ingestion (needle/agent daily evaluation source)."""
+
+    __tablename__ = "campaign_metrics"
+    __table_args__ = (
+        UniqueConstraint("campaign", "channel", "day", name="uq_metric_key"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    campaign = Column(String(128), nullable=False, index=True)
+    channel = Column(String(32), nullable=False)   # google|meta|linkedin|organic|...
+    day = Column(DateTime(timezone=True), nullable=False)
+    spend_chf = Column(Numeric(12, 2), default=0, nullable=False)
+    impressions = Column(Integer, default=0, nullable=False)
+    clicks = Column(Integer, default=0, nullable=False)
+    leads = Column(Integer, default=0, nullable=False)
+    conversions = Column(Integer, default=0, nullable=False)
+    extra = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow,
+                        onupdate=datetime.utcnow, nullable=False)
+
+
+class SpendApproval(Base):
+    """B5: Vincent's explicit go for ANY campaign spend (approval gate)."""
+
+    __tablename__ = "spend_approvals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    amount_chf = Column(Numeric(12, 2), nullable=False)
+    channel = Column(String(32), nullable=False)   # google|meta|linkedin|...
+    purpose = Column(Text, nullable=True)
+    status = Column(String(16), default="pending", nullable=False, index=True)
+    # pending | approved | rejected
+    decided_by = Column(String(64), nullable=True)
+    decided_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+
+class SpendRecord(Base):
+    """B5: actual/committed spend ledger (month-window cap enforcement)."""
+
+    __tablename__ = "spend_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    amount_chf = Column(Numeric(12, 2), nullable=False)
+    channel = Column(String(32), nullable=False)
+    purpose = Column(Text, nullable=True)
+    approval_id = Column(UUID(as_uuid=True), ForeignKey("spend_approvals.id"),
+                         nullable=True)
+    source = Column(String(32), default="manual", nullable=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
