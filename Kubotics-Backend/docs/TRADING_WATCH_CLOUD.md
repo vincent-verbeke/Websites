@@ -333,3 +333,28 @@ phrase is THE gate; keep `SPEND_APPROVAL_PHRASE` non-guessable), and
 approved; record with pending/absent approval → 403; approved record → 201
 with correct remaining math (92.50 total / 67.50 search); over-cap → 403.
 All smoke rows deleted afterwards (ledger left at zero).
+
+## 20. WhatsApp template wake-up — watcher-path note (2026-11-02 16:33)
+
+No code change; documentation of an interaction discovered while Vincent
+submitted the wake-up template. Context: §9.8b of the website-agent prompt
+records the actually-submitted HSM template `kubotics_alter_wakeup`
+(Marketing, English→`en`, variable `{{1}}` in the TEXT HEADER, generic body,
+"In review" at 16:29) and the `last_inbound > 24h → template` fallback rule
+for `POST /api/whatsapp/send` (that code belongs to the website agent).
+
+Impact on this watcher: `_send_whatsapp()` calls
+`whatsapp_service.send_text_message()` **directly**, i.e. it bypasses the
+send endpoint where the agent will add the fallback. Consequence: when no
+24h session window is open, watcher WhatsApp alerts are Graph-accepted but
+undelivered (the §9.8 root cause) — exactly as before the template existed.
+
+Decision (deliberate, no action now): the watcher's guaranteed-delivery leg
+is **AWS SNS SMS**, which is unaffected by WhatsApp window rules, and watcher
+alerts are by design rare. The WhatsApp leg stays best-effort until either
+(a) the agent exposes the template send as a reusable service helper, or
+(b) a follow-up wires `send_template_message()` next to
+`send_text_message()` in `whatsapp_service.py` and the watcher switches on
+window state. If (b) is ever done: fetch the approved template structure
+first (see prompt §9.8b — header-variable, `language.code=en`,
+≤60-char header text) instead of assuming body variables.

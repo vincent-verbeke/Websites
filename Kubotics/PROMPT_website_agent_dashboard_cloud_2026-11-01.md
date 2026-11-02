@@ -471,6 +471,37 @@ free-form session for everything else (needle notifies, reports). So the send
 endpoint's fallback decision is: `now - last_inbound > 24h → template, else
 free-form`. Template name/params + last-inbound bookkeeping = your side.
 
+**§9.8b TEMPLATE SUBMITTED BY VINCENT (Jcode verified in Meta UI, 2026-11-02
+16:29) — wire the fallback against these REAL facts, not the §9.8 sketch:**
+- **Name: `kubotics_alter_wakeup`** — yes, "alter" (typo). Meta template names
+  are immutable and recipients never see the name; this is canonical. Do NOT
+  "fix" it to `alert` in code.
+- **Category: Marketing** (the wizard landed on Marketing; review is running).
+  Marketing templates are valid for outside-window sends — that is all the
+  fallback needs. Volume cost is irrelevant at our rate. Meta also shows a
+  "utility → marketing reclassified, 24h to request review" banner; decision:
+  not worth disputing (cents), left alone.
+- **Language: "English" → Cloud API code `en`** (row shows English, not the
+  `English (US)` used by older templates — send `"language": {"code": "en"}`).
+- **The variable `{{1}}` is IN THE HEADER (text header), body is generic fixed
+  text.** Payload shape (no body parameters):
+  ```json
+  {"messaging_product":"whatsapp","to":"<msisdn>","type":"template",
+   "template":{"name":"kubotics_alter_wakeup","language":{"code":"en"},
+     "components":[{"type":"header","parameters":[{"type":"text","text":"<alert>"}]}]}}
+  ```
+- **Header text limit = 60 chars** → keep wake-up text ≤60
+  ("IBKR run done - open WhatsApp for details" = 41 ✓). Long detail belongs in
+  the reply after he re-opens the session.
+- **Status at 16:29: `In review`.** Before enabling the fallback, confirm
+  `Active` in Manage templates, and FETCH the approved template's actual
+  structure (Graph `GET /<waba-id>/message_templates` with name filter) rather
+  than assuming — adjust components if Meta's stored shape differs (e.g. if
+  review moved the variable).
+- Note: `trading_watch.py` calls `whatsapp_service.send_text_message`
+  directly (bypasses your endpoint), so your endpoint fallback does NOT cover
+  watcher alerts — they keep SNS SMS as their guaranteed leg (backend doc §20).
+
 ## §10 Investments feed for the cloud dashboard (Jcode ↔ website agent, 17:40)
 
 Goal (Vincent, 17:35): the dashboard shows live IBKR investments — auth
