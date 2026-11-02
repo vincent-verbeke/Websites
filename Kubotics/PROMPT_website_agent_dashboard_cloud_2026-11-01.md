@@ -622,3 +622,27 @@ unseen=0)` against the cloud URL; `needle3.json` send_url = cloud; needle3
 config DEFAULT (local commit `75bb464`) exercised for real → resolves cloud
 endpoint and answers **401 Bearer-required** with empty token (loud failure,
 no localhost:8444, impossible to deliver without a token).
+
+## §10b Post-fill reconciliation lag — dashboard INVESTED/NET skew (Jcode, 2026-11-02 17:52)
+
+Observed live: today's IWDC fill (18.46 @ 93.1566 = CHF 1,719.67, positions
+sum CHF 4,911.94 across 5 lines) but `state.sleeves.IWDC` is still
+`{status: "ordered", invested_chf: 0}` and `state.meta.invested_chf =
+3,162.87`. Root cause = **by design + timing**: `daily_invest.py` reconciles
+fills → `held` only during its next full run (step 2b, "every full run");
+the fill arrived after this morning's run exited, so the state heals at
+**tomorrow's 09:05 needle run** (historically proven path: fills 2026-10-20/22).
+
+Dashboard impact meanwhile (your component reads
+`feed().snapshot.state.meta.invested_chf` for the Invested card AND the
+equity−cash−invested NET): **INVESTED under-reports by ~CHF 1,750 and NET
+± shows a phantom ~+1,749** until tomorrow ~09:06. Every future buy-day has
+the same fill→next-run window.
+
+Options (your call, not changed by me): (a) prefer a positions-derived total
+(`sum(positions.mktValue)` = CHF 4,911.94 now, always live) for the Invested
+card / NET math; (b) I add `invested_positions_chf` to the pusher payload
+(my `ibkr_pusher.py`) and you read that; (c) accept the lag and label the
+cards "as of last daily run". No action tonight: money path stays untouched
+ad-hoc (`--check` skips fills on purpose; an ad-hoc `--yes` would break C3
+sole-orchestrator — not done).
