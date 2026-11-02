@@ -318,3 +318,18 @@ First run: 2026-11-02 ~20:00; Jcode self-check scheduled 20:05.
      approvals, records (dashboard feed).
 - Tests: approval-first, caps (total + search sub-cap), zero/negative,
   metric normalization, month window — full suite **34 passed**.
+
+### §19a — auth-model errata after browser integration (07:46–07:50)
+
+E2E-verified on task-def 33: the UI required a token-free read path, so the
+final model is — **public reads** (`GET /spend/status`,
+`GET /campaigns/metrics`: caps/usage/approval metadata carry no secrets;
+same policy the repo already chose for `GET /investments`), **phrase-only
+decision** (`POST /spend/approvals/{id}/decision` — the typed approval
+phrase is THE gate; keep `SPEND_APPROVAL_PHRASE` non-guessable), and
+**bearer-gated writes** (`campaigns/metrics`, `spend/approvals`,
+`spend/records` — server/needle/agent side only). Smoke results: caps read
+200; metric upsert idempotent; wrong phrase → 403; right phrase → 200
+approved; record with pending/absent approval → 403; approved record → 201
+with correct remaining math (92.50 total / 67.50 search); over-cap → 403.
+All smoke rows deleted afterwards (ledger left at zero).
