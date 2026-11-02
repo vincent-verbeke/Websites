@@ -56,11 +56,12 @@ def normalize_metric(payload: dict) -> dict:
     if not day_raw:
         raise ValueError("day is required (YYYY-MM-DD or ISO)")
     try:
-        day = datetime.fromisoformat(day_raw.replace("Z", "+00:00"))
+        day = datetime.fromisoformat(day_raw)   # py>=3.11 accepts trailing Z
     except ValueError:
         raise ValueError(f"day not parseable: {day_raw!r}") from None
     if day.tzinfo is None:
-        day = day.replace(tzinfo=UTC)  # noqa: FURB162 — day-bucket key
+        # naive midnight stays midnight in UTC (day-bucket key; no tz shift)
+        day = datetime(day.year, day.month, day.day, tzinfo=UTC)
 
     def _num(key: str, cast=float):
         raw = payload.get(key, 0)
@@ -195,7 +196,7 @@ async def ingest_campaign_metric(
             "day": norm["day"].isoformat()}
 
 
-@router.get("/campaigns/metrics", dependencies=[Depends(require_needle_bearer_token)])
+@router.get("/campaigns/metrics")   # public read (same policy as /investments)
 async def list_campaign_metrics(
     db: Annotated[AsyncSession, Depends(get_db)],
     date_from: str | None = None,
@@ -242,7 +243,7 @@ async def _month_usage(db: AsyncSession) -> tuple[float, float]:
     return float(total) + float(m_total), float(search) + float(m_search)
 
 
-@router.get("/spend/status", dependencies=[Depends(require_needle_bearer_token)])
+@router.get("/spend/status")   # public read (caps/usage/approvals carry no secrets)
 async def spend_status(db: Annotated[AsyncSession, Depends(get_db)]) -> dict:
     """B5 dashboard feed: caps, month usage/remaining, approvals, records."""
     total_used, search_used = await _month_usage(db)
@@ -291,15 +292,16 @@ async def request_spend_approval(
             "note": "pending — Vincent decides in the dashboard (phrase)"}
 
 
-@router.post("/spend/approvals/{approval_id}/decision",
-             dependencies=[Depends(require_needle_bearer_token)])
+@router.post("/spend/approvals/{approval_id}/decision")  # phrase = THE gate
 async def decide_spend_approval(
     approval_id: str,
     payload: DecisionIn,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
-    """The Vincent gate: bearer token AND the approval phrase (typed in the
-    UI, never shipped in any bundle) must match."""
+    """The Vincent gate (docs §19): the approval phrase typed in the dashboard
+    must match settings.SPEND_APPROVAL_PHRASE. The phrase is never shipped in
+    any bundle; this endpoint intentionally has NO bearer dependency so the
+    browser can call it (phrase = the explicit go; keep it non-guessable)."""
     import uuid as _uuid
     try:
         uid = _uuid.UUID(approval_id)

@@ -7,6 +7,7 @@ import { AzureAuthService } from '../../core/services/azure-auth.service';
 import { ChatComponent } from './legacy/features/chat/chat.component';
 import { HaComponent } from './legacy/features/home-assistant/ha.component';
 import { InvestmentsComponent } from './legacy/features/investments/investments.component';
+import { SpendControlComponent } from './spend-control.component';
 import { LidarComponent } from './legacy/features/lidar/lidar.component';
 import { ManagementComponent } from './legacy/features/management/management.component';
 import { MotionComponent } from './legacy/features/motion/motion.component';
@@ -94,6 +95,7 @@ interface TabItem {
     ChatComponent,
     HaComponent,
     InvestmentsComponent,
+    SpendControlComponent,
     LidarComponent,
     ManagementComponent,
     MotionComponent,
@@ -171,6 +173,15 @@ interface TabItem {
             <div class="overview-view">
               <!-- KPI SECTION (CLICKABLE CARDS) -->
               <section class="kpi-grid">
+                <div class="kpi-card interactive" [class.selected]="selectedView() === 'spend'" (click)="toggleView('spend')">
+                  <div class="kpi-header-row">
+                    <div class="kpi-label">Spend Control</div>
+                    <span class="click-hint">{{ selectedView() === 'spend' ? 'Hide ▲' : 'Caps & Approvals ▼' }}</span>
+                  </div>
+                  <div class="kpi-value">§6</div>
+                  <div class="kpi-sub">Monthly caps + your approval gate</div>
+                </div>
+
                 <div class="kpi-card interactive" [class.selected]="selectedView() === 'leads'" (click)="toggleView('leads')">
                   <div class="kpi-header-row">
                     <div class="kpi-label">Total GTM Leads</div>
@@ -209,6 +220,12 @@ interface TabItem {
               </section>
 
               <!-- DRILL-DOWN PANEL: GTM LEADS -->
+              @if (selectedView() === 'spend') {
+                <div class="detail-panel">
+                  <app-spend-control></app-spend-control>
+                </div>
+              }
+
               @if (selectedView() === 'leads') {
                 <section class="drilldown-section">
                   <div class="section-header">
@@ -952,7 +969,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private pollInterval: any = null;
 
   activeTab = signal<TabId>('overview');
-  selectedView = signal<'none' | 'leads' | 'conversations'>('none');
+  selectedView = signal<'none' | 'leads' | 'conversations' | 'spend'>('none');
 
   tabs: TabItem[] = [
     { id: 'overview', label: 'Cloud Orchestrator', icon: 'hub', badge: 'Cloud' },
@@ -1005,7 +1022,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 
-  toggleView(view: 'leads' | 'conversations') {
+  toggleView(view: 'leads' | 'conversations' | 'spend') {
     if (this.selectedView() === view) {
       this.selectedView.set('none');
     } else {
