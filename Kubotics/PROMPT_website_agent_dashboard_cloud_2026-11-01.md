@@ -262,6 +262,15 @@ ECS deployment of the hotfix: `COMPLETED`; stability 3/3 → `/health` 200, `/ap
   WABA rotation: update the repo JSON literal (+ GitHub secret if added),
   update `wa.py`'s `wa_config.json` (IBKR reports still use it), empty
   `edge_config.json` (retirement `sched_dac894f2`, 2026-11-08).
+- **Rotation helper staged + token diagnosed (Jcode, 2026-11-02, todo a16):**
+  `~/.jcode/scratch/apply_wa_token.sh` — pipe the new token on stdin;
+  `--dry-run` prints target paths with sha-only output; empty-stdin → rc2;
+  same-token → no-op. Graph `debug_token` says the current token is a
+  SYSTEM_USER token with `expires_at=0` (never expires) and
+  `whatsapp_business_*` scopes → **no rotation urgency; this note closes the
+  coordination.** When Meta ever forces a rotation: run the helper → push
+  (CI redeploys) → verify `/send/health` + one test send; `sched_dac894f2`
+  still empties `edge_config.json` on 2026-11-08 as planned.
 - `needle3` on PC-A already sends with `Bearer <NEEDLE_TOKEN>` and
   `send_url=https://api.kubotics.ch/api/whatsapp/send` (cutover verified with
   a `wamid` receipt at 13:35).
@@ -490,14 +499,28 @@ free-form`. Template name/params + last-inbound bookkeeping = your side.
    "template":{"name":"kubotics_alter_wakeup","language":{"code":"en"},
      "components":[{"type":"header","parameters":[{"type":"text","text":"<alert>"}]}]}}
   ```
-- **Header text limit = 60 chars** → keep wake-up text ≤60
-  ("IBKR run done - open WhatsApp for details" = 41 ✓). Long detail belongs in
-  the reply after he re-opens the session.
-- **Status at 16:29: `In review`.** Before enabling the fallback, confirm
-  `Active` in Manage templates, and FETCH the approved template's actual
-  structure (Graph `GET /<waba-id>/message_templates` with name filter) rather
-  than assuming — adjust components if Meta's stored shape differs (e.g. if
-  review moved the variable).
+- **Header {{1}} ≤ 45 chars** — the 60-char budget includes the template's
+  own `Kubotics alert ` prefix (15 chars), see LENGTH RULE below. Your
+  sample "IBKR run done - open WhatsApp for details" = 41 ✓. Long detail
+  belongs in the reply after he re-opens the session.
+- **Status: APPROVED — LIVE NOW** (Graph check `wa.py template-info` at
+  16:36; the Meta UI still showed "In review" — trust Graph). Template id
+  `1129863956576646`. Structure confirmed by Graph, fetch-step done:
+  HEADER text = `Kubotics alert {{1}}`, BODY = fixed generic text
+  (`Kubotics alert: wakeup sessio…`), **body expects 0 params**. Sending
+  `--vars` (body params) fails `#132000`; correct shape = header param only.
+- **LENGTH RULE (learned from live `#132005` rejection): 60 chars is the
+  TOTAL of template text + param.** Template prefix `Kubotics alert ` =
+  15 chars → **{{1}} must be ≤ 45 chars.** ("IBKR run done - open WhatsApp
+  for details" = 41 ✓.) Keep summaries telegraphic; details follow after
+  he replies into the reopened session.
+- **Reference implementation = `wa.py send --template kubotics_alter_wakeup
+  --lang en --header-type text --header-value "<≤45 chars>"`** (dev-PC
+  sanctioned tool) — proven live 16:37: HTTP 200 + wamid to +4179…1975
+  outside any session window. Your endpoint fallback should build the same
+  `components: [{"type":"header","parameters":[{"type":"text","text":…}]}]`
+  and `language.code=en`. Same shape applies to `template-info`-style
+  structure verification via Graph when wiring.
 - Note: `trading_watch.py` calls `whatsapp_service.send_text_message`
   directly (bypasses your endpoint), so your endpoint fallback does NOT cover
   watcher alerts — they keep SNS SMS as their guaranteed leg (backend doc §20).
