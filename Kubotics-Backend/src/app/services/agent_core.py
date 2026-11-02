@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.entities import (
+    ContactMailPhone,
     Contact,
     ExternalIdentity,
     Conversation,
@@ -131,6 +132,23 @@ class KuboticsAgentCore:
         )
         db.add(new_identity)
         await db.flush()
+
+        # WhatsApp leads must carry the reachable phone in the CRM contact
+        # channels table too — otherwise the lead is unusable (2026-11-02:
+        # "Dr. Thomas Meier" had it ONLY in external_identities; backfilled
+        # + this guard. Doc: TRADING_WATCH_CLOUD.md §13.)
+        if envelope.channel == "whatsapp" and envelope.external_user_id:
+            db.add(ContactMailPhone(
+                contact_id=contact.id,
+                channel_type="phone_mobile",
+                value=envelope.external_user_id,
+                label="whatsapp",
+                is_primary=True,
+                is_verified=False,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            ))
+            await db.flush()
         return contact
 
     async def _resolve_conversation(

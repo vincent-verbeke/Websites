@@ -220,3 +220,49 @@ emulating the Android UA and asserting the login click navigates the **same
 tab** to `login.microsoftonline.com` (no new tab). Final proof = Vincent's
 tablet: tap Login → single-tab Entra → returns to /dashboard logged in
 (report if anything still misbehaves; next lever = device-code flow).
+
+## 13. Lead data integrity — WhatsApp phone gap (Vincent 2026-11-02 morning)
+
+**Report:** a genuine lead ("Dr. Thomas Meier", WhatsApp, 2026-10-25 13:35)
+had **no email and no phone stored**.
+
+**Root cause (forensics):** the WhatsApp intake path
+(`agent_core._resolve_contact`) created `Contact` + `ExternalIdentity`
+(phone = `external_user_id` **was** captured there: `41791112233`) but never
+wrote a `crm.contact_mailphone` row — only the website form path
+(`lead_service`) does. Dashboard reads email/phone from `contact_mailphone`
+(hence "useless" lead). Conversation rows for whatsapp contacts were also
+absent (agent_core's conversation logic exists but the whatsapp routing path
+did not exercise it on 10-25 — flagged for the website agent to trace).
+
+**Fixes applied (Jcode, authorized by Vincent "ensure …100% fine"):**
+1. **Data backfill** (idempotent INSERT … WHERE NOT EXISTS): phone rows for
+   every WhatsApp identity lacking one → Thomas now
+   `phone_mobile=41791112233` (verified via SQL).
+2. **Code guard** (`agent_core.py::_resolve_contact`): new WhatsApp contacts
+   now get `ContactMailPhone(channel_type='phone_mobile', value=external_user_id,
+   label='whatsapp', is_primary=true)` at creation time. Telegram is excluded
+   on purpose (external id ≠ phone number).
+3. Form path already compliant (`lead_service` writes email + optional phone);
+   booking card requires email client-side (verified 2026-11-01 §Testing).
+
+**Residual handed to the website agent:** conversation persistence for the
+whatsapp->agent_core route (no `crm.conversations` rows exist for any
+whatsapp contact) + whether the "default customer reply" fallback path bypasses
+agent_core entirely — see prompt §15.
+
+## 14. Bi-daily needle review job (Vincent 2026-11-02 08:23)
+
+*"foresee the needle orchestrator to get do a review job by you every 2nd day
+around 8 pm so we follow-up if our plan still works."*
+
+Implemented needle-side (`needle3/tasks.py::_emit_review_task`): every 2nd
+day at/after **20:00 Europe/Zurich** the worker posts a `dev_task`
+(`event_id review-task-YYYYMMDD`, session `n3review-YYYYMMDD`) whose prompt
+drives a **read-only** plan review (positions vs expected set, funding sign,
+watcher alerts/status, per-asset net since Nov 1, IBKR gates/orders, ledger
+last 2 days, adherence incl. the +5000 CHF deposit status) and WhatsApps a
+≤900-char verdict starting `📋 trading review (date):`. Completion is
+reported through the daemon's existing "session done" reply. Guards: flag,
+48h marker cadence, hour gate, server-side event_id dedupe; tests 43/43.
+First run: 2026-11-02 ~20:00; Jcode self-check scheduled 20:05.
