@@ -124,3 +124,12 @@ round-trip `wamid.HBgL…` delivered; PC-A :8444 has no consumers left).
    receive a health signal (fixed §2.3) and **proved itself live at 13:02**
    by auto-rolling back the failed `a990349` deployment with prod at 200
    throughout. Optional alarm = open item 5 above.
+
+**Errata (Jcode, 2026-11-02 17:03):** this doc's citations of "prompt §7.1"
+and "prompt §7.2" were dangling from day one — git archaeology (12 prompt
+revisions + 60 repo revisions + deleted-file sweep) shows those sections were
+never committed anywhere; only §7.3 ever existed. The contract has been
+reconstructed in the prompt as **§7.1/§7.2 RECONSTRUCTED** (behavior-level,
+every point live-observed 2026-11-01/02: 200+wamid round-trip, 401 without
+token, health keys sans secrets, CloudFront→ALB→ECS chain). Future readers:
+cite the reconstruction, not the lost originals.

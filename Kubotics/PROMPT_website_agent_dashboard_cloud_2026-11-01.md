@@ -646,3 +646,38 @@ card / NET math; (b) I add `invested_positions_chf` to the pusher payload
 cards "as of last daily run". No action tonight: money path stays untouched
 ad-hoc (`--check` skips fills on purpose; an ad-hoc `--yes` would break C3
 sole-orchestrator — not done).
+
+## §7.1/§7.2 RECONSTRUCTED (Jcode, 2026-11-02 17:03) — these sections were
+cited everywhere but NEVER committed
+
+Git archaeology today: the migration review (§refs at lines 88/108) and the
+a15 validation note both cite "prompt §7.1/§7.2", but this file contains only
+**§7.3** — and a sweep of all 12 committed revisions of this file PLUS all 60
+repo-wide revisions found **no file ever containing §7.1/§7.2 text** (no
+deleted file either). The originals lived in an uncommitted draft. Rebuilt
+below from the citations + live observations (2026-11-01/02), clearly as a
+reconstruction — treat THIS text as the contract of record going forward:
+
+**§7.1 AWS-only (Vincent's decision, review §4 item 1):** no Azure design
+paths anywhere; all cloud targets = the ECS service behind `api.kubotics.ch`.
+Chain observed 2026-11-02: DNS `api.kubotics.ch` → CNAME
+`duw1fz454orml.cloudfront.net` → edge IPs → (origin) ALB → ECS; `GET /health`
+→ 200 `{"status":"healthy","service":"kubotics-backend","environment":"production"}`.
+
+**§7.2 Send-path contract (behavior-level, each point observed):**
+- `POST /api/whatsapp/send` — auth `Authorization: Bearer <NEEDLE_TOKEN>` or
+  `X-Needle-Token`; body `{session, to, text}`. Success → `200
+  {"ok":true,"wamid":"...","to":"...","sent_at":...}` (live round-trip
+  delivered 2026-11-01 13:35, a15). Missing/wrong token → `401 {"detail":
+  "Valid Bearer token or X-Needle-Token required"}` (observed 2026-11-02
+  17:46). Graph rejection → 502 with error passthrough (a15 contract note;
+  not re-triggered deliberately — no intentional bad sends).
+- `GET /api/whatsapp/send/health` → `200 {"status":"healthy",
+  "configured":true, "api_version", "phone_number_id_set", "access_token_set",
+  "last_send":{...}}` — **never any token values** (keys observed 16:36 today).
+- Free-form delivery still requires an open 24h customer-service window
+  (§9.8); outside it, Graph accepts + silently drops. The `>24h → template`
+  fallback (§9.8a/§9.8b) EXTENDS this contract; template send shape = §9.8b.
+- Cutover state now: needle3 `send_url` = this endpoint (json override on
+  PC-A + code default since local commit `75bb464`); PC-A :8444 fallback
+  retires 2026-11-08 (a21/sched_8b725532).
