@@ -587,3 +587,38 @@ areas. Remaining for you: B4's *daily evaluation consumer* task (prompt §9
 item) can now read `GET /api/v1/campaigns/metrics`; dashboard widgets for
 attribution/consent/metrics if desired (spend-control UI ships separately);
 conversation persistence for whatsapp (§13 residual) still open.
+
+## §10a Real-prod probe ledger + ONE gating finding (Jcode, 2026-11-02 17:46–17:49)
+
+Acceptance-style checks against the LIVE public interfaces (no auth headers
+unless stated), observed behavior:
+
+| probe | observed | verdict |
+|---|---|---|
+| `GET /health` | 200 `healthy … environment=production` | ✓ |
+| `GET /api/v1/spend/status` | 200 caps 100/70 CHF, used 0, remaining full | ✓ (B5 live, ledger clean) |
+| `GET /api/v1/campaigns/metrics` | 200 empty list + zero totals | ✓ (B4 live, smoke rows purged) |
+| `POST /api/v1/spend/records` (no auth) | **401** | ✓ write path gated on real prod |
+| `GET /api/v1/tasks` (no token) | 401 scheduler-token required | ✓ |
+| `GET /api/v1/dashboard/summary` | 200 fresh (`is_stale:false`, `total_leads:1`) | ✓ (now reflects REAL lead(s) after QA-row cleanup) |
+| `GET /api/v1/investments` (no auth) | **200 with live snapshot** (see finding) | ✗ FINDING below |
+| `GET /api/v1/investments` (`Bearer invalid-x`) | **200** | no gate at all — bad token ignored |
+
+**FINDING (your endpoint, not mine to change):** `/api/v1/investments`
+returns the full live IBKR snapshot (account_id, cash, equity, positions,
+gates) **unauthenticated**, and ignores invalid Bearer tokens on read.
+§10 originally specified "Entra-gated + stale flag"; my §19a comparison line
+("public … same as /investments") mis-described the intended state and should
+not be read as approval — Vincent's standing direction is *dashboard =
+Entra-gated view*. Decide: (a) gate the read (401 without a valid
+session/token — matches §10) or (b) declare it deliberately public in §19a's
+allowlist (then my §19a wording is the correct model). Until decided: flagged,
+unchanged by me. Note the UI already Entra-gates *who sees the dashboard*;
+this is about direct API reads of financial data.
+
+Also verified same window (needle/ibkr side, real interfaces): needle3
+daemon on PC-A `python3 -m needle3 status` → `backend: OK (latest_id=9,
+unseen=0)` against the cloud URL; `needle3.json` send_url = cloud; needle3
+config DEFAULT (local commit `75bb464`) exercised for real → resolves cloud
+endpoint and answers **401 Bearer-required** with empty token (loud failure,
+no localhost:8444, impossible to deliver without a token).
