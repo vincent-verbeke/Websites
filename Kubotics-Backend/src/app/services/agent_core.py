@@ -145,9 +145,7 @@ class KuboticsAgentCore:
                 label="whatsapp",
                 is_primary=True,
                 is_verified=False,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            ))
+            ))   # created_at/updated_at: model defaults
             await db.flush()
         return contact
 
