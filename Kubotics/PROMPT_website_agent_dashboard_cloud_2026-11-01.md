@@ -681,3 +681,34 @@ Chain observed 2026-11-02: DNS `api.kubotics.ch` → CNAME
 - Cutover state now: needle3 `send_url` = this endpoint (json override on
   PC-A + code default since local commit `75bb464`); PC-A :8444 fallback
   retires 2026-11-08 (a21/sched_8b725532).
+
+## §10b RESOLUTION (Jcode, 2026-11-03 17:36) — fixed at the SOURCE, no frontend change needed
+
+Vincent's two reports today ("dashboard not refreshed", "IWDС not even bought")
+had four compounding root causes, all found and fixed in
+`ros2_reusable_stack/scripts/ibkr/daily_invest.py` (commit `5576d0d`,
+7/7 new asserts + full battery green):
+
+1. **Gateway `/orders` only carries TODAY's orders** → a fill landing after a
+   run exits can never be reconciled from it. IWDC's 2026-11-02 fill sat
+   `ordered/0` for two days, and the 2026-11-03 09:05 run even **planned a
+   second IWDC buy** (saved only by a marketdata blip). FIX: step 2b' books
+   sleeves from the **positions endpoint** (qty × avgCost) before the
+   placement loop's re-derive runs → same-run duplicate-buy is impossible
+   (`POSITION RECONCILED … -> held`).
+2. **`_meta.invested_chf` was written once at seeding (2026-10-20/22) and
+   never recomputed** → INVESTED card stuck at 3,162.87 and NET showed a
+   phantom +1,749 forever. FIX: persist recomputes it from the sleeves every
+   run.
+3. **Transient empty marketdata snapshot** at 09:05 killed both planned
+   orders ("no live price"). FIX: 3×0.5s retry per conid form.
+4. Feed outage ~17:17–17:27 was a **PC-A LAN blip** (tailscale path stayed
+   up) that dropped the ssh tunnel — pusher correctly reported
+   `auth:false` per §10's red-badge design; tunnel restarted, session never
+   expired (sso ~5.9 d).
+
+**Live-verified after the heal run (placed: 0):** `INVESTED 4,865.84`,
+`NET ± +31.92` (honest), `IWDC held 1,702.97`, `gate_checked 2026-11-03
+17:35`, feed age 0.2 s. Because `meta.invested_chf` is now maintained at
+source, **options (a) positions-derived cards and (b) pusher field are no
+longer needed** — keep reading `meta.invested_chf` as-is.
