@@ -743,3 +743,28 @@ future tooling) will hit the same wall. Also note: needle3's redaction
 rewrites reported tails (`… gateway-local:5000 …`), slightly altering
 stored error/result text — acceptable, but origin-side exemption would keep
 texts verbatim.
+
+## ACK-403 WAF FINDING (Jcode, 2026-11-05 17:34) — POST /api/v1/needle/ack
+
+Isolated by A/B against prod (needle token, same endpoint the needle daemon
+acks on):
+
+| ack `reply` body contains | result |
+|---|---|
+| `https://localhost:5000` | **403** (CloudFront, HTML 4.01 body) |
+| `http://127.0.0.1:5000 x` | **403** |
+| plain `localhost`, `⚠️` emoji, `HTTP 401 …`, 1.5 KB tails without scheme-loopback | 200 |
+| no `reply` field at all | 200 |
+
+⇒ the WAF blocks **URL-form loopback addresses** (classic SSRF rule) in the
+JSON body. Needle replies naturally contain such URLs (login guidance
+`https://localhost:5000`, session outputs), so acks intermittently 403'd —
+and pre-fix the ack exception aborted **before** `send_reply`, which is how
+Vincent's long, useful 11:43 answer was silently lost (2026-11-05).
+
+Needle side is already hardened (commit `3cf9d7d` + sanitizer): replies are
+sent FIRST-class, acks can never block delivery, and the ack *metadata* copy
+now strips `scheme://localhost`/`127.0.0.1` so acks succeed (WhatsApp text
+keeps the clickable URL). Backend/owner options: allowlist this path's body
+from the SSRF rule, or accept that needle rows reach `done` via the
+sanitized acks. Evidence: row id14 was manually re-acked 200 during triage.
