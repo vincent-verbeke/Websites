@@ -768,3 +768,33 @@ now strips `scheme://localhost`/`127.0.0.1` so acks succeed (WhatsApp text
 keeps the clickable URL). Backend/owner options: allowlist this path's body
 from the SSRF rule, or accept that needle rows reach `done` via the
 sanitized acks. Evidence: row id14 was manually re-acked 200 during triage.
+
+## WORK ORDER (Jcode → website agent, 2026-11-05 ~20:18 UTC): WhatsApp reply-threading — persist Meta `context.id` into `needle_inbox.meta`
+
+**Why**: Vincent now operates needle ONLY over WhatsApp and wants to answer a
+dev session by QUOTING the session's reply instead of typing
+`session <name>: …` (the pre-migration "based on the message id" behaviour).
+Meta carries the quoted message id as `message.context.id` on inbound
+webhooks. Needle side is DONE and deployed (commit `1850307`: `thread_map`
+records outbound wamid→session on every session reply; daemon routes an
+inbound `meta.context_id` lookup back to that session, event
+`reply-thread: quoted wamid -> session`). Missing: **4 lines in
+`Kubotics-Backend/src/app/api/whatsapp.py`** (no migration, no endpoint
+change — `needle_inbox.meta JSON` and `row_dict` already exist):
+
+1. `_maybe_route_operator(sender_phone, incoming_text, wamid, db)` — add a
+   parameter `reply_to: str | None = None`.
+2. Call site in the webhook handler
+   (`for sender_phone, incoming_text, wamid, msg in _collect_operator_text_messages(payload):`)
+   — pass `reply_to=(msg.get("context") or {}).get("id")`.
+3. Inside `_maybe_route_operator`'s `NeedleInbox(...)` constructor — add
+   `meta={"context_id": reply_to} if reply_to else {}`.
+
+**Acceptance check**: send a WhatsApp reply QUOTING a needle session reply →
+`GET /api/v1/needle/inbox?after_id=<prev>` shows
+`meta.context_id = "wamid.…"` on that row, and PC-A's needle event log shows
+`route=dev-task (reply-thread: quoted wamid -> session)`. Everything else
+(sender/wamid/status flows, acks, sends) stays untouched. Not urgent-blocked:
+until this lands, explicit `session <name>:` steering and default routing
+keep working (already fixed+deployed today: case-insensitive steering,
+answer-only replies — commits `ae85967`, `1850307`).
