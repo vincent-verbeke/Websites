@@ -16,6 +16,35 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Meta WhatsApp Cloud API hard limit: a text body >4096 chars is REJECTED
+# outright (the whole message is lost, nothing is delivered in part).
+# 2026-11-06: needle/agent/trading-watch replies all funnel through
+# send_text_message, so splitting HERE means no lane can ever lose content
+# to the limit again (Vincent: "messages cut off").
+WA_TEXT_MAX = 4096
+WA_PART_MAX = 4000   # headroom for the "(n/m)" part marker
+
+
+def split_whatsapp_text(text: str, limit: int = WA_PART_MAX) -> list[str]:
+    """Split into <=limit parts on line/space boundaries — content preserved,
+    only whitespace at the cut is dropped. Returns [] for empty input."""
+    text = text or ""
+    if len(text) <= limit:
+        return [text] if text else []
+    parts: list[str] = []
+    rest = text
+    while len(rest) > limit:
+        cut = rest.rfind("\n", 0, limit)
+        if cut < limit // 3:
+            cut = rest.rfind(" ", 0, limit)
+        if cut < 1:
+            cut = limit
+        parts.append(rest[:cut].rstrip())
+        rest = rest[cut:].lstrip("\n")
+    if rest.strip():
+        parts.append(rest)
+    return parts
+
 
 class WhatsAppService:
     def __init__(
@@ -61,7 +90,9 @@ class WhatsAppService:
 
     async def send_text_message(self, recipient_phone: str, text: str) -> tuple[bool, str | None, dict | None]:
         """Send a standard text message back to a WhatsApp user.
-        
+
+        Long texts are sent as several messages (Meta rejects >4096 chars in
+        one body); each part is labeled "(i/n)" so nothing reads as cut off.
         Returns: (success: bool, wamid: str | None, raw_response: dict | None)
         """
         if not self.is_configured:
@@ -72,28 +103,37 @@ class WhatsAppService:
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json",
         }
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": recipient_phone,
-            "type": "text",
-            "text": {"preview_url": True, "body": text},
-        }
+        parts = split_whatsapp_text(text)
+        first_wamid: str | None = None
+        data: dict | None = None
 
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                f"{self.base_url}/{self.phone_number_id}/messages",
-                headers=headers,
-                json=payload,
-            )
-            data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-            if resp.status_code in (200, 201):
-                logger.info(f"[WhatsApp] Text sent to {recipient_phone}")
-                messages = data.get("messages", [])
-                wamid = messages[0].get("id") if messages else None
-                return True, wamid, data
-            logger.error(f"[WhatsApp] Send text error ({resp.status_code}): {resp.text}")
-            return False, None, data
+            for i, part in enumerate(parts, 1):
+                body = part if len(parts) == 1 else f"({i}/{len(parts)}) {part}"
+                payload = {
+                    "messaging_product": "whatsapp",
+                    "recipient_type": "individual",
+                    "to": recipient_phone,
+                    "type": "text",
+                    "text": {"preview_url": True, "body": body},
+                }
+                resp = await client.post(
+                    f"{self.base_url}/{self.phone_number_id}/messages",
+                    headers=headers,
+                    json=payload,
+                )
+                data = (resp.json()
+                        if resp.headers.get("content-type", "")
+                        .startswith("application/json") else {})
+                if resp.status_code not in (200, 201):
+                    logger.error(f"[WhatsApp] Send text error ({resp.status_code}): {resp.text}")
+                    return False, first_wamid, data
+                if first_wamid is None:
+                    first_wamid = ((data.get("messages") or [{}])[0]
+                                   .get("id") or None)
+                logger.info(f"[WhatsApp] Text part {i}/{len(parts)} sent to {recipient_phone}")
+
+        return True, first_wamid, data
 
     async def send_audio_message(self, recipient_phone: str, audio_bytes: bytes, filename: str = "voice_note.mp3") -> bool:
         """Upload audio and send as a WhatsApp voice/audio message."""
