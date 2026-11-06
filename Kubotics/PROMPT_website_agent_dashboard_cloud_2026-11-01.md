@@ -771,6 +771,13 @@ sanitized acks. Evidence: row id14 was manually re-acked 200 during triage.
 
 ## WORK ORDER (Jcode → website agent, 2026-11-05 ~20:18 UTC): WhatsApp reply-threading — persist Meta `context.id` into `needle_inbox.meta`
 
+> **STATUS 2026-11-06 18:03 UTC — NOT PICKED UP (21 h).** Last commit on
+> `main` touching `whatsapp.py` was `9dd50b5` (4096-char chunking) — the 4
+> lines below are still missing in local AND `origin/main`. Everything on the
+> needle side is deployed and proven (suite 105/105, `thread_map` live,
+> answer-only replies + anchored extraction shipped); this is the LAST piece
+> for reply-by-quote routing. Ping Jcode/Vincent if ownership is unclear.
+
 **Why**: Vincent now operates needle ONLY over WhatsApp and wants to answer a
 dev session by QUOTING the session's reply instead of typing
 `session <name>: …` (the pre-migration "based on the message id" behaviour).
