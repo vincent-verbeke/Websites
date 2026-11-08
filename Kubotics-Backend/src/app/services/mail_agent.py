@@ -587,6 +587,7 @@ async def _requeue_parked_llm_failures(db, stats) -> int:
             MailMessage.updated_at <= edge,
             or_(
                 MailMessage.error.like("classify:LLMUnavailable%"),
+                MailMessage.error.like("compose:LLMUnavailable%"),
                 and_(MailMessage.error.like("detail_fetch:%"),
                      MailMessage.error.not_like("%HTTP 4%"),
                      MailMessage.error.not_like("%message_not_found%")),

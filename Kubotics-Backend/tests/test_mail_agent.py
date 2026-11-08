@@ -434,3 +434,27 @@ def test_hhmm_parser():
     assert ma._hhmm("22:00") == (22, 0)
     assert ma._hhmm("") == (0, 0)
 
+
+# --- QA round: compose raw-text path (chat_json was wrong for prose) ----------
+
+def test_strip_fences():
+    from app.services.mail_llm import _strip_fences
+    assert _strip_fences("```html\n<p>Hi</p>\n```") == "<p>Hi</p>"
+    assert _strip_fences("```\n<p>Hi</p>\n```") == "<p>Hi</p>"
+    assert _strip_fences("<p>plain</p>") == "<p>plain</p>"
+    assert _strip_fences("  text with fences inside ``` x ``` kept  ").startswith("text")
+    assert _strip_fences("") == ""
+
+
+def test_pick_compose_body_raw_prose_wins_without_json():
+    """Compliant models answer with bare HTML — that IS the body (QA fix)."""
+    from app.services.mail_llm import pick_compose_body
+    prose = "<p>Hello, I'm Kubot, Vincent's personal digital AI assistant. Thanks!</p>"
+    assert pick_compose_body(prose) == prose
+    wrapped = '{"body_html": "<p>from wrapper</p>"}'
+    assert pick_compose_body(wrapped) == "<p>from wrapper</p>"
+    other = '{"reply": "<p>alt key</p>"}'
+    assert pick_compose_body(other) == "<p>alt key</p>"
+    junk_json = '{"no_known": 1}'   # json without body keys -> keep raw text
+    assert pick_compose_body(junk_json) == junk_json
+

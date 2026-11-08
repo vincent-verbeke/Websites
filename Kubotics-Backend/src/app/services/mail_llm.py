@@ -152,6 +152,59 @@ def extract_json(text: str) -> dict | None:
     return None
 
 
+def _strip_fences(text: str) -> str:
+    """Remove markdown code fences models wrap around an HTML body in."""
+    t = (text or "").strip()
+    m = re.match(r"^```(?:html)?\s*\n?(.*?)\n?```$", t, re.DOTALL)
+    if m:
+        t = m.group(1).strip()
+    return t
+
+
+async def chat_text(system: str, user: str) -> tuple[str, str, str]:
+    """Chain call returning the RAW text answer (no JSON requirement).
+
+    QA fix (2026-11-08): the compose prompt demands "Return ONLY the HTML
+    body" — models that comply answer with prose/HTML that contains no JSON,
+    so routing compose through ``chat_json`` marked every compliant answer
+    ``unparseable`` and parked the reply forever. Classify still uses
+    ``chat_json`` (JSON is genuinely required there).
+    """
+    chain = provider_chain()
+    if not chain:
+        raise LLMUnavailable(
+            "no provider available — chain "
+            f"{settings.MAIL_AGENT_LLM_CHAIN} has no key+model pair configured")
+    errors: list[str] = []
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for p in chain:
+            try:
+                resp = await client.post(
+                    f"{p.base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {p.api_key}"},
+                    json={
+                        "model": p.model,
+                        "messages": [
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": user},
+                        ],
+                    },
+                )
+                if resp.status_code != 200:
+                    errors.append(f"{p.name}:HTTP{resp.status_code}:{resp.text[:180]}")
+                    continue
+                content = (resp.json().get("choices") or [{}])[0].get(
+                    "message", {}).get("content") or ""
+                content = _strip_fences(content)
+                if not content:
+                    errors.append(f"{p.name}:empty-content")
+                    continue
+                return content, p.name, p.model
+            except Exception as exc:  # noqa: BLE001 — chain failover swallows all
+                errors.append(f"{p.name}:{type(exc).__name__}")
+    raise LLMUnavailable("all providers failed: " + ", ".join(errors)[:400])
+
+
 async def chat_json(system: str, user: str) -> tuple[dict, str, str]:
     """Run the provider chain until one returns parseable JSON.
 
@@ -339,6 +392,17 @@ def finalize_reply(body_html: str, lang: str | None) -> str:
     return f"{body}<br>{signature_html(lang)}"
 
 
+def pick_compose_body(content: str) -> str:
+    """Raw answer is the body (prompt demands it); tolerate a JSON wrapper."""
+    parsed = extract_json(content)
+    if parsed:
+        for key in ("body_html", "body", "reply", "message", "text"):
+            val = parsed.get(key)
+            if isinstance(val, str) and val.strip():
+                return val
+    return content
+
+
 async def compose_reply(*, lang: str, kind: str, sender_name: str,
                         subject: str, tier: str, contact_note: str | None,
                         categories: list[str] | None,
@@ -350,11 +414,5 @@ async def compose_reply(*, lang: str, kind: str, sender_name: str,
         lang=lang, kind=kind, sender_name=sender_name, subject=subject,
         tier=tier, contact_note=contact_note, categories=categories,
         classification=classification)
-    raw, provider, model = await chat_json(system, "Write the reply now.")
-    body = ""
-    for key in ("body_html", "body", "reply", "message", "text"):
-        val = raw.get(key)
-        if isinstance(val, str) and val.strip():
-            body = val
-            break
-    return finalize_reply(body, lang), provider, model
+    content, provider, model = await chat_text(system, "Write the reply now.")
+    return finalize_reply(pick_compose_body(content), lang), provider, model
