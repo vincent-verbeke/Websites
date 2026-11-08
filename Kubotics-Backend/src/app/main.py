@@ -14,6 +14,7 @@ from app.api.v1.trading_watch import router as trading_watch_router
 from app.api.whatsapp import router as whatsapp_router
 from app.core.config import settings
 from app.db.session import Base, engine
+from app.services import mail_agent as mail_agent_service
 from app.services import trading_watch as trading_watch_service
 
 logging.basicConfig(level=logging.INFO)
@@ -65,7 +66,20 @@ async def lifespan(app: FastAPI):
         logger.info("[trading-watch] background loop started (interval=%ss, sms=%s)",
                     settings.TRADING_WATCH_INTERVAL_S,
                     settings.TRADING_WATCH_SMS_ENABLED)
+    # Kubot mail agent (docs/KUBOT_MAIL_AGENT_PLAN.md) — OFF by default (Phase 0
+    # contract); Phase B deploy flips MAIL_AGENT_ENABLED=true (Liz-only test).
+    ma = None
+    if settings.MAIL_AGENT_ENABLED:
+        ma = asyncio.create_task(mail_agent_service.watch_loop())
+        logger.info("[mail-agent] background loop started (interval=%ss, mode=%s, upn=%s)",
+                    settings.MAIL_AGENT_POLL_INTERVAL_S,
+                    settings.MAIL_AGENT_MODE,
+                    mail_agent_service.resolve_upn())
     yield
+    if ma is not None:
+        ma.cancel()
+        with suppress(asyncio.CancelledError):
+            await ma
     if wt is not None:
         wt.cancel()
         with suppress(asyncio.CancelledError):

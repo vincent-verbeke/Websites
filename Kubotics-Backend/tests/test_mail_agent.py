@@ -19,6 +19,7 @@ import app.models  # noqa: F401  (registers needle/tasks/mail_agent tables)
 from app.core.config import settings
 from app.db.session import Base
 from app.models.mail_agent import MailMessage, MailWatchSender
+from app.services import mail_agent as ma  # pure helpers under test
 
 
 def _tbl(name: str):
@@ -99,3 +100,83 @@ def test_override_sender_email_unique_and_active_by_default():
 def test_model_classes_exported():
     assert MailMessage.__tablename__ == "mail_messages"
     assert MailWatchSender.__tablename__ == "mail_watch_senders"
+
+
+# --- step 2: hard filters + scan plan (pure, plan §3.4 / §3.1) ---------------
+
+def _msg(mid: str, ts: str, sender: str = "a@b.ch") -> dict:
+    return {"internetMessageId": mid, "receivedDateTime": ts,
+            "from": {"emailAddress": {"address": sender}},
+            "conversationId": "cid-" + mid, "subject": "s"}
+
+
+def test_resolve_upn_falls_back_to_organizer():
+    assert ma.resolve_upn()  # always non-empty
+    assert "@" in ma.resolve_upn()
+
+
+def test_own_address_set_covers_q1_aliases():
+    own = ma.own_address_set(
+        "vincent.verbeke@kuroliv.ch",
+        ["SMTP:vincent.verbeke@kuroliv.ch",  # Exchange primary = uppercase
+         "smtp:sales@kubotics.ch", "sip:not-an-email", "smtp:info@qbotics.ch"],
+        "extra@example.com, , not-an-email",
+    )
+    assert own == {"vincent.verbeke@kuroliv.ch", "sales@kubotics.ch",
+                   "info@qbotics.ch", "extra@example.com"}
+
+
+def test_sender_hard_filter_never_answer_rules():
+    own = {"me@corp.ch"}
+    assert ma.sender_hard_filter("me@corp.ch", own) == "own_mail"
+    assert ma.sender_hard_filter("NoReply@vendor.com", own) == "noreply_sender"
+    assert ma.sender_hard_filter("do-not-reply@x.io", own) == "noreply_sender"
+    assert ma.sender_hard_filter("mailer-daemon@x.io", own) == "system_sender"
+    assert ma.sender_hard_filter("", own) == "no_sender"
+    assert ma.sender_hard_filter("liz.mallet@hotmail.com", own) is None
+
+
+def test_header_hard_filter_q14_never_autoreplies():
+    assert ma.header_hard_filter({"auto-submitted": "auto-generated"}) == "auto_submitted"
+    assert ma.header_hard_filter({"auto-submitted": "no"}) is None  # RFC 3834 human
+    assert ma.header_hard_filter({"list-unsubscribe": "<https://x>"}) == "mailing_list"
+    assert ma.header_hard_filter({"list-id": "Newsletter"}) == "mailing_list"
+    assert ma.header_hard_filter({"precedence": "bulk"}) == "precedence_bulk"
+    assert ma.header_hard_filter({"x-auto-response-suppress": "OOF"}) == "auto_response_suppress"
+    assert ma.header_hard_filter({}) is None
+
+
+def test_plan_scan_first_boot_seeds_without_processing():
+    """Never retro-answer history: empty ledger -> seed watermark, claim nothing."""
+    msgs = [_msg("<a@x>", "2026-11-08T09:00:00Z"), _msg("<b@x>", "2026-11-08T08:00:00Z")]
+    claims, new_base, seed = ma.plan_scan(msgs, base=None, ledger_empty=True, known_ids=set())
+    assert claims == [] and seed is True
+    assert new_base == "2026-11-08T09:00:00Z"
+
+
+def test_plan_scan_strict_lt_skip_and_claim_newer():
+    base = "2026-11-08T09:00:00Z"
+    msgs = [_msg("<new@x>", "2026-11-08T09:00:05Z"),
+            _msg("<same@x>", base),          # equal second: offered (dedup elsewhere)
+            _msg("<old@x>", "2026-11-08T08:59:59Z")]  # strictly older: skipped
+    claims, new_base, seed = ma.plan_scan(msgs, base=base, ledger_empty=False, known_ids=set())
+    assert seed is False
+    assert [m["internetMessageId"] for m in claims] == ["<new@x>", "<same@x>"]
+    assert new_base == "2026-11-08T09:00:05Z"
+
+
+def test_plan_scan_dedupes_known_ids_and_keeps_watermark_on_empty():
+    base = "2026-11-08T09:00:00Z"
+    known = {"<known@x>"}
+    claims, new_base, seed = ma.plan_scan(
+        [_msg("<known@x>", "2026-11-08T09:00:03Z")],
+        base=base, ledger_empty=False, known_ids=known)
+    assert claims == [] and seed is False and new_base == base  # no advance on dedupe
+
+
+def test_plan_scan_never_moves_watermark_backwards():
+    base = "2026-11-08T09:00:00Z"
+    claims, new_base, _ = ma.plan_scan(
+        [_msg("<only-old@x>", "2026-11-08T08:00:00Z")],
+        base=base, ledger_empty=False, known_ids=set())
+    assert claims == [] and new_base == base
