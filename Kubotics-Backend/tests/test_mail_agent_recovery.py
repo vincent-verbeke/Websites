@@ -20,6 +20,12 @@ ledger changes) could silently break:
     no notice outside the Q11 window;
   * Q11 alert flush: sends + marks inside the window, queues outside it.
 
+Second block: the process_pending pipeline itself (the function that runs
+every 60s in production) with all network/LLM seams stubbed — happy path,
+classify outage defer/park ladder, header hard-filter before the LLM,
+Phase-B gate before any network, compose validation terminality, observe
+mode, and inbound_events emission (plan node O).
+
 Every send_ready test stubs BOTH outbound surfaces (resolve_graph_id = Graph
 POST, whatsapp_service = needle) so a regression that reopens a send path
 fails the test instead of messaging a real human.
@@ -286,3 +292,176 @@ def test_alert_flush_queues_outside_window(monkeypatch):
     assert stats["alerts_pending"] == 1 and stats["alerts_sent"] == 0
     assert wa.calls == []
     assert row.whatsapp_notified_at is None
+
+
+# --- process_pending pipeline (all network/LLM seams stubbed) ----------------
+
+_CLS_OK = ({"language": "en", "category": "informational", "criticality": "normal",
+            "spam_probability": 0.1, "summary": "informational mail",
+            "personal_email": True},
+           "mimo", "mimo-v2.6-flash")
+_COMPOSE_OK = ("<p>Thanks Liz — Kubot here.</p>", "mimo", "mimo-v2.6-flash")
+_OVERRIDES = {"liz.mallet@kuroliv.ch": {"tier": "contact", "note": "partner",
+                                        "display_name": "Liz"}}
+_DETAIL_OK = {"internetMessageHeaders": [],
+              "body": {"content": "<p>Hello there</p>"},
+              "toRecipients": [{"emailAddress": {"address": "vincent@kubotics.ch"}}],
+              "ccRecipients": []}
+
+
+def _stub_pipeline(monkeypatch, row, *, detail=_DETAIL_OK, classify=_CLS_OK,
+                   compose=_COMPOSE_OK, only="", mode="auto"):
+    """Stub every network/LLM seam of process_pending; return call recorder."""
+    calls = {"detail": [], "classify": [], "compose": [], "event": []}
+
+    async def _detail_fn(_client, mid):
+        calls["detail"].append(mid)
+        if isinstance(detail, Exception):
+            raise detail
+        return detail
+
+    async def _thread_fn(*_a, **_k):
+        return False
+
+    async def _contacts_fn(_client):
+        return []
+
+    async def _overrides_fn():
+        return dict(_OVERRIDES)
+
+    async def _event_fn(_db, _row):
+        calls["event"].append(_row.internet_message_id)
+
+    async def _classify_fn(**kwargs):
+        calls["classify"].append(kwargs)
+        if isinstance(classify, Exception):
+            raise classify
+        return classify
+
+    async def _compose_fn(**kwargs):
+        calls["compose"].append(kwargs)
+        if isinstance(compose, Exception):
+            raise compose
+        return compose
+
+    monkeypatch.setattr(settings, "MAIL_AGENT_ONLY_SENDERS", only)
+    monkeypatch.setattr(settings, "MAIL_AGENT_MODE", mode)
+    monkeypatch.setattr(ma, "fetch_message_detail", _detail_fn)
+    monkeypatch.setattr(ma, "thread_within_window", _thread_fn)
+    monkeypatch.setattr(ma, "fetch_contacts", _contacts_fn)
+    monkeypatch.setattr(ma, "load_overrides", _overrides_fn)
+    monkeypatch.setattr(ma, "record_classification_event", _event_fn)
+    monkeypatch.setattr(ma.mail_llm, "classify_message", _classify_fn)
+    monkeypatch.setattr(ma.mail_llm, "compose_reply", _compose_fn)
+    monkeypatch.setattr(ma, "AsyncSessionLocal",
+                        lambda: _FakeDb([[], [row]]))  # requeue-select, rows-select
+    return calls
+
+
+def test_process_pending_happy_path_classifies_composes_and_emits_event(monkeypatch):
+    """received -> detail -> route(contact) -> classify -> decide -> compose
+    -> classified, with inbound_events emitted (plan node O)."""
+    row = _row(state="received")
+    calls = _stub_pipeline(monkeypatch, row)
+
+    stats = _run(ma.process_pending())
+
+    assert stats["taken"] == 1 and stats["ready"] == 1
+    assert row.state == "classified"
+    assert row.reply_text == _COMPOSE_OK[0]
+    assert row.route == "contact" and row.tier == "contact"
+    assert row.llm_provider == "mimo" and row.llm_model == "mimo-v2.6-flash"
+    cls = row.classification
+    assert cls["priority"] == "P4" and cls["notify"] is False
+    assert cls["rcpt_count"] == 1 and cls["provider"] == "mimo"
+    assert calls["classify"] and calls["classify"][0]["route"] == "contact"
+    assert calls["classify"][0]["tier"] == "contact"
+    assert len(calls["compose"]) == 1
+    assert calls["event"] == [row.internet_message_id], "node O event missing"
+
+
+def test_process_pending_classify_outage_defers_then_retries(monkeypatch):
+    """LLMUnavailable on classify: stays received (self-heal compatible)."""
+    row = _row(state="received")
+    calls = _stub_pipeline(monkeypatch, row,
+                           classify=ma.mail_llm.LLMUnavailable("all providers down"))
+
+    stats = _run(ma.process_pending())
+
+    assert stats["deferred"] == 1 and stats["review"] == 0
+    assert row.state == "received"          # NOT parked — retried next cycle
+    assert row.error.startswith("classify:LLMUnavailable")
+    assert row.classification["llm_attempts"] == 1
+    assert calls["compose"] == [] and calls["event"] == []
+
+
+def test_process_pending_classify_outage_parks_at_attempt_five(monkeypatch):
+    """A persistently failing chain stops at 5 attempts -> needs_review."""
+    row = _row(state="received", classification={"llm_attempts": 4})
+    _stub_pipeline(monkeypatch, row,
+                   classify=ma.mail_llm.LLMUnavailable("all providers down"))
+
+    stats = _run(ma.process_pending())
+
+    assert stats["review"] == 1 and stats["deferred"] == 0
+    assert row.state == "needs_review"
+    assert row.error.startswith("classify:LLMUnavailable")
+    assert row.classification["llm_attempts"] == 5
+
+
+def test_process_pending_header_hard_filter_blocks_before_llm(monkeypatch):
+    """List-Unsubscribe mail dies at the header gate — no LLM cost, no event."""
+    detail = {**_DETAIL_OK,
+              "internetMessageHeaders": [{"name": "List-Unsubscribe",
+                                          "value": "<mailto:a@b.c>"}]}
+    row = _row(state="received")
+    calls = _stub_pipeline(monkeypatch, row, detail=detail)
+
+    stats = _run(ma.process_pending())
+
+    assert stats["ignored"] == 1 and stats["taken"] == 1
+    assert row.state == "ignored_spam"
+    assert row.summary.startswith("hard_filter:")
+    assert calls["classify"] == [], "hard-filtered mail must never reach the LLM"
+    assert calls["event"] == []
+
+
+def test_process_pending_phase_b_gate_blocks_before_any_network(monkeypatch):
+    """Restricted sender: flip + stop BEFORE detail fetch (§8, no Graph/LLM)."""
+    row = _row(state="received", sender="stranger@example.com")
+    calls = _stub_pipeline(monkeypatch, row, only="liz.mallet@kuroliv.ch")
+
+    stats = _run(ma.process_pending())
+
+    assert stats["restricted"] == 1
+    assert row.state == "ignored_unknown"
+    assert row.summary == "restricted:phase_b_only_senders"
+    assert calls["detail"] == [] and calls["classify"] == [] and calls["compose"] == []
+
+
+def test_process_pending_compose_validation_failure_is_terminal(monkeypatch):
+    """Plan §5: invalid compose -> needs_review (never a silent retry loop)."""
+    row = _row(state="received")
+    _stub_pipeline(monkeypatch, row, compose=ma.mail_llm.ReplyInvalid("body too short"))
+
+    stats = _run(ma.process_pending())
+
+    assert stats["review"] == 1
+    assert row.state == "needs_review"
+    assert row.error.startswith("compose_validation:")
+    assert row.reply_text is None
+
+
+def test_process_pending_observe_mode_classifies_without_compose(monkeypatch):
+    """§3.3 observe: classified state, no compose — send_ready's empty-reply
+    guard is the second line of defence."""
+    row = _row(state="received")
+    calls = _stub_pipeline(monkeypatch, row, mode="observe")
+
+    stats = _run(ma.process_pending())
+
+    assert stats["ready"] == 1
+    assert row.state == "classified"
+    assert row.reply_text is None
+    assert calls["classify"] and calls["compose"] == []
+    assert row.category == "informational"  # classify still ran (node O fires)
