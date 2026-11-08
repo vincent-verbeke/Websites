@@ -39,6 +39,10 @@ export interface InvestmentsSnapshotDoc {
     established?: boolean;
     connected?: boolean;
   };
+  mcp?: {
+    ok?: boolean;
+    ts?: string;
+  };
   account_id?: string;
   cash_chf?: number;
   equity_chf?: number;
@@ -131,6 +135,10 @@ export interface TradingWatchBlock {
         <!-- GATEWAY AUTH BADGE -->
         @if (feed()?.snapshot?.auth?.authenticated) {
           <span class="chip ok">● Gateway Authenticated</span>
+        } @else if (feed()?.snapshot?.mcp?.ok) {
+          <span class="chip stale" title="Account data is live via the official IBKR MCP connector. Log in on the dev PC to re-enable gateway auto-orders.">
+            ● Gateway offline — data live via IBKR MCP
+          </span>
         } @else {
           <span class="chip danger" title="Please log in on the dev PC terminal">
             ● Gateway not authenticated — log in at dev PC
