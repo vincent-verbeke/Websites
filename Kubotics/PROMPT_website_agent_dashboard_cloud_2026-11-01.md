@@ -845,3 +845,14 @@ answer-only replies — commits `ae85967`, `1850307`).
   remain FORBIDDEN for Jcode in all cases (also blocked by missing
   `mcp.orders.submit` scope) — he submits; `daily_invest.py`/n3ibkr stays the
   only automated gateway path (C3 unchanged).
+- **DASHBOARD ALWAYS-ON LIVE (09:49, Vincent: "ensure this auth method is
+  implemented for the cloud dashboard so it is always online")**:
+  `scripts/ibkr/ibkr_pusher.py` now merges `ibkr_mcp_feed.py` (ros2 commit
+  `ca7193e`, battery 16/16): MCP burst every ≥60 s (refresh rotation each
+  burst) cached and merged into the existing 10 s pushes — payload contract
+  UNCHANGED (extra `mcp:{ok,ts}` provenance key only; **zero backend/frontend
+  changes needed**); refresh-token failure → ONE WhatsApp re-consent alert per
+  6 h. LIVE PROOF: gateway unauthenticated (`auth.error=HTTPError`) yet
+  `/api/v1/investments` age 2.1 s `stale:false` with cash 5113.31 / equity
+  9992.27 / 5 positions / 8 sleeves from `mcp.ok`. Dashboard numbers no longer
+  depend on the CP-gateway browser session.
