@@ -100,7 +100,7 @@ def provider_chain() -> list[Provider]:
                    settings.MAIL_AGENT_LLM_MODEL_OPENAI or "gpt-4o-mini"),
         "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai",
                    os.getenv("GEMINI_API_KEY", ""),
-                   settings.MAIL_AGENT_LLM_MODEL_GEMINI or "gemini-2.5-flash"),
+                   settings.MAIL_AGENT_LLM_MODEL_GEMINI or "gemini-3.8-flash"),
         "xai": ("https://api.x.ai/v1", os.getenv("XAI_API_KEY", ""),
                 settings.MAIL_AGENT_LLM_MODEL_XAI or "grok-3"),
     }
@@ -171,7 +171,6 @@ async def chat_json(system: str, user: str) -> tuple[dict, str, str]:
                     headers={"Authorization": f"Bearer {p.api_key}"},
                     json={
                         "model": p.model,
-                        "temperature": 0.3,
                         "messages": [
                             {"role": "system", "content": system},
                             {"role": "user", "content": user},
@@ -179,7 +178,9 @@ async def chat_json(system: str, user: str) -> tuple[dict, str, str]:
                     },
                 )
                 if resp.status_code != 200:
-                    errors.append(f"{p.name}:HTTP{resp.status_code}")
+                    # include the body — a bare code hid the real 400 reason
+                    # (retired/limited model id, invalid key, ...)
+                    errors.append(f"{p.name}:HTTP{resp.status_code}:{resp.text[:180]}")
                     continue
                 content = (resp.json().get("choices") or [{}])[0].get(
                     "message", {}).get("content") or ""
