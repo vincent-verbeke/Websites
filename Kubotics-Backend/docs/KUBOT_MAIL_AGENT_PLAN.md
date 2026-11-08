@@ -356,7 +356,7 @@ MAIL_AGENT_OWN_ADDRESSES=           # extra own aliases; base set auto-discovere
 MAIL_AGENT_LLM_CHAIN=mimo,openai,gemini,xai  # ordered failover (override via env/secret)
 MAIL_AGENT_LLM_MODEL_MIMO=mimo-v2.6-flash    # "Xiami MIMO Flash (latest)" — V2.6-Flash, V2.5 IDs retired 2026-10-21
 MAIL_AGENT_LLM_MODEL_OPENAI=                 # default at build time, secret-overridable
-MAIL_AGENT_LLM_MODEL_GEMINI=
+MAIL_AGENT_LLM_MODEL_GEMINI=                 # code default gemini-3.8-flash (page exists, verified 2026-11-08); if it ever 400s: gemini-3.5-flash-lite (Google's documented migration string)
 MAIL_AGENT_LLM_MODEL_XAI=
 MAIL_AGENT_LLM_BASE_MIMO=https://api.xiaomimimo.com/v1   # OpenAI-compatible
 MAIL_AGENT_TIER_MAP=Board=board;VIP=vip_customer;Kunde=customer;Partner=partner;Lead=lead;Test=test  # proposed category set (Q9)
