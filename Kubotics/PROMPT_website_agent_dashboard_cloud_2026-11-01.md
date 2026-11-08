@@ -857,6 +857,17 @@ answer-only replies — commits `ae85967`, `1850307`).
   9992.27 / 5 positions / 8 sleeves from `mcp.ok`. Dashboard numbers no longer
   depend on the CP-gateway browser session.
 
+- **CAPITAL-WEIGHTING LIVE (Jcode, 2026-11-08 11:13, Vincent: "pls implement")**:
+  sleeve targets now derive at runtime as `target_pct × _meta.capital`
+  (`scaled_port()` in daily_invest for plan/orders + `summary()` for display;
+  ros2 commit today, capital battery 16/16 + all regressions). PORTFOLIO keeps
+  its 10,000-reference constants (unmutated). **Budget change = one
+  `_meta.capital` edit in investments_state.json** — proportions hold at any
+  total (SWDA 28.57% of 20,000 = 5,714 verified), invested untouched, open
+  amount = new target − invested. Capital stays 10,000 until Vincent confirms
+  the +10k deposit landed (pre-flip would size buys beyond cash — no cash
+  guard in placement).
+
 ### Always-online follow-ups (Jcode, 2026-11-08 10:12, Vincent directives 09:24/10:03)
 
 - **Dashboard chip fixed** (frontend, commit `a1402d1`, `ng build` green):
