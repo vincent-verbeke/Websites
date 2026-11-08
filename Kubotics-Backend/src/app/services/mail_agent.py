@@ -765,6 +765,8 @@ async def _process_row(client, db, row, only, tier_map, overrides, contacts,
     row.language, row.category, row.criticality = (
         cls["language"], cls["category"], cls["criticality"])
     row.spam_probability, row.summary = cls["spam_probability"], cls["summary"]
+    row.error = None   # stale failure detail cleared on success — the audit
+    #                      trail lives in inbound_events / logs, not the ledger
 
     action = decide(
         category=cls["category"], criticality=cls["criticality"], tier=tier,

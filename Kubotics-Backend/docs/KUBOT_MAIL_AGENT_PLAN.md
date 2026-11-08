@@ -674,20 +674,19 @@ Go-live approval = you have run T1–T7 and accept the wording; then Phase C
 
 ## 10. Estimated build order (after your approval)
 
-**STATUS 2026-11-08 14:22 — steps 1-5 ALL DONE, Phase B LIVE in prod since
-10:53** (commits 178517d → 71039f3+: models/config, poll loop, LLM chain,
-send path, admin API, deploy config + CI gate, QA fixes, outage self-heal,
-inbound_events emission, §6 `.env` conformance, §8.1 script corrections,
-README schema conformance, 21 send/pipeline/contract regression tests).
-105/105 tests; 17 CI deploys green. Loop healthy at 60s. **14:22 Vincent
-replaced `GEMINI_API_KEY` (old key: HTTP400 "Please pass a valid API key")
-and `MIMO_API_KEY` was saved ~11:14Z — but 14:27 run logs exposed the real
-blocker (§7.4/6): GitHub executes ONLY the repo-root
-`.github/workflows/deploy.yml`; today's MIMO/XAI/test-gate edits had landed
-in a dead subdirectory file. Root workflow now carries MIMO/XAI + secret
-diagnostics + the pytest gate.** Next: providers → Liz's parked row
-self-heals ≤15 min → T1 reply → §8.1 T1–T7 → approval → Phase C go-live
-(one env flip). §7.5 pickup checks armed ~hourly (max 3/day while OOO).
+**STATUS 2026-11-08 15:01 — Phase B LIVE; ✅ T1 DELIVERED 14:50:18Z**
+(Sent Items `RE: I love you` → liz.mallet@kuroliv.ch in-thread, 947 chars,
+composed by **mimo** per your chain order, §5.6 EN signature verbatim,
+ledger `replied`). Commits 178517d → 7d541ad+: full build, **106/106
+tests**, first REAL CI pytest gate green (`0a8ddc3`), 19 deploys. Today's
+three prod bugs fixed + logged (§7.4): invalid GEMINI key (you replaced it),
+nested-workflow dead file (GitHub executes only the repo-root
+`.github/workflows/` — MIMO/XAI mapping, diagnostics and test gate moved
+there, dead subdir deleted), Graph id 152 chars vs `varchar(128)` (DDL
+widen + model + schema-pin test; marker-before-POST prevented double-send).
+Loop healthy at 60s, providers `['mimo','gemini']` (new gemini key unproven
+until the first failover). **Remaining: your T2–T7 (§8.1) + §5.6 OK →
+Phase C = clear `MAIL_AGENT_ONLY_SENDERS` (one env flip) → GO-LIVE.**
 
 1. Models + config + migrations pattern (Phase 0, no behaviour change).
 2. Poll loop + hard filters + ledger (service stays `MAIL_AGENT_ENABLED=false`

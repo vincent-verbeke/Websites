@@ -69,7 +69,8 @@ def _message_row(r: MailMessage) -> dict:
             "language": r.language, "summary": r.summary,
             "error": r.error, "web_link": r.web_link,
             "reply_chars": len(r.reply_text or ""),
-            "llm_provider": r.llm_provider, "notify": cls.get("notify"),
+            "llm_provider": r.llm_provider, "llm_model": r.llm_model,
+            "notify": cls.get("notify"),
             "received_at": r.received_at.isoformat() if r.received_at else None,
             "sent_at": r.sent_at.isoformat() if r.sent_at else None}
 

@@ -496,13 +496,14 @@ def _stub_pipeline(monkeypatch, row, *, detail=_DETAIL_OK, classify=_CLS_OK,
 def test_process_pending_happy_path_classifies_composes_and_emits_event(monkeypatch):
     """received -> detail -> route(contact) -> classify -> decide -> compose
     -> classified, with inbound_events emitted (plan node O)."""
-    row = _row(state="received")
+    row = _row(state="received", error="classify:LLMUnavailable: stale from an earlier attempt")
     calls = _stub_pipeline(monkeypatch, row)
 
     stats = _run(ma.process_pending())
 
     assert stats["taken"] == 1 and stats["ready"] == 1
     assert row.state == "classified"
+    assert row.error is None  # stale failure detail cleared on success
     assert row.reply_text == _COMPOSE_OK[0]
     assert row.route == "contact" and row.tier == "contact"
     assert row.llm_provider == "mimo" and row.llm_model == "mimo-v2.6-flash"
