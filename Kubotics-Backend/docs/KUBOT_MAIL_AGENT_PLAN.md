@@ -470,7 +470,15 @@ changing a secret alone does nothing. To pick up new/rotated keys:
 Pickup checks armed 2026-11-08 12:33 UTC (first wake 13:20Z, rescheduled
 while Vincent is OOO) — each attempt appends a line here:
 
-- (pending 13:20Z)
+- 13:21Z check 1 (scheduled): redeploy rode on `68dc3bc`; providers unchanged
+  (`[gemini]` — old key still returning HTTP400 `INVALID_ARGUMENT: Please pass
+  a valid API key`), MIMO absent; no WhatsApp sent.
+- 14:22Z check 2 EARLY (Vincent online): he **replaced `GEMINI_API_KEY`** with
+  a freshly created key and confirmed `MIMO_API_KEY` was saved ~11:14Z
+  (step-env mapping had been missing until `6631f97`, 11:19Z). Transport push
+  = this commit; the workflow step now prints **secret lengths + injected/
+  skipped names** (never values) so the run log settles whether every key
+  resolves.
 
 Operational notes:
 
@@ -631,15 +639,18 @@ Go-live approval = you have run T1–T7 and accept the wording; then Phase C
 
 ## 10. Estimated build order (after your approval)
 
-**STATUS 2026-11-08 13:05 — steps 1-5 ALL DONE, Phase B LIVE in prod since
-10:53** (commits 178517d → a613769: models/config, poll loop, LLM chain,
-send path, admin API, deploy config, CI gate, QA fixes, outage self-heal,
-inbound_events emission, §6 `.env` conformance, §8.1 script corrections).
-84/84 tests; CI deploys green (last: a613769, 12:48). Loop healthy at 60s
-(providers `[gemini]` until his 2 keys land; self-heal requeue observed
-12:08/12:28). Remaining: 2 GitHub secrets (invalid `GEMINI_API_KEY` +
-`MIMO_API_KEY` not in container) → §8.1 T1–T7 (Liz) → approval → Phase C
-go-live (one env flip). §7.5 pickup checks armed ~hourly (max 3/day, OOO).
+**STATUS 2026-11-08 14:22 — steps 1-5 ALL DONE, Phase B LIVE in prod since
+10:53** (commits 178517d → 71039f3+: models/config, poll loop, LLM chain,
+send path, admin API, deploy config + CI gate, QA fixes, outage self-heal,
+inbound_events emission, §6 `.env` conformance, §8.1 script corrections,
+README schema conformance, 21 send/pipeline/contract regression tests).
+105/105 tests; 17 CI deploys green. Loop healthy at 60s. **14:22: Vincent
+replaced `GEMINI_API_KEY` (old key returned HTTP400 "Please pass a valid API
+key"); `MIMO_API_KEY` saved ~11:14Z (step-env wiring fixed 11:19Z) — this
+transport deploy adds secret-resolution diagnostics to the run log.** Next:
+providers → Liz's parked row self-heals ≤15 min → T1 reply → §8.1 T1–T7 →
+approval → Phase C go-live (one env flip). §7.5 pickup checks armed ~hourly
+(max 3/day while OOO).
 
 1. Models + config + migrations pattern (Phase 0, no behaviour change).
 2. Poll loop + hard filters + ledger (service stays `MAIL_AGENT_ENABLED=false`
