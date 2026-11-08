@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -245,6 +246,39 @@ async def chat_json(system: str, user: str) -> tuple[dict, str, str]:
             except Exception as exc:  # noqa: BLE001 — chain failover swallows all
                 errors.append(f"{p.name}:{type(exc).__name__}")
     raise LLMUnavailable("all providers failed: " + ", ".join(errors)[:400])
+
+
+async def probe_providers(timeout_s: float = 20.0) -> list[dict]:
+    """Per-provider health probe (admin diagnostics): one tiny chat call each.
+
+    Born from the 2026-11-08 debugging need ("MIMO should work or show me a
+    real error") — run after any key rotation. Never raises (one broken
+    provider must not hide the others) and never returns key material.
+    Returns ``[{name, model, ok, ms, error}]`` in chain order.
+    """
+    results: list[dict] = []
+    for p in provider_chain():
+        entry: dict = {"name": p.name, "model": p.model, "ok": False,
+                       "ms": None, "error": None}
+        t0 = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=timeout_s) as client:
+                resp = await client.post(
+                    f"{p.base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {p.api_key}"},
+                    json={"model": p.model,
+                          "messages": [{"role": "user", "content": "Reply OK."}]},
+                )
+            entry["ms"] = int((time.monotonic() - t0) * 1000)
+            if resp.status_code == 200:
+                entry["ok"] = True
+            else:
+                entry["error"] = f"HTTP{resp.status_code}: {resp.text[:160]}"
+        except Exception as exc:  # noqa: BLE001 — diagnostic surface
+            entry["ms"] = int((time.monotonic() - t0) * 1000)
+            entry["error"] = f"{type(exc).__name__}: {exc}"[:200]
+        results.append(entry)
+    return results
 
 
 # --- classify (call #1, plan §3.3) --------------------------------------------

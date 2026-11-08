@@ -517,6 +517,12 @@ while Vincent is OOO) — each attempt appends a line here:
 
 Operational notes:
 
+* **Key-rotation check:** `POST /api/v1/mail/llm_probe` (admin token) sends
+  one tiny chat call per configured provider and returns ok / latency /
+  the REAL provider error per chain step — run it after any secret change
+  instead of waiting for mail traffic (added 2026-11-08 from the T1
+  debugging session: "MIMO should work or show me a real error").
+
 * **Privacy/consent:** auto-replies are sent from your mailbox to people who
   wrote to you — same posture as the PC-A flow, now unattended. Phase B
   (Liz-only) until you approve go-live.

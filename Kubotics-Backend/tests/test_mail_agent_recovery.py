@@ -640,3 +640,125 @@ def test_decide_reply_kinds_all_have_compose_rules():
     # vocabulary pinned BOTH ways: no silent additions/removals on either side
     assert kinds == {"thank_you", "holding", "ack_only"}
     assert set(ma.mail_llm.REPLY_RULES) == {"thank_you", "holding", "ack_only"}
+
+
+# --- LLM chain failover + provider health probe -------------------------------
+
+class _R:
+    """Minimal chat-completions response for chain/probe fakes."""
+
+    def __init__(self, status_code, text="", json_data=None):
+        self.status_code = status_code
+        self.text = text
+        self._json = json_data
+
+    def json(self):
+        return self._json
+
+
+class _ChainClient:
+    """Per-call scripted httpx stand-in for chat_text/chat_json/probe."""
+
+    def __init__(self, behaviors):
+        self._behaviors = list(behaviors)
+        self.calls: list[str] = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def post(self, url, headers=None, json=None, timeout=None):
+        self.calls.append(url)
+        b = self._behaviors.pop(0)
+        if isinstance(b, Exception):
+            raise b
+        return b
+
+
+def _ok(content):
+    return _R(200, json_data={"choices": [{"message": {"content": content}}]})
+
+
+def _chain(monkeypatch, names=("mimo", "gemini")):
+    chain = [ma.mail_llm.Provider(n, f"https://{n}.test/v1", f"key-{n}", f"model-{n}")
+             for n in names]
+    monkeypatch.setattr(ma.mail_llm, "provider_chain", lambda: chain)
+    return chain
+
+
+def test_chat_text_fails_over_to_next_provider(monkeypatch):
+    """Provider1 HTTP500 -> provider2 answers; attribution is the survivor
+    (the exact mechanics behind the 'new GEMINI key unproven' watch item)."""
+    _chain(monkeypatch, ("mimo", "gemini"))
+    client = _ChainClient([_R(500, text="server exploded"),
+                           _ok("<p>Answer.</p>")])
+    monkeypatch.setattr(ma.mail_llm.httpx, "AsyncClient", lambda *a, **k: client)
+
+    content, provider, model = _run(ma.mail_llm.chat_text("sys", "user"))
+
+    assert content == "<p>Answer.</p>"
+    assert (provider, model) == ("gemini", "model-gemini")
+    assert len(client.calls) == 2
+
+
+def test_chat_text_all_fail_raises_with_provider_errors(monkeypatch):
+    """LLMUnavailable must carry each provider's REAL detail (the error-body
+    logging that diagnosed the invalid Gemini key on T1 day)."""
+    _chain(monkeypatch, ("mimo", "gemini"))
+    client = _ChainClient([_R(500, text="mimo down"),
+                           _R(429, text="Please pass a valid API key")])
+    monkeypatch.setattr(ma.mail_llm.httpx, "AsyncClient", lambda *a, **k: client)
+
+    try:
+        _run(ma.mail_llm.chat_text("sys", "user"))
+        raise AssertionError("must raise LLMUnavailable when the chain dies")
+    except ma.mail_llm.LLMUnavailable as exc:
+        msg = str(exc)
+        assert "all providers failed" in msg
+        assert "mimo:HTTP500" in msg and "Please pass a valid API key" in msg
+
+
+def test_chat_json_skips_unparseable_answer(monkeypatch):
+    """200-but-not-JSON from provider1 must fail over, not crash classify."""
+    _chain(monkeypatch, ("mimo", "gemini"))
+    client = _ChainClient([_ok("totally prose, no json here"),
+                           _ok('{"language": "en", "category": "informational"}')])
+    monkeypatch.setattr(ma.mail_llm.httpx, "AsyncClient", lambda *a, **k: client)
+
+    parsed, provider, _model = _run(ma.mail_llm.chat_json("sys", "user"))
+
+    assert parsed["language"] == "en"
+    assert provider == "gemini"
+    assert len(client.calls) == 2
+
+
+def test_probe_providers_reports_each_step_without_keys(monkeypatch):
+    """POST /mail/llm_probe data: per-step ok/latency/real error, chain order,
+    and NEVER key material (born from 'MIMO should work or show a real error')."""
+    _chain(monkeypatch, ("mimo", "gemini"))
+    client = _ChainClient([_ok("OK"), _R(500, text="boom")])
+    monkeypatch.setattr(ma.mail_llm.httpx, "AsyncClient", lambda *a, **k: client)
+
+    results = _run(ma.mail_llm.probe_providers())
+
+    assert [r["name"] for r in results] == ["mimo", "gemini"]
+    assert results[0]["ok"] is True and results[0]["ms"] is not None
+    assert results[1]["ok"] is False and results[1]["ms"] is not None
+    assert results[1]["error"] == "HTTP500: boom"
+    assert "key-mimo" not in str(results) and "key-gemini" not in str(results)
+
+
+def test_probe_providers_survives_transport_errors(monkeypatch):
+    """One unreachable provider -> recorded, never raised (probe must always
+    return a full picture)."""
+    _chain(monkeypatch, ("mimo",))
+    client = _ChainClient([ma.httpx.ConnectError("network down")])
+    monkeypatch.setattr(ma.mail_llm.httpx, "AsyncClient", lambda *a, **k: client)
+
+    results = _run(ma.mail_llm.probe_providers())
+
+    assert len(results) == 1
+    assert results[0]["ok"] is False
+    assert "ConnectError" in results[0]["error"]

@@ -205,3 +205,17 @@ async def poll_now() -> dict:
     except Exception as exc:  # surface cycle errors to the caller
         raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}"[:300]) from exc
     return {"ok": True, "stats": stats}
+
+
+@router.post("/llm_probe")
+async def llm_probe() -> dict:
+    """Per-provider health: one tiny chat call per configured chain step.
+
+    Answers "is this key actually working — and if not, what is the REAL
+    provider error" after any secret rotation (plan §7.5). Returns ok,
+    latency and a truncated error per provider — never key material.
+    Costs a few tokens per configured provider."""
+    chain = mail_llm.provider_chain()
+    return {"chain": settings.MAIL_AGENT_LLM_CHAIN,
+            "configured": [p.name for p in chain],
+            "providers": await mail_llm.probe_providers()}
