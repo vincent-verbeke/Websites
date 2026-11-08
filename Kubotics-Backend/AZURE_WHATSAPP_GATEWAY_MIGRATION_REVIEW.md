@@ -84,10 +84,12 @@ needle3 `send_url` → `https://api.kubotics.ch/api/whatsapp/send`, real
 round-trip `wamid.HBgL…` delivered; PC-A :8444 has no consumers left).
 
 **Remaining (ordered):**
-1. **Send API in the container** — contract specified in the website agent's
-   prompt §7.2 (`POST /api/whatsapp/send`, `GET /api/whatsapp/send/health`,
-   failure semantics, same-day cutover flag). When it lands: Jcode switches
-   needle3 `send_url`, verifies one real round-trip, keeps PC-A fallback 1 week.
+1. ~~**Send API in the container**~~ **DONE → CLOSED 2026-11-08 (a21 retirement):**
+   contract §7.2 landed; needle3 `send_url` switched 2026-11-01 13:35 with a
+   verified `wamid.HBgL…` round-trip, re-verified since (send/health
+   `configured=true` on 2026-11-08; last_send success 2026-11-06). The 1-week
+   PC-A fallback soak ENDED today — retirement executed, see §4 item 4 and the
+   **2026-11-08 retirement result** at the end of this doc.
 2. **Token consolidation** — two Meta access-token holders → container only;
    sequence + rotation-window notice in prompt §7.3.
 3. **Dashboard** SPA + relay replacement — spec in the prompt (§2/§3): task
@@ -112,13 +114,15 @@ round-trip `wamid.HBgL…` delivered; PC-A :8444 has no consumers left).
 3. ~~Token consolidation?~~ **ANSWERED: yes, consolidate in the same move** —
    sequence in prompt §7.3, rotation window announced to Jcode so no
    scheduled run fires with a stale token.
-4. **PC-A `wa-*` systemd unit install — recommend CANCEL (validated 13:36):**
-   after the webhook+intake+send migration nothing needs `wa_core`, so
-   installing units would supervise services we are about to retire.
-   Original deferral by Vincent: ("review after
-   other questions first"). Script staged, unexecuted at
-   `~/.jcode/scratch/pca_wa_units_install.sh`; re-raise after the send-path
-   cutover (units for `wa_core` become moot if the container replaces it).
+4. ~~**PC-A `wa-*` systemd unit install — recommend CANCEL (validated 13:36)**~~
+   **CLOSED 2026-11-08**: the a21 retirement ran (1-week soak over); the wa-*
+   units were never installed (a12 stays cancelled, script untouched) and
+   `edge_config.json` was deprecated in place (backup
+   `edge_config.json.bak_20261108` retains the original token). Units would
+   supervise retired services — no longer an open question. Residual: `wa_core`
+   refused to stay dead (respawned unexplained 5 s after kill) → kept running
+   per the retirement prompt's report-not-improvise rule; details in the
+   **2026-11-08 retirement result** below.
 5. ~~ECS circuit breaker~~ **RESOLVED — already enabled**
    (`rollback:true`, threshold 50%); it needed the load balancer attached to
    receive a health signal (fixed §2.3) and **proved itself live at 13:02**
@@ -133,3 +137,32 @@ reconstructed in the prompt as **§7.1/§7.2 RECONSTRUCTED** (behavior-level,
 every point live-observed 2026-11-01/02: 200+wamid round-trip, 401 without
 token, health keys sans secrets, CloudFront→ALB→ECS chain). Future readers:
 cite the reconstruction, not the lost originals.
+
+## 2026-11-08 retirement result (a21 / sched_8b725532, executed by Jcode 09:01–09:13 UTC)
+
+- **Step 1 (no consumer):** needle3 runtime json = cloud `send_url` (zero `8444`
+  refs); `config.py` legacy default = sanctioned dead default (pre-flight note).
+  PC-A sender-file scan: `wa-edge/edge.env`, `wa-edge/edge_config.json`,
+  `needle3/needle3/config.py`, `wa-web/web.env`, `wa-web/edge_app.py` —
+  `edge.env`/`web.env` are **beyond the approved disambiguation list →
+  reported, not touched** (env files of the superseded legacy stack; no runtime
+  sender found). Dev-PC scan: test fixture + `edge_app` source + two docs only.
+- **Step 2:** `GET /api/whatsapp/send/health` → `configured=true`,
+  `last_send 2026-11-06 ok` → no extra round-trip sent (per rule).
+- **Step 3 (stop orphan):** kill executed → old `wa_core` dead, but a new
+  instance (pid 3017472, PPid 1) was up **5 s later**. Spawn source UNEXPLAINED
+  after an exhaustive search: `wa-core.service` not installed, no crontab /
+  at / anacron reference, no ssh login in the journal window, no tmux/screen,
+  no keeper loop, `router.py` / `edge_app.py` contain no spawn code, and
+  `wa_core.py serve` has no self-restart. → **kept running per the prompt's
+  report-not-improvise rule; question raised to Vincent (did he restart it
+  ~10:05 CET?).** Scope note: `edge_app` :8001 (pid 197277) and
+  `webhook_front` :8443 (pid 40313) are **RUNNING → left alone** as approved.
+- **Step 4:** `edge_config.json` → backup `edge_config.json.bak_20261108`
+  (original token retained ONLY there), `wa_token=""`,
+  `deprecated="moved to ECS task def 2026-11-08, see prompt §7.3"` (token
+  length recorded, value never printed).
+- **Step 5:** needle3 `ctl status` → backend OK, cursor 39, unseen 0.
+- **Step 6:** this doc (§3 item 1 → DONE, §4 item 4 → CLOSED) + one WhatsApp
+  report sent (including the respawn anomaly, scope-proc statuses and the
+  `edge.env`/`web.env` findings).
