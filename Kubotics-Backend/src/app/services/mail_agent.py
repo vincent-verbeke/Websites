@@ -24,7 +24,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.config import settings
@@ -111,6 +111,11 @@ def header_hard_filter(headers: dict[str, str]) -> str | None:
 
     ``headers``: lowercased header name -> value. ``Auto-Submitted: no``
     explicitly marks a human-sent mail (RFC 3834) and passes.
+
+    QA note (2026-11-08): ``X-Auto-Response-Suppress`` is deliberately NOT
+    filtered — it only says which auto-responses THIS message suppresses
+    ("DR, RN, NRN" is normal on human Exchange mail) and says nothing about
+    the sender being a machine; filtering on it would eat corporate mail.
     """
     auto = headers.get("auto-submitted")
     if auto is not None and (auto or "").strip().lower() != "no":
@@ -120,8 +125,6 @@ def header_hard_filter(headers: dict[str, str]) -> str | None:
     precedence = (headers.get("precedence") or "").strip().lower()
     if precedence in {"bulk", "junk", "list", "auto_reply"}:
         return f"precedence_{precedence}"
-    if (headers.get("x-auto-response-suppress") or "").strip().lower() not in ("", "none"):
-        return "auto_response_suppress"
     return None
 
 
@@ -554,6 +557,23 @@ def decide(*, category: str, criticality: str, tier: str,
 
 # --- pending pipeline (step 3 orchestration) -----------------------------------
 
+async def _defer_row(row, stats, prefix: str, detail: str) -> None:
+    """Transient failure: keep ``received`` for retry, give up after 5 tries.
+
+    Mirrors the LLM-attempts pattern so an outage window cannot quarantine
+    fresh mail into a terminal state.
+    """
+    key = f"{prefix}_attempts"
+    attempts = int((row.classification or {}).get(key, 0)) + 1
+    row.classification = {**(row.classification or {}), key: attempts}
+    row.error = f"{prefix}:{detail}"[:500]
+    if attempts >= 5:
+        row.state = "needs_review"
+        stats["review"] += 1
+    else:
+        stats["deferred"] += 1
+
+
 async def process_pending(limit: int = 50) -> dict:
     """Take ``received`` rows through detail -> filters -> route -> classify ->
     decide -> compose. Send + WhatsApp happen in step 4 (rows end in
@@ -596,10 +616,18 @@ async def _process_row(client, db, row, only, tier_map, overrides, contacts,
         detail = await fetch_message_detail(client, row.internet_message_id)
     except GraphThrottled:
         raise
-    except Exception as exc:  # noqa: BLE001
-        row.state = "needs_review"
-        row.error = f"detail_fetch:{type(exc).__name__}: {exc}"[:500]
-        stats["review"] += 1
+    except httpx.HTTPError as exc:
+        # transient network/timeout — retry next cycle, cap at 5 -> needs_review
+        await _defer_row(row, stats, "detail_fetch", f"{type(exc).__name__}: {exc}")
+        return
+    except Exception as exc:  # noqa: BLE001 — non-200 from Graph
+        msg = f"{type(exc).__name__}: {exc}"
+        if "HTTP 5" in str(exc):   # 5xx = transient server-side
+            await _defer_row(row, stats, "detail_fetch", msg)
+        else:
+            row.state = "needs_review"    # 4xx / gone -> terminal, visible
+            row.error = f"detail_fetch:{msg}"[:500]
+            stats["review"] += 1
         return
     if detail is None:
         row.state = "needs_review"
@@ -817,7 +845,8 @@ async def send_ready(limit: int = 20) -> dict:
     flush when the window opens.
     """
     stats = {"sent": 0, "cap_blocked": 0, "cooldown_skip": 0, "failed": 0,
-             "alerts_sent": 0, "alerts_pending": 0, "cap_notice": 0}
+             "alerts_sent": 0, "alerts_pending": 0, "cap_notice": 0,
+             "observe_skip": 0}
     now = datetime.now(UTC)
     only = parse_only_senders(settings.MAIL_AGENT_ONLY_SENDERS)
     in_window = in_alert_window(
@@ -854,6 +883,11 @@ async def send_ready(limit: int = 20) -> dict:
             ready = []
 
         for row in ready:
+            # observe-mode rows were classified WITHOUT compose (§3.3) — they
+            # must never reach the send path (empty-comment send guard)
+            if not (row.reply_text or "").strip():
+                stats["observe_skip"] += 1
+                continue
             # Phase-B gate re-checked at send time (defensive)
             if only and (row.sender or "").lower() not in only:
                 row.state = "ignored_unknown"
@@ -916,6 +950,26 @@ async def send_ready(limit: int = 20) -> dict:
             await db.commit()
             if row.state == "replied":
                 stats["sent"] += 1
+
+        # --- Q6 cap notice, DECOUPLED from the cap branch: an after-hours cap
+        # must still notify when the window opens (one latched notice/day)
+        capped = (await db.execute(
+            select(func.count(MailMessage.id)).where(
+                MailMessage.state == "needs_review",
+                MailMessage.summary.like("cap_reached:%"))
+        )).scalar_one()
+        if capped and in_window:
+            today = now.astimezone(ZoneInfo(settings.MAIL_AGENT_ALERT_TZ)).date().isoformat()
+            if not await _cap_notice_latched(today):
+                ok, _, _ = await whatsapp_service.send_text_message(
+                    settings.MAIL_AGENT_NOTIFY_PHONE,
+                    f"Kubot: daily reply cap reached "
+                    f"({settings.MAIL_AGENT_MAX_REPLIES_PER_DAY}) — "
+                    f"{capped} message(s) waiting in needs_review "
+                    "for your own answer.")
+                if ok:
+                    await _latch_cap_notice(today)
+                    stats["cap_notice"] = 1
 
         # --- WhatsApp flush (Q11 window; pending = notify flag & not yet sent) ---
         pending_alerts = (await db.execute(

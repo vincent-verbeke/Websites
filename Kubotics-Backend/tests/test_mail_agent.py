@@ -144,8 +144,11 @@ def test_header_hard_filter_q14_never_autoreplies():
     assert ma.header_hard_filter({"list-unsubscribe": "<https://x>"}) == "mailing_list"
     assert ma.header_hard_filter({"list-id": "Newsletter"}) == "mailing_list"
     assert ma.header_hard_filter({"precedence": "bulk"}) == "precedence_bulk"
-    assert ma.header_hard_filter({"x-auto-response-suppress": "OOF"}) == "auto_response_suppress"
     assert ma.header_hard_filter({}) is None
+    # QA fix: X-Auto-Response-Suppress is NOT an auto-reply signal (human
+    # Exchange mail carries "DR, RN, NRN") — filtering it would eat real mail
+    assert ma.header_hard_filter({"x-auto-response-suppress": "DR, RN, NRN"}) is None
+    assert ma.header_hard_filter({"x-auto-response-suppress": "OOF, AutoReply"}) is None
 
 
 def test_plan_scan_first_boot_seeds_without_processing():
