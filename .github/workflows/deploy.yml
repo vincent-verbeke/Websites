@@ -24,6 +24,15 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Run test suite (pytest gate)
+        working-directory: Kubotics-Backend
+        run: uv run --frozen pytest -q
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -56,12 +65,22 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           AZURE_CLIENT_CERT_KEY: ${{ secrets.AZURE_CLIENT_CERT_KEY }}
           AZURE_CLIENT_CERT_THUMBPRINT: ${{ secrets.AZURE_CLIENT_CERT_THUMBPRINT }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           WHATSAPP_VERIFY_TOKEN: ${{ secrets.WHATSAPP_VERIFY_TOKEN || 'kubotics_wa_verify_token_2026' }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
         run: |
+          # Diagnostics (2026-11-08): prove which secret VALUES resolved in this
+          # step — lengths only; values are masked by Actions regardless.
+          echo "MIMO_API_KEY length: ${#MIMO_API_KEY}"
+          echo "GEMINI_API_KEY length: ${#GEMINI_API_KEY}"
+          echo "OPENAI_API_KEY length: ${#OPENAI_API_KEY}"
+          echo "XAI_API_KEY length: ${#XAI_API_KEY}"
           AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           echo "Discovered AWS Account ID: $AWS_ACCOUNT_ID"
 
@@ -87,6 +106,8 @@ jobs:
               "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
               "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY"),
               "GROQ_API_KEY": os.environ.get("GROQ_API_KEY"),
+              "MIMO_API_KEY": os.environ.get("MIMO_API_KEY"),
+              "XAI_API_KEY": os.environ.get("XAI_API_KEY"),
               "ELEVENLABS_API_KEY": os.environ.get("ELEVENLABS_API_KEY"),
               "AZURE_CLIENT_CERT_KEY": os.environ.get("AZURE_CLIENT_CERT_KEY"),
               "AZURE_CLIENT_CERT_THUMBPRINT": os.environ.get("AZURE_CLIENT_CERT_THUMBPRINT"),
@@ -102,6 +123,8 @@ jobs:
           for k, v in secrets_to_inject.items():
               if v:
                   env_vars[k] = v
+          print("injected (non-empty):", sorted(k for k, v in secrets_to_inject.items() if v))
+          print("skipped (empty/missing):", sorted(k for k, v in secrets_to_inject.items() if not v))
 
           container["environment"] = [{"name": k, "value": v} for k, v in env_vars.items()]
 

@@ -453,6 +453,20 @@ itself — your §9 review, now answered (§9).
    MIMO secret, retry note for Liz's test.
 5. **Standing rule from (1):** never run destructive SQL on this database
    without first echoing and verifying the connection target.
+6. **Nested-workflow root cause (14:27–14:31):** Vincent's pasted run log
+   showed the LIVE step's `secrets_to_inject` had **no MIMO/XAI entries** —
+   GitHub only executes workflows from the repo-root `.github/workflows/`,
+   while today's pipeline edits (MIMO/XAI step-env `6631f97`, pytest gate
+   `97f7ec8`, diagnostics `00f775e`) all went to the **subdirectory**
+   `Kubotics-Backend/.github/workflows/deploy.yml`, which is never executed.
+   This is why MIMO stayed absent through ~10 deploys after both the secret
+   (11:14Z) and the mapping fix (11:19Z), and why CI's "green" never meant
+   tests ran (build+deploy only — the suite had been gated by local runs).
+   **Fixed in the ROOT workflow:** MIMO/XAI env + injection-map entries,
+   WHATSAPP creds env lines (completes `127d094`'s override intent),
+   secret-length + injected/skipped-name diagnostics, and the uv+pytest gate.
+   Dead subdirectory file deleted — future sessions: edit
+   `/.github/workflows/deploy.yml` (repo root), never the subdir copy.
 
 ### 7.5 Secrets pickup protocol (how a GitHub secret change reaches prod)
 
@@ -479,6 +493,11 @@ while Vincent is OOO) — each attempt appends a line here:
   = this commit; the workflow step now prints **secret lengths + injected/
   skipped names** (never values) so the run log settles whether every key
   resolves.
+- 14:31Z check 2 CONTINUED: `00f775e` deployed green but providers were
+  still `[gemini]` → Vincent's pasted run log exposed the **nested-workflow
+  root cause** (§7.4/6: GitHub runs only the ROOT `.github/workflows/`).
+  MIMO/XAI mapping + diagnostics + pytest gate now live in the ROOT
+  `.github/workflows/deploy.yml`; the next transport deploy carries them.
 
 Operational notes:
 
@@ -644,13 +663,15 @@ Go-live approval = you have run T1–T7 and accept the wording; then Phase C
 send path, admin API, deploy config + CI gate, QA fixes, outage self-heal,
 inbound_events emission, §6 `.env` conformance, §8.1 script corrections,
 README schema conformance, 21 send/pipeline/contract regression tests).
-105/105 tests; 17 CI deploys green. Loop healthy at 60s. **14:22: Vincent
-replaced `GEMINI_API_KEY` (old key returned HTTP400 "Please pass a valid API
-key"); `MIMO_API_KEY` saved ~11:14Z (step-env wiring fixed 11:19Z) — this
-transport deploy adds secret-resolution diagnostics to the run log.** Next:
-providers → Liz's parked row self-heals ≤15 min → T1 reply → §8.1 T1–T7 →
-approval → Phase C go-live (one env flip). §7.5 pickup checks armed ~hourly
-(max 3/day while OOO).
+105/105 tests; 17 CI deploys green. Loop healthy at 60s. **14:22 Vincent
+replaced `GEMINI_API_KEY` (old key: HTTP400 "Please pass a valid API key")
+and `MIMO_API_KEY` was saved ~11:14Z — but 14:27 run logs exposed the real
+blocker (§7.4/6): GitHub executes ONLY the repo-root
+`.github/workflows/deploy.yml`; today's MIMO/XAI/test-gate edits had landed
+in a dead subdirectory file. Root workflow now carries MIMO/XAI + secret
+diagnostics + the pytest gate.** Next: providers → Liz's parked row
+self-heals ≤15 min → T1 reply → §8.1 T1–T7 → approval → Phase C go-live
+(one env flip). §7.5 pickup checks armed ~hourly (max 3/day while OOO).
 
 1. Models + config + migrations pattern (Phase 0, no behaviour change).
 2. Poll loop + hard filters + ledger (service stays `MAIL_AGENT_ENABLED=false`
