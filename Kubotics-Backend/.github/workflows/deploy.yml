@@ -24,6 +24,16 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # Gate added with the Kubot mail agent (plan §7 row 11: the job was named
+      # "Build, Test & Deploy" but never ran tests). Fails the deploy on red.
+      - name: Test gate (pytest)
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Run test suite
+        working-directory: Kubotics-Backend
+        run: uv run --frozen pytest -q
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -87,6 +97,8 @@ jobs:
               "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
               "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY"),
               "GROQ_API_KEY": os.environ.get("GROQ_API_KEY"),
+              "MIMO_API_KEY": os.environ.get("MIMO_API_KEY"),
+              "XAI_API_KEY": os.environ.get("XAI_API_KEY"),
               "ELEVENLABS_API_KEY": os.environ.get("ELEVENLABS_API_KEY"),
               "AZURE_CLIENT_CERT_KEY": os.environ.get("AZURE_CLIENT_CERT_KEY"),
               "AZURE_CLIENT_CERT_THUMBPRINT": os.environ.get("AZURE_CLIENT_CERT_THUMBPRINT"),
