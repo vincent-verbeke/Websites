@@ -24,7 +24,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.config import settings
@@ -574,13 +574,45 @@ async def _defer_row(row, stats, prefix: str, detail: str) -> None:
         stats["deferred"] += 1
 
 
+async def _requeue_parked_llm_failures(db, stats) -> int:
+    """Outage self-heal: requeue ``needs_review`` rows parked by failures that
+    are the INFRASTRUCTURE's fault (LLM provider unreachable/invalid key,
+    transient detail-fetch errors) so they recover the moment the GitHub
+    secret is fixed — every >=15 minutes. Reply/validation failures stay
+    terminal (plan §5: a bad compose must not silently loop)."""
+    edge = datetime.now(UTC) - timedelta(minutes=15)
+    rows = (await db.execute(
+        select(MailMessage).where(
+            MailMessage.state == "needs_review",
+            MailMessage.updated_at <= edge,
+            or_(
+                MailMessage.error.like("classify:LLMUnavailable%"),
+                and_(MailMessage.error.like("detail_fetch:%"),
+                     MailMessage.error.not_like("%HTTP 4%"),
+                     MailMessage.error.not_like("%message_not_found%")),
+            ),
+        )
+    )).scalars().all()
+    for row in rows:
+        row.state = "received"
+        row.error = None
+        cls = dict(row.classification or {})
+        cls["llm_attempts"] = 0
+        cls.pop("detail_attempts", None)
+        row.classification = cls
+        stats["requeued"] += 1
+    return len(rows)
+
+
 async def process_pending(limit: int = 50) -> dict:
     """Take ``received`` rows through detail -> filters -> route -> classify ->
     decide -> compose. Send + WhatsApp happen in step 4 (rows end in
     ``classified`` / ``notify_only`` / ``ignored_*`` / ``needs_review``)."""
     stats = {"taken": 0, "ready": 0, "ignored": 0, "restricted": 0,
-             "review": 0, "deferred": 0, "notify_only": 0}
+             "review": 0, "deferred": 0, "notify_only": 0, "requeued": 0}
     async with AsyncSessionLocal() as db:
+        await _requeue_parked_llm_failures(db, stats)   # self-heal first
+        await db.commit()
         rows = (await db.execute(
             select(MailMessage)
             .where(MailMessage.state == "received")
