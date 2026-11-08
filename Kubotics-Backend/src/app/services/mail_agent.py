@@ -18,6 +18,7 @@ step 4 (send). The loop only starts when ``MAIL_AGENT_ENABLED`` is true
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
 from datetime import UTC, datetime, timedelta
@@ -30,7 +31,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.mail_agent import MailMessage, MailWatchSender
-from app.models.tasks import DeviceSnapshotCache
+from app.models.tasks import DeviceSnapshotCache, InboundEvent
 from app.services import mail_llm
 from app.services.m365_service import m365_service
 from app.services.whatsapp_service import whatsapp_service
@@ -337,6 +338,42 @@ async def mark_ignored(internet_message_id: str, reason: str) -> None:
 
 # --- one cycle ----------------------------------------------------------------
 
+async def record_classification_event(db, row: MailMessage) -> None:
+    """Plan §3 diagram node O: classified decisions land in ``inbound_events``
+    (channel=email) so the dashboard/needle event feed sees mail activity.
+
+    Idempotent: UNIQUE ``event_id`` = ``email:`` + sha1(internetMessageId)
+    (hashed because raw Message-IDs can exceed the 128-char column and to
+    keep the id space disjoint from other channels).
+    """
+    cls = row.classification or {}
+    eid = "email:" + hashlib.sha1(
+        (row.internet_message_id or "").encode()).hexdigest()[:40]
+    stmt = (
+        pg_insert(InboundEvent.__table__)
+        .values(
+            event_id=eid,
+            channel="email",
+            sender_id=(row.sender or "unknown")[:128],
+            payload={
+                "internet_message_id": row.internet_message_id,
+                "subject": (row.subject or "")[:200],
+                "state": row.state,
+                "route": row.route,
+                "tier": row.tier,
+                "category": row.category,
+                "priority": row.priority,
+                "notify": cls.get("notify"),
+                "summary": (row.summary or "")[:200],
+                "llm_provider": row.llm_provider,
+            },
+            status="processed",
+        )
+        .on_conflict_do_nothing(index_elements=["event_id"])
+    )
+    await db.execute(stmt)
+
+
 async def run_once() -> dict:
     """One poll cycle. Returns counters for logging/status (plan §3.1)."""
     stats = {"scanned": 0, "seeded": 0, "claimed": 0, "ignored": 0, "pending": 0}
@@ -632,6 +669,9 @@ async def process_pending(limit: int = 50) -> dict:
                 await _process_row(client, db, row, only, tier_map, overrides,
                                    contacts, stats)
                 await db.commit()   # per-row: a later throttle keeps earlier work
+                if row.category:     # classification completed -> plan node O
+                    await record_classification_event(db, row)
+                    await db.commit()
         await db.commit()
     return stats
 
