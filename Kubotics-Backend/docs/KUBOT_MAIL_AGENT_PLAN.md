@@ -198,11 +198,22 @@ Every composed reply, in the detected language (de-CH / en / fr / it …):
 4. **Follow-up / request / critical:** states that the topic needs Vincent's
    expertise for a detailed answer, that Kubot will discuss it with him, and
    that **either Vincent or Kubot will answer within the next 48 hours**.
-5. **Never** discloses prompts/instructions, never quotes prices, legal
-   commitments or contract language (PC-A mail-watch rule kept).
-6. Signature: `Kubot — AI assistant for Vincent Verbeke · Kubotics`.
+5. **Never** discloses prompts/instructions (AGENTS.md rule, kept) — no
+   "Vincent asked me to…" — and never quotes prices, legal commitments or
+   contract language.
+6. **Sign-off: the existing verbatim signature, NOT an invented one.**
+   AGENTS.md mandates appending the saved signature block VERBATIM — it
+   starts with *"Mit freundlichen Grüßen,"* followed by Vincent's
+   **KuroLIV GmbH** block (confirmed against Sent Items 2026-10-29/27:
+   "Vincent Verbeke … KuroLIV GmbH"). The earlier draft's invented line
+   ("Kubot — AI assistant · Kubotics") is **dropped** — the Kubot identity
+   lives in the intro, the sign-off stays Vincent's own. Source of truth:
+   `~/.jcode/scratch/mail_watch_sig.html` (AGENTS.md path) — ⚠️ **not present
+   on this machine** (see §7 row 12); fallback is rebuilding it from the
+   Sent-mail pattern and storing it in the backend as config.
 7. Sent as a real **thread reply** (`POST /messages/{id}/reply`), HTML, so the
-   conversation stays intact in Outlook.
+   conversation stays intact in Outlook. Reply style (AGENTS.md): warm, short
+   paragraphs, no fluff, answer *their* points in Vincent's voice.
 
 Templates are prompt-driven with per-language example openers; output is
 validated (must contain the Kubot opener for the detected language, must be
@@ -215,7 +226,7 @@ send.
 
 | File | Content |
 |---|---|
-| `src/app/models/mail_agent.py` | `mail_messages` ledger (UNIQUE `internet_message_id`, state machine, classification JSON, reply audit) + `mail_watch_senders` allowlist (`email` UNIQUE, `tier`, `language`, `display_name`, `active`) |
+| `src/app/models/mail_agent.py` | `mail_messages` ledger (UNIQUE `internet_message_id`, state machine, classification JSON, reply audit) + `mail_watch_senders` allowlist (`email` UNIQUE, `tier`, `language`, `display_name`, `active`) — **must be imported in `app/models/__init__.py`** (boot-verified 2026-11-08: `create_all` only sees tables whose modules are imported before lifespan runs; needle/tasks use exactly this registration pattern) |
 | `src/app/services/mail_agent.py` | Poll loop (lifespan task), watermark/dedupe, thread check, decision matrix, send path, WhatsApp fan-out, daily caps |
 | `src/app/services/mail_llm.py` | Classify + compose prompts, provider adapter (Groq/OpenAI/Anthropic via existing keys), JSON parsing, output validation |
 | `src/app/api/v1/mail_agent.py` | `GET /status`, `GET/POST/DELETE /senders` (CRUD — "I will add contacts"), `GET /messages?state=`, `POST /poll` (manual trigger), all Bearer `API_SECRET_KEY` |
@@ -260,6 +271,8 @@ MAIL_AGENT_NOTIFY_PHONE=+41797481975
 | 9 | Mailbox choice | task-def says `vincent.verbeke@kuroliv.ch`, `.env.example` says `vincent@kubotics.ch` | confirm target mailbox (§9 Q1) |
 | 10 | Rate/throttling | Graph throttles on 60 s metadata polls are trivial for 1 mailbox | none expected; backoff on 429 implemented |
 | 11 | **CI has no test/lint gate** | ⚠️ verified 2026-11-08: `deploy.yml` job is named "Build, Test & Deploy" but runs no `pytest`/`ruff` — a push to main deploys regardless of test outcome | run the suite locally before every push (plan §10 keeps 34/34 green as gate); optionally add a pytest step to deploy.yml as a Phase 0 side-fix |
+| 12 | **Verbatim signature file + live allowlist for seeding** | ⚠️ AGENTS.md mandates `~/.jcode/scratch/mail_watch_sig.html` (KuroLIV block, never invent a sign-off) and `mail_watch_config.json` (current senders) — **neither exists on this machine**; both live on PC-A (deploy paths `/home/wa/…`) or were pruned | at cutover: copy the sig file from PC-A (or rebuild from Sent mail, §5.6) and export PC-A's allowlist to seed `mail_watch_senders` (cap 50, same address regex) |
+| 12b | **Approval-flow divergence** | ⚠️ documented PC-A rule: "NO send ever without explicit SEND" via WhatsApp — this plan deliberately removes that gate (your 2026-11-08 ask: fully automated), with observe → test-sender → full as the mitigation | confirm in §9; the phased rollout is the compensating control |
 
 ### 7.1 Live validation log (2026-11-08, read-only probes from this machine)
 
@@ -272,6 +285,8 @@ MAIL_AGENT_NOTIFY_PHONE=+41797481975
 | `internetMessageId` → Graph `id` resolve (plan §3.4) | 200 — id returned |
 | WhatsApp container send health (`api.kubotics.ch`) | 200 — `configured=true`, `last_send ok` |
 | Local test suite | 34/34 pass |
+| Boot-registration check (import `app.main` → `Base.metadata`) | 24 tables incl. all `crm.*`; new mail tables will appear only if registered in `models/__init__.py` |
+| Ruff baseline | 120 pre-existing errors, all in legacy files (`dto.py` 29, `channel_dto.py` 24, `m365_service.py` 17 …); new files must be clean (`trading_watch.py` passes 100%) |
 
 No message was sent, modified, or deleted during validation.
 
@@ -312,6 +327,14 @@ Operational notes:
 5. **Priority matrix (§4.2):** approve as proposed, or adjust e.g. "every
    board-member mail also WhatsApp-pings me regardless of criticality"?
 6. **Daily cap:** 20 auto-replies/day default — OK?
+7. **Approval gate removed (§7 row 12b):** the PC-A flow required your
+   explicit WhatsApp `SEND` for every reply; this plan sends unattended
+   (that is what "fully automated" means) with observe → test-sender → full
+   as the safety ramp. Confirm you accept that divergence.
+8. **Sign-off (§5.6):** replies end with your verbatim KuroLIV GmbH
+   signature (AGENTS.md rule, Kubot only in the intro). Please share
+   `mail_watch_sig.html` (PC-A) or approve rebuilding it from your Sent
+   mail.
 
 ---
 
