@@ -66,6 +66,8 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           AZURE_CLIENT_CERT_KEY: ${{ secrets.AZURE_CLIENT_CERT_KEY }}
           AZURE_CLIENT_CERT_THUMBPRINT: ${{ secrets.AZURE_CLIENT_CERT_THUMBPRINT }}
