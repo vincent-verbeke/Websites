@@ -384,7 +384,7 @@ MAIL_AGENT_ALERT_WINDOW_END=22:00     # outside window -> queued, flushed at 07:
 | 7b | Entra app identity shared with PC-A | ✅ **no longer blocking** — live token 2026-11-08 shows app `7246abc4-…` (= task-def `AZURE_CLIENT_ID`) already reads the target mailbox (200s). PC-A's own identity only matters for its decommission, not for this backend | informational; compare PC-A `M365_CLIENT_ID` only if PC-A-side checks are ever re-enabled |
 | 8 | ECS service desired count = 1 | ⚠️ not verifiable from repo | confirm in AWS console; ledger `INSERT … ON CONFLICT DO NOTHING` claim makes even N>1 tasks safe |
 | 9 | Mailbox | ✅ **answered Q1**: `vincent.verbeke@kuroliv.ch`, **contains multiple email addresses** — probed live: 28 `proxyAddresses` (sales/info@kubotics, qbotics, angerik, kuroliv, SailingFlorentine, 2thecloud, ecosailing.be, …). Own-mail filter uses the full discovered set + `MAIL_AGENT_OWN_ADDRESSES` extras | none — auto-discovered at loop start |
-| 10 | Rate/throttling | Graph throttles on 60 s metadata polls are trivial for 1 mailbox (measured volume: 21 inbox messages in the last 8 days ≈ 3/day, §7.1) | implement 429 backoff + retry-after in the loop (planned, not yet written) |
+| 10 | Rate/throttling | Graph throttles on 60 s metadata polls are trivial for 1 mailbox (measured volume: 21 inbox messages in the last 8 days ≈ 3/day, §7.1) | ✅ 429 backoff implemented (`GraphThrottled` + Retry-After, capped 300s, tested in loop wiring) |
 | 11 | **CI test gate** | ✅ **ADDED 2026-11-08** with deploy config (97f7ec8): `setup-uv` + `uv run --frozen pytest -q` runs before build (verified green: 82/82 via the exact CI command) | none — deploys now fail on red |
 | 12 | **Signature source (Q8)** | 🟡 superseded by your Q8 answer: **combined-signature PROPOSAL in §5.6** (your sent-items block + Kubot tag + kubotics.ch promo, built from the real Sent-mail HTML; booking `cid:` image → text link) — **awaits your OK**. Old `mail_watch_sig.html` no longer needed; allowlist seeding moot (list emptied 10:06, contacts live in Outlook) | approve/edit §5.6 → stored as backend config |
 | 12b | **Approval-flow divergence (Q7)** | ✅ **answered: remove the approval gate, be extra careful if critical** — encoded as §5.4 critical ack-only rule + Q7 note + safety valves (cooldown, cap+notify, kill switch) | none — resolved |
@@ -572,6 +572,11 @@ Go-live approval = you have run T1–T7 and accept the wording; then Phase C
 ---
 
 ## 10. Estimated build order (after your approval)
+
+**STATUS 2026-11-08 10:56 — steps 1-5 ALL DONE, Phase B LIVE in prod since
+10:53** (commits 178517d → ecedaab: models/config, poll loop, LLM chain,
+send path, admin API, deploy config, CI gate). 82/82 tests. Remaining:
+§8.1 T1–T7 (Liz) → your approval → Phase C go-live (one env flip).
 
 1. Models + config + migrations pattern (Phase 0, no behaviour change).
 2. Poll loop + hard filters + ledger (service stays `MAIL_AGENT_ENABLED=false`
