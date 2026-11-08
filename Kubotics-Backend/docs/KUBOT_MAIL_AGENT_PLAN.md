@@ -400,7 +400,7 @@ MAIL_AGENT_ALERT_WINDOW_END=22:00     # outside window -> queued, flushed at 07:
 | Sent-items 7-day window (fallback variant) | 200 — 2 messages returned |
 | `internetMessageId` → Graph `id` resolve (plan §3.4) | 200 — id returned |
 | WhatsApp container send health (`api.kubotics.ch`) | 200 — `configured=true`, `last_send ok` |
-| Local test suite | 34/34 pass |
+| Local test suite | **82/82** at Phase B (34 baseline + 48 mail-agent) |
 | Boot-registration check (import `app.main` → `Base.metadata`) | 24 tables incl. all `crm.*`; new mail tables will appear only if registered in `models/__init__.py` |
 | Ruff baseline | 120 pre-existing errors, all in legacy files (`dto.py` 29, `channel_dto.py` 24, `m365_service.py` 17 …); new files must be clean (`trading_watch.py` passes 100%) |
 | Mailbox volume probe (inbox/sent since 2026-11-01, folder list) | 21 inbox, 2 sent, Junk empty; folders localized ("Postvak IN") → well-known names only |
@@ -431,6 +431,29 @@ credentials), PC-A poller state (different machine — but the shared
 allowlist stop was executed from here, row 7), and the acceptance step
 itself — your §9 review, now answered (§9).
 
+### 7.4 Test-day incident log (2026-11-08, kept for audit)
+
+1. **Shared-database discovery (11:36):** local `.env` `POSTGRES_*` values
+   point at the **PROD RDS cluster** (`kubotics_app@app-akuris…`) — every
+   "dev DB" label in this document was wrong; my smoke resets ran against
+   prod. Impact: one real audit row lost (noreply sudo-verification mail)
+   and — critically — **Liz's first test "I love you" (11:04) was deleted
+   and fell under the re-seeded watermark** → silently unprocessed.
+2. **Recovery (11:39):** watermark restored to `10:46:47Z` via SQL → the
+   real pipeline re-claimed both messages (github row deduped by UNIQUE id,
+   no double processing); Liz's mail routed `contact/contact` correctly —
+   routing, gates and ledger all proven on the recovered mail.
+3. **LLM chain blocked (11:40–11:53):** Gemini HTTP 400 on classify →
+   error-body logging (83f36c8) revealed `Please pass a valid API key` →
+   **invalid GEMINI secret** (not model/code; model also modernised to
+   `gemini-3.8-flash`). Liz's mail parked in `needs_review` (5 attempts) —
+   reset it once the key is replaced (or Liz resends).
+4. **Escalation:** WhatsApp sent 11:55:36 via the needle cloud send endpoint
+   (`wamid.HBgLNDE3OTc0ODE5…` → 41797481975): replace GEMINI key, verify
+   MIMO secret, retry note for Liz's test.
+5. **Standing rule from (1):** never run destructive SQL on this database
+   without first echoing and verifying the connection target.
+
 Operational notes:
 
 * **Privacy/consent:** auto-replies are sent from your mailbox to people who
@@ -453,11 +476,18 @@ Operational notes:
 | `MIMO_API_KEY` | platform.xiaomimimo.com → Console → API Keys (`sk-…`) |
 | `XAI_API_KEY` | console.x.ai → API Keys (Grok) |
 
-**Observed live in prod (2026-11-08 10:47, `/mail/status`):**
-`llm_providers_configured = ["gemini"]` → the Gemini key IS present (chain
-works today via `gemini-2.5-flash`), **`OPENAI_API_KEY` is absent/empty** in
-repo secrets despite being listed in deploy.yml, MIMO/XAI not yet created.
-Both gaps are optional — the chain skips them until added.
+**Observed live in prod (2026-11-08 10:47 → 11:53, `/mail/status` + chain
+errors):**
+- `llm_providers_configured = ["gemini"]` → GEMINI key present; MIMO/XAI not
+  reaching the container (empty/absent at workflow run — Vincent to verify;
+  my deploy.yml step-env wiring miss is fixed in 6631f97); `OPENAI_API_KEY`
+  absent/empty despite being listed.
+- **GEMINI key itself is INVALID**: Google returns
+  `400 {"message": "Please pass a valid API key"}` on every chat call
+  (diagnosed 11:53 via error-body logging added in 83f36c8; model id also
+  modernised to `gemini-3.8-flash` — Google access-limits 2.5 ids for new
+  keys). Until replaced: classify/compose cannot run; candidates park in
+  `needs_review` after 5 attempts (Liz's test mail currently parked).
 
 **GitHub secrets to CONFIRM present** (already referenced by deploy.yml):
 `OPENAI_API_KEY`, `GEMINI_API_KEY`, `AZURE_CLIENT_CERT_KEY`,
