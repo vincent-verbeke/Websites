@@ -467,6 +467,17 @@ itself — your §9 review, now answered (§9).
    secret-length + injected/skipped-name diagnostics, and the uv+pytest gate.
    Dead subdirectory file deleted — future sessions: edit
    `/.github/workflows/deploy.yml` (repo root), never the subdir copy.
+7. **First-send crash loop (14:35–14:50):** with the keys fixed,
+   classify+compose succeeded via mimo (947-char reply) — then every cycle
+   died in the send marker: the Graph message id is **152 chars** but
+   `crm.mail_messages.graph_message_id` was `varchar(128)` → DBAPIError
+   escaped the httpx try (marker runs before the POST) → `run_once`
+   crashed after classify, `last_cycle` stayed `{}`, the loop looked dead
+   and the row stuck `classified`. Fixed: non-destructive DDL widen to
+   `varchar(512)` (target echoed per standing rule, verified), model +
+   schema-pin test (`0a8ddc3`). The background loop's very next attempt
+   sent T1 at **14:50:18Z**. Note: the marker-before-POST semantics
+   correctly prevented any send during the crash (no double-send risk).
 
 ### 7.5 Secrets pickup protocol (how a GitHub secret change reaches prod)
 
@@ -498,6 +509,11 @@ while Vincent is OOO) — each attempt appends a line here:
   root cause** (§7.4/6: GitHub runs only the ROOT `.github/workflows/`).
   MIMO/XAI mapping + diagnostics + pytest gate now live in the ROOT
   `.github/workflows/deploy.yml`; the next transport deploy carries them.
+- 14:50Z check 2 OUTCOME: providers `['mimo', 'gemini']` (root-workflow fix
+  `d6dfd56`) → classify+compose ran via **mimo** → after the varchar fix
+  (§7.4/7) **T1 REPLIED**: Sent Items `14:50:18Z` `RE: I love you` →
+  liz.mallet@kuroliv.ch, 947 chars, §5.6 signature verbatim. Both blockers
+  CLEARED — pickup checks complete, check 3 not needed.
 
 Operational notes:
 
@@ -592,7 +608,7 @@ Graph; `replyTo` honoured per RFC 2822), and success answers **202 Accepted**
 
 | # | Test | Expect in Outlook / ledger / WhatsApp |
 |---|---|---|
-| T1 | Liz sends a plain **informational** mail (EN) | Reply within ~2 min: opens with the Kubot intro in English, warm personalised thank-you referencing her subject, verbatim KuroLIV sign-off; ledger row `replied` |
+| T1 | Liz sends a plain **informational** mail (EN) | Reply within ~2 min: opens with the Kubot intro in English, warm personalised thank-you referencing her subject, verbatim KuroLIV sign-off; ledger row `replied` — **✅ OBSERVED 2026-11-08 14:50:18Z** (composed by **mimo** per your chain order; 947 chars; Sent Items shows `RE: I love you` → liz.mallet@kuroliv.ch in-thread; §5.6 EN signature verbatim incl. teal Kubot tag + book link; ledger `replied`, error cleared. Unblocked after 2 key fixes + 2 pipeline bugs, §7.4/6–7. **Your wording approval still pending.**) |
 | T2 | Liz sends a **question** (DE) | Reply: Kubot intro in German, her point addressed, "needs Vincent's expertise … answer within 48 h" posture, KuroLIV sign-off; ledger `replied` |
 | T3 | **Thread test**: you email Liz first, she answers within 7 days | Handled via thread rule even if she writes from an address not yet seen; reply lands **in the same thread** (Outlook conversation intact) |
 | T4 | Liz sends from her **other address** (`hotmail`) | Same contact matched (multi-address, §3.2); personalisation note applied |
