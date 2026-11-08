@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+import re
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy import select
@@ -27,8 +28,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
-from app.models.mail_agent import MailMessage
+from app.models.mail_agent import MailMessage, MailWatchSender
 from app.models.tasks import DeviceSnapshotCache
+from app.services import mail_llm
 from app.services.m365_service import m365_service
 
 logger = logging.getLogger(__name__)
@@ -358,10 +360,345 @@ async def run_once() -> dict:
             await mark_ignored(m["internetMessageId"], reason)
             stats["ignored"] += 1
 
+    # step 3 pipeline: detail -> header filters -> route -> classify -> decide -> compose
+    for key, val in (await process_pending()).items():
+        stats[f"proc_{key}"] = val
+
     stats["pending"] = stats["claimed"] - stats["ignored"]
-    if any(stats[k] for k in ("claimed", "ignored", "seeded")):
+    if any(stats.values()):
         logger.info("[mail-agent] cycle: %s", stats)
     return stats
+
+
+# --- routing (plan §3.2) -------------------------------------------------------
+
+def parse_tier_map(csv: str) -> dict[str, str]:
+    """MAIL_AGENT_TIER_MAP: "Board=board;VIP=vip_customer" (case-insensitive)."""
+    out: dict[str, str] = {}
+    for pair in (csv or "").split(";"):
+        if "=" not in pair:
+            continue
+        key, val = pair.split("=", 1)
+        key, val = key.strip().lower(), val.strip().lower()
+        if key and val:
+            out[key] = val
+    return out
+
+
+def parse_only_senders(csv: str) -> set[str]:
+    return {e.strip().lower() for e in (csv or "").split(",") if "@" in e}
+
+
+def tier_for_categories(categories: list[str] | None, tier_map: dict[str, str]) -> str:
+    """First matching Outlook category -> tier; none/no categories -> contact (§4.1)."""
+    for cat in categories or []:
+        mapped = tier_map.get(str(cat).strip().lower())
+        if mapped:
+            return mapped
+    return "contact"
+
+
+async def thread_within_window(client: httpx.AsyncClient, conversation_id: str,
+                               window_days: int) -> bool:
+    """R1/R5: did I send in this thread within the last N days? (§3.2, Q1)
+
+    Fail-closed on Graph errors (returns False) — the contact/override/unknown
+    routes still apply; ``GraphThrottled`` propagates so the cycle backs off.
+    """
+    if not conversation_id:
+        return False
+    tok = m365_service.get_access_token()
+    cutoff = (datetime.now(UTC) - timedelta(days=window_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    resp = await client.get(
+        f"https://graph.microsoft.com/v1.0{_upn_path()}/mailFolders/sentItems/messages",
+        params={"$top": "1", "$select": "id",
+                "$filter": f"conversationId eq '{conversation_id.replace(chr(39), chr(39) * 2)}' "
+                           f"and sentDateTime ge {cutoff}"},
+        headers={"Authorization": f"Bearer {tok}"},
+        timeout=20.0,
+    )
+    if resp.status_code == 429:
+        raise GraphThrottled(int(resp.headers.get("Retry-After") or "60"))
+    if resp.status_code != 200:
+        logger.warning("[mail-agent] thread check HTTP %s", resp.status_code)
+        return False
+    return bool(resp.json().get("value"))
+
+
+async def fetch_contacts(client: httpx.AsyncClient) -> list[dict]:
+    """Outlook People (Contacts.Read, granted 09:49) — 15 cards, cheap per cycle."""
+    tok = m365_service.get_access_token()
+    resp = await client.get(
+        f"https://graph.microsoft.com/v1.0{_upn_path()}/contacts",
+        params={"$top": "50", "$select":
+                "displayName,emailAddresses,categories,personalNotes,jobTitle,companyName"},
+        headers={"Authorization": f"Bearer {tok}"},
+        timeout=20.0,
+    )
+    if resp.status_code == 429:
+        raise GraphThrottled(int(resp.headers.get("Retry-After") or "60"))
+    if resp.status_code != 200:
+        logger.warning("[mail-agent] contacts fetch HTTP %s — routing degraded", resp.status_code)
+        return []
+    return resp.json().get("value", [])
+
+
+def find_contact(sender: str, contacts: list[dict]) -> dict | None:
+    """Match ANY address of a card (Q1/Liz has 2) — plan §3.2."""
+    s = (sender or "").strip().lower()
+    if not s:
+        return None
+    for card in contacts:
+        for addr in card.get("emailAddresses") or []:
+            if (addr.get("address") or "").strip().lower() == s:
+                return card
+    return None
+
+
+async def fetch_message_detail(client: httpx.AsyncClient,
+                               internet_message_id: str) -> dict | None:
+    """Per-candidate body+headers+recipients (metadata scan never carries them)."""
+    tok = m365_service.get_access_token()
+    mid = internet_message_id.replace("'", "''")
+    resp = await client.get(
+        f"https://graph.microsoft.com/v1.0{_upn_path()}/mailFolders/inbox/messages",
+        params={"$top": "1", "$filter": f"internetMessageId eq '{mid}'",
+                "$select": "body,internetMessageHeaders,toRecipients,ccRecipients"},
+        headers={"Authorization": f"Bearer {tok}"},
+        timeout=25.0,
+    )
+    if resp.status_code == 429:
+        raise GraphThrottled(int(resp.headers.get("Retry-After") or "60"))
+    if resp.status_code != 200:
+        raise RuntimeError(f"detail fetch HTTP {resp.status_code}")
+    values = resp.json().get("value", [])
+    return values[0] if values else None
+
+
+def headers_to_dict(raw_headers: list[dict] | None) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for h in raw_headers or []:
+        name = (h.get("name") or "").strip().lower()
+        if name:
+            out[name] = str(h.get("value") or "")
+    return out
+
+
+async def load_overrides() -> dict[str, dict]:
+    """mail_watch_senders override list (active) keyed by lowercase email."""
+    async with AsyncSessionLocal() as db:
+        rows = (await db.execute(
+            select(MailWatchSender).where(MailWatchSender.active.is_(True))
+        )).scalars().all()
+    return {r.email.lower(): {"tier": r.tier, "note": r.note,
+                              "display_name": r.display_name} for r in rows}
+
+
+# --- decision matrix (plan §4.2, answers Q2/Q5/Q6/Q7) --------------------------
+
+def decide(*, category: str, criticality: str, tier: str,
+           spam_probability: float, personal_email: bool, route: str,
+           unknown_policy: str, spam_threshold: float) -> dict:
+    """Pure matrix: classification x sender tier -> action (unit-tested).
+
+    Returns {action: reply|ignore|notify_only, state, priority, notify, kind, reason}.
+    """
+    boardish = tier in ("board", "vip_customer")
+    if category == "commercial_spam" or spam_probability >= spam_threshold:
+        return {"action": "ignore", "state": "ignored_spam", "priority": "P5",
+                "notify": False, "kind": None, "reason": "spam"}
+    # Q2 gate applies ONLY to unknown senders WITHOUT a thread (thread = eligible)
+    if tier == "unknown" and route != "thread_reply":
+        if unknown_policy == "ignore":
+            return {"action": "ignore", "state": "ignored_unknown", "priority": "P5",
+                    "notify": False, "kind": None, "reason": "unknown_policy"}
+        if unknown_policy == "notify":
+            return {"action": "notify_only", "state": "notify_only", "priority": "P3",
+                    "notify": True, "kind": None, "reason": "unknown_digest"}
+        if not personal_email:
+            return {"action": "ignore", "state": "ignored_spam", "priority": "P5",
+                    "notify": False, "kind": None, "reason": "not_personal"}
+    # Q7: critical/complaint -> ack-only care rule
+    if category == "critical":
+        return {"action": "reply", "state": "classified", "priority": "P1",
+                "notify": True, "kind": "ack_only", "reason": "critical"}
+    if category == "complaint":
+        return {"action": "reply", "state": "classified",
+                "priority": "P1" if boardish else "P2",
+                "notify": True, "kind": "ack_only", "reason": "complaint"}
+    if category == "request" or criticality == "high":
+        return {"action": "reply", "state": "classified",
+                "priority": "P2" if boardish else "P3",
+                "notify": boardish, "kind": "holding", "reason": "request"}
+    if category == "followup":
+        return {"action": "reply", "state": "classified", "priority": "P3",
+                "notify": False, "kind": "holding", "reason": "followup"}
+    return {"action": "reply", "state": "classified", "priority": "P4",
+            "notify": False, "kind": "thank_you", "reason": "informational"}
+
+
+# --- pending pipeline (step 3 orchestration) -----------------------------------
+
+async def process_pending(limit: int = 50) -> dict:
+    """Take ``received`` rows through detail -> filters -> route -> classify ->
+    decide -> compose. Send + WhatsApp happen in step 4 (rows end in
+    ``classified`` / ``notify_only`` / ``ignored_*`` / ``needs_review``)."""
+    stats = {"taken": 0, "ready": 0, "ignored": 0, "restricted": 0,
+             "review": 0, "deferred": 0, "notify_only": 0}
+    async with AsyncSessionLocal() as db:
+        rows = (await db.execute(
+            select(MailMessage)
+            .where(MailMessage.state == "received")
+            .order_by(MailMessage.received_at.asc())
+            .limit(limit)
+        )).scalars().all()
+        if not rows:
+            return stats
+        stats["taken"] = len(rows)
+        only = parse_only_senders(settings.MAIL_AGENT_ONLY_SENDERS)
+        tier_map = parse_tier_map(settings.MAIL_AGENT_TIER_MAP)
+        overrides = await load_overrides()
+        async with httpx.AsyncClient() as client:
+            contacts = await fetch_contacts(client)
+            for row in rows:
+                await _process_row(client, db, row, only, tier_map, overrides,
+                                   contacts, stats)
+                await db.commit()   # per-row: a later throttle keeps earlier work
+        await db.commit()
+    return stats
+
+
+async def _process_row(client, db, row, only, tier_map, overrides, contacts,
+                       stats) -> None:
+    sender = (row.sender or "").lower()
+    # Phase B restriction BEFORE any network/LLM (§8)
+    if only and sender not in only:
+        row.state = "ignored_unknown"
+        row.summary = "restricted:phase_b_only_senders"
+        stats["restricted"] += 1
+        return
+    try:
+        detail = await fetch_message_detail(client, row.internet_message_id)
+    except GraphThrottled:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        row.state = "needs_review"
+        row.error = f"detail_fetch:{type(exc).__name__}: {exc}"[:500]
+        stats["review"] += 1
+        return
+    if detail is None:
+        row.state = "needs_review"
+        row.error = "detail_fetch:message_not_found (deleted/moved)"
+        stats["review"] += 1
+        return
+
+    hreason = header_hard_filter(headers_to_dict(detail.get("internetMessageHeaders")))
+    if hreason:
+        row.state = "ignored_spam"
+        row.summary = f"hard_filter:{hreason}"
+        stats["ignored"] += 1
+        return
+
+    body_html = (detail.get("body") or {}).get("content") or ""
+    body_text = re.sub(r"<[^>]+>", " ", body_html) if "<" in body_html else body_html
+
+    # --- routing (§3.2): thread -> contact card -> override -> unknown
+    card = find_contact(sender, contacts)
+    override = overrides.get(sender)
+    route = "unknown"
+    if row.conversation_id and await thread_within_window(
+            client, row.conversation_id, settings.MAIL_AGENT_REPLY_WINDOW_DAYS):
+        route = "thread_reply"
+    elif card or override:
+        route = "contact"
+    if card:
+        tier = tier_for_categories(card.get("categories"), tier_map)
+        note = (card.get("personalNotes") or "").strip() or None
+        sender_name = card.get("displayName") or sender.split("@")[0]
+        cats = [str(c) for c in (card.get("categories") or [])]
+    elif override:
+        tier = override.get("tier") or "contact"
+        note = override.get("note")
+        sender_name = override.get("display_name") or sender.split("@")[0]
+        cats = []
+    else:
+        tier, note, sender_name, cats = "unknown", None, sender.split("@")[0], []
+    row.route, row.tier = route, tier
+
+    # --- classify (call #1)
+    cls: dict
+    provider = model = None
+    try:
+        cls, provider, model = await mail_llm.classify_message(
+            sender=sender, subject=row.subject or "", body=body_text,
+            route=route, tier=tier)
+    except (mail_llm.LLMUnavailable, ValueError) as exc:
+        attempts = int((row.classification or {}).get("llm_attempts", 0)) + 1
+        row.classification = {**(row.classification or {}), "llm_attempts": attempts}
+        row.error = f"classify:{type(exc).__name__}: {exc}"[:500]
+        if attempts >= 5:
+            row.state = "needs_review"   # stop retrying a persistently failing chain
+            stats["review"] += 1
+        else:
+            stats["deferred"] += 1        # keep received -> retried next cycle
+        return
+    except GraphThrottled:
+        raise
+
+    row.language, row.category, row.criticality = (
+        cls["language"], cls["category"], cls["criticality"])
+    row.spam_probability, row.summary = cls["spam_probability"], cls["summary"]
+
+    action = decide(
+        category=cls["category"], criticality=cls["criticality"], tier=tier,
+        spam_probability=cls["spam_probability"],
+        personal_email=cls["personal_email"], route=route,
+        unknown_policy=settings.MAIL_AGENT_UNKNOWN_POLICY,
+        spam_threshold=settings.MAIL_AGENT_SPAM_THRESHOLD)
+    row.priority = action["priority"]
+    row.classification = {
+        **cls, "route": route, "tier": tier, "priority": action["priority"],
+        "notify": action["notify"], "kind": action["kind"],
+        "reason": action["reason"], "provider": provider, "model": model,
+        "llm_attempts": int((row.classification or {}).get("llm_attempts", 0)),
+    }
+    row.llm_provider, row.llm_model = provider, model
+
+    if action["action"] != "reply":
+        row.state = action["state"]
+        if action["action"] == "notify_only":
+            stats["notify_only"] += 1
+        else:
+            stats["ignored"] += 1
+        return
+
+    if settings.MAIL_AGENT_MODE != "auto":
+        row.state = "classified"          # observe: classify only, no compose (§3.3)
+        stats["ready"] += 1
+        return
+
+    try:
+        reply_html, cprovider, cmodel = await mail_llm.compose_reply(
+            lang=cls["language"], kind=action["kind"], sender_name=sender_name,
+            subject=row.subject or "", tier=tier, contact_note=note,
+            categories=cats, classification=cls)
+    except mail_llm.ReplyInvalid as exc:
+        row.state = "needs_review"        # plan §5: validation failure -> no send
+        row.error = f"compose_validation:{exc}"[:500]
+        stats["review"] += 1
+        return
+    except mail_llm.LLMUnavailable as exc:
+        row.state = "needs_review"
+        row.error = f"compose:{exc}"[:500]
+        stats["review"] += 1
+        return
+    except GraphThrottled:
+        raise
+    row.reply_text = reply_html
+    row.classification = {**(row.classification or {}),
+                          "compose_provider": cprovider, "compose_model": cmodel}
+    row.state = "classified"             # step 4 sends (marker semantics)
+    stats["ready"] += 1
 
 
 # --- background loop (trading_watch pattern) ----------------------------------
