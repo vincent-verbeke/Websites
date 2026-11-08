@@ -560,9 +560,9 @@ Each case: Liz sends (or replies to) a mail → observable expectation:
 | T3 | **Thread test**: you email Liz first, she answers within 7 days | Handled via thread rule even if she writes from an address not yet seen; reply lands **in the same thread** (Outlook conversation intact) |
 | T4 | Liz sends from her **other address** (`hotmail`) | Same contact matched (multi-address, §3.2); personalisation note applied |
 | T5 | **Newsletter/spam** (forward a Digitec mail with headers intact, or any `List-Unsubscribe` sender) | **No reply**; ledger `ignored_spam`; no WhatsApp |
-| T6 | **Critical** mail ("urgent", deadline, or complaint wording) | Auto-ack reply **+ immediate WhatsApp** to you with sender/summary/webLink |
+| T6 | **Critical** mail ("urgent", deadline, or complaint wording) | Auto-ack reply **+ WhatsApp** to you with sender/summary/webLink — sent immediately inside the 07:30–22:00 window (Q11); outside it the alert queues and arrives at 07:30 while the ack reply still goes out at once |
 | T7 | Contact note personalisation | A reply referencing her relationship context (§4.4 note) where natural — not verbatim-quotey |
-| T8 | Daily-cap brake | 21st reply same day → `needs_review`, no send (verify via `GET /messages?state=`) |
+| T8 | ~~Daily-cap brake via real mail~~ (pre-verified by controlled smoke 10:35: synthetic rows, cap=1 → 2 held as `needs_review/cap_reached`, zero sends, latch intact) | No action needed — re-verify live only if you change `MAIL_AGENT_MAX_REPLIES_PER_DAY` |
 
 Go-live approval = you have run T1–T7 and accept the wording; then Phase C
 (`MAIL_AGENT_ONLY_SENDERS=` cleared + PC-A poller stopped) in one change.
