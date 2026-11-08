@@ -27,6 +27,25 @@ expertise for a detailed answer, I will discuss it with him, and either he or I
 will answer within the next 48 hours." Informational mail (R4) gets a warm,
 personalised thank-you instead.
 
+### 1.1 Request → plan traceability (your 2026-11-08 asks, none dropped)
+
+| Your request (paraphrased) | Plan section |
+|---|---|
+| Implement in the cloud API backend of the Kubotics website | §6 components, §8 rollout |
+| Monitor my mailbox via Graph API | §3.1 poll, §9 Q1 mailbox |
+| Reply to replies to my mail **if I sent within last 7 days** | R1, §3.2 thread check |
+| Reply to **my contacts** (I will add them myself) | R2, §6 senders CRUD API |
+| **Propose** categorisation with priorities/criticality | §4 (two axes + P1–P5 matrix) |
+| Advertising/spam → **ignore** | R3, §3.3 hard filters + §4.2 P5 |
+| Analyse language + message, reply in that language | §3.3 classify call, §5 |
+| Informational → **personalised thank-you** | R4, §5.3 |
+| Follow-up to my previous email → analyse + reply | R5, §3.2 + §5.4 |
+| Always open as **Kubot, my personal digital AI assistant**, in the message language | §5.1 |
+| "Needs my expertise … within the next 48 h" posture | §5.4 |
+| Critical → **WhatsApp** me to review urgently | R6, §4.2 P1/P2 alerts |
+| Review process + dependencies + what it takes to run in the backend | §3 process, §7 checklist, §6 build plan |
+| **Implementation plan for my review before we continue** | this document, status DRAFT, §9 open questions — no code written |
+
 ---
 
 ## 2. What already exists (reused, not rebuilt)
@@ -39,7 +58,7 @@ personalised thank-you instead.
 | Proven reply mechanics: `POST /messages/{id}/reply`, watermark, internetMessageId dedupe, **send-attempt marker (no blind retry)** | PC-A `mail_watch.py` (rounds 16–38 hardened) | Ported 1:1 into DB-backed state machine |
 | Background loop in FastAPI lifespan | `trading_watch.watch_loop` in `main.py` | Identical pattern for the mail loop |
 | WhatsApp Cloud API sender | `whatsapp_service.send_text_message` | Critical alerts (R6) |
-| LLM keys already injected into the container | deploy.yml → task-def (`GROQ`, `OPENAI`, `ANTHROPIC`, `GEMINI`) | Classification + reply composition |
+| LLM keys (Groq/OpenAI/Anthropic/Gemini) | deploy.yml → task-def, **conditional** (`if v:` — only when the GitHub secret exists; local `.env` has a Groq key) | Classification + reply composition (verify secret, §7 row 5) |
 | Normalised event stream | `inbound_events` (channel `email` already valid) | Observability / dashboard / needle |
 | Bearer auth helpers | `require_ingest_token` (API_SECRET_KEY) | New admin endpoints |
 | Test harness | 34 tests passing (baseline verified 2026-11-08) | New pure-function tests |
@@ -86,6 +105,10 @@ flowchart TD
   idempotency across restarts **and** across ECS tasks).
 * Body fetched per new candidate message only, truncated (8 000 chars).
 * Default interval 60 s (PC-A ran 10 min; cloud is always on).
+* Folder addressing must use Graph **well-known names** (`inbox`,
+  `sentItems`, `junkemail`) — the mailbox UI is localized (folders display
+  as "Postvak IN", "Ongewenste e-mail", …) and localized display names are
+  not query-safe. Verified 2026-11-08 against this mailbox.
 
 ### 3.2 Reply-to-my-mail detection (R1/R5)
 
@@ -269,7 +292,7 @@ MAIL_AGENT_NOTIFY_PHONE=+41797481975
 | 7b | Entra app identity shared with PC-A | ✅ **no longer blocking** — live token 2026-11-08 shows app `7246abc4-…` (= task-def `AZURE_CLIENT_ID`) already reads the target mailbox (200s). PC-A's own identity only matters for its decommission, not for this backend | informational; compare PC-A `M365_CLIENT_ID` only if PC-A-side checks are ever re-enabled |
 | 8 | ECS service desired count = 1 | ⚠️ not verifiable from repo | confirm in AWS console; ledger `INSERT … ON CONFLICT DO NOTHING` claim makes even N>1 tasks safe |
 | 9 | Mailbox choice | task-def says `vincent.verbeke@kuroliv.ch`, `.env.example` says `vincent@kubotics.ch` | confirm target mailbox (§9 Q1) |
-| 10 | Rate/throttling | Graph throttles on 60 s metadata polls are trivial for 1 mailbox | none expected; backoff on 429 implemented |
+| 10 | Rate/throttling | Graph throttles on 60 s metadata polls are trivial for 1 mailbox (measured volume: 21 inbox messages in the last 8 days ≈ 3/day, §7.1) | implement 429 backoff + retry-after in the loop (planned, not yet written) |
 | 11 | **CI has no test/lint gate** | ⚠️ verified 2026-11-08: `deploy.yml` job is named "Build, Test & Deploy" but runs no `pytest`/`ruff` — a push to main deploys regardless of test outcome | run the suite locally before every push (plan §10 keeps 34/34 green as gate); optionally add a pytest step to deploy.yml as a Phase 0 side-fix |
 | 12 | **Verbatim signature file + live allowlist for seeding** | ⚠️ AGENTS.md mandates `~/.jcode/scratch/mail_watch_sig.html` (KuroLIV block, never invent a sign-off) and `mail_watch_config.json` (current senders) — **neither exists on this machine**; both live on PC-A (deploy paths `/home/wa/…`) or were pruned | at cutover: copy the sig file from PC-A (or rebuild from Sent mail, §5.6) and export PC-A's allowlist to seed `mail_watch_senders` (cap 50, same address regex) |
 | 12b | **Approval-flow divergence** | ⚠️ documented PC-A rule: "NO send ever without explicit SEND" via WhatsApp — this plan deliberately removes that gate (your 2026-11-08 ask: fully automated), with observe → test-sender → full as the mitigation | confirm in §9; the phased rollout is the compensating control |
@@ -287,6 +310,8 @@ MAIL_AGENT_NOTIFY_PHONE=+41797481975
 | Local test suite | 34/34 pass |
 | Boot-registration check (import `app.main` → `Base.metadata`) | 24 tables incl. all `crm.*`; new mail tables will appear only if registered in `models/__init__.py` |
 | Ruff baseline | 120 pre-existing errors, all in legacy files (`dto.py` 29, `channel_dto.py` 24, `m365_service.py` 17 …); new files must be clean (`trading_watch.py` passes 100%) |
+| Mailbox volume probe (inbox/sent since 2026-11-01, folder list) | 21 inbox, 2 sent, Junk empty; folders localized ("Postvak IN") → well-known names only |
+| Sent-mail signature pattern scan (10 newest, read-only) | KuroLIV sign-off confirmed on real replies (2026-10-29/27) — basis for §5.6 |
 
 No message was sent, modified, or deleted during validation.
 
@@ -295,8 +320,11 @@ Operational notes:
 * **Privacy/consent:** auto-replies are sent from your mailbox to people who
   wrote to you — same posture as the PC-A flow, now unattended. Keep
   `observe` mode until you have reviewed classifications.
-* **Cost:** ≤2 LLM calls per *candidate* message (after hard filters), at
-  typical personal-mailbox volume ≈ cents per day.
+* **Cost (measured 2026-11-08):** 21 inbox messages in the last 8 days
+  (~3/day), 2 sent in the window, Junk empty → ≤2 LLM calls per
+  *candidate* message after hard filters = negligible spend (≪ cents/day);
+  `$top=100` newest-first scan stays far inside Graph response/throttle
+  limits at 60 s cadence.
 * **Rollback:** `MAIL_AGENT_ENABLED=false` + redeploy stops everything; sent
   replies are already in Sent Items (auditable).
 
@@ -319,9 +347,9 @@ Operational notes:
    `vincent@kubotics.ch`? Default proposed: kuroliv (same as PC-A/task-def).
 2. **Unknown senders:** confirm "log & ignore" (§4.3), or switch to
    `notify` (WhatsApp digest, still no auto-reply)?
-3. **LLM default provider:** Groq (cheap/fast, key already injected) vs
-   OpenAI (higher quality). Proposed: **Groq classify + Groq compose**, one
-   env var to switch.
+3. **LLM default provider:** Groq (cheap/fast; local `.env` key present,
+   GitHub secret conditional — §7 row 5) vs OpenAI (higher quality).
+   Proposed: **Groq classify + Groq compose**, one env var to switch.
 4. **Cutover:** confirm you want PC-A's mail watch stopped when Phase C goes
    live (it must be, to avoid double answers).
 5. **Priority matrix (§4.2):** approve as proposed, or adjust e.g. "every
