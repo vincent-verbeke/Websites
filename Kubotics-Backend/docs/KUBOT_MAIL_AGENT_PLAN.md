@@ -553,6 +553,16 @@ and the `MAIL_AGENT_ENABLED=false` kill switch.
 
 Each case: Liz sends (or replies to) a mail → observable expectation:
 
+**Pre-T1 preconditions verified 13:13 (no mailbox interaction):** a fresh
+app-only token minted locally via the X.509 cert path (the same auth the
+service uses) shows scopes including `Mail.Send` + `Mail.ReadWrite`, so the
+send-permission question is closed before your first test. Official Graph
+docs for `message-reply` confirm the JSON `comment` path creates "the reply
+message **in HTML**" (our §5.6 HTML signature renders as intended), the
+endpoints are the native `reply`/`replyAll` operations (threading handled by
+Graph; `replyTo` honoured per RFC 2822), and success answers **202 Accepted**
+— matching the implemented payload and response handling exactly.
+
 | # | Test | Expect in Outlook / ledger / WhatsApp |
 |---|---|---|
 | T1 | Liz sends a plain **informational** mail (EN) | Reply within ~2 min: opens with the Kubot intro in English, warm personalised thank-you referencing her subject, verbatim KuroLIV sign-off; ledger row `replied` |
