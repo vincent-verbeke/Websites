@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.channel_adapters import router as channel_adapters_router
 from app.api.v1.cloud_dashboard import router as cloud_dashboard_router
 from app.api.v1.endpoints import router as api_v1_router
+from app.api.v1.mail_agent import router as mail_agent_router
 from app.api.v1.marketing_guard import router as marketing_guard_router
 from app.api.v1.needle import router as needle_router
 from app.api.v1.trading_watch import router as trading_watch_router
@@ -128,6 +129,9 @@ app.include_router(marketing_guard_router, prefix=settings.API_V1_STR)
 
 # needle3 orchestrator intake (/api/v1/needle/inbox, /ack, /inject)
 app.include_router(needle_router, prefix=f"{settings.API_V1_STR}/needle")
+
+# Kubot mail agent admin (/api/v1/mail/status, /senders, /messages, /poll)
+app.include_router(mail_agent_router, prefix=settings.API_V1_STR)
 
 # WhatsApp Webhook Routers (Mounted both at root and /api/whatsapp for full backwards-compatibility)
 app.include_router(whatsapp_router, prefix="/api/whatsapp")

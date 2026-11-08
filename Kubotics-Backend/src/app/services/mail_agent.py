@@ -197,6 +197,12 @@ async def fetch_own_addresses(client: httpx.AsyncClient) -> set[str]:
 
 
 _OWN_CACHE: set[str] | None = None
+_LAST_CYCLE: dict = {}
+
+
+def last_cycle() -> dict:
+    """Most recent run_once stats (process-local heartbeat for GET /mail/status)."""
+    return dict(_LAST_CYCLE)
 
 
 async def fetch_inbox_metadata(client: httpx.AsyncClient) -> list[dict]:
@@ -347,6 +353,8 @@ async def run_once() -> dict:
         logger.info("[mail-agent] seeded watermark at %s (%d messages seen, "
                     "none processed on first boot)", new_base, stats["scanned"])
         stats["seeded"] = 1
+        _LAST_CYCLE.clear()
+        _LAST_CYCLE.update(ts=datetime.now(UTC).isoformat(), **stats)
         return stats
 
     won = await claim_messages(claims) if claims else []
@@ -370,6 +378,8 @@ async def run_once() -> dict:
         stats[f"snd_{key}"] = val
 
     stats["pending"] = stats["claimed"] - stats["ignored"]
+    _LAST_CYCLE.clear()
+    _LAST_CYCLE.update(ts=datetime.now(UTC).isoformat(), **stats)
     if any(stats.values()):
         logger.info("[mail-agent] cycle: %s", stats)
     return stats
