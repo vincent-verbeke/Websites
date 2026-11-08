@@ -98,6 +98,14 @@ flowchart TD
 This is the only reliable way to enforce "my original email was sent in the
 last 7 days" (In-Reply-To alone cannot tell the age of *our* message).
 
+Filter support validated 2026-11-08 against Graph message `$filter`
+behaviour: `conversationId eq` and `sentDateTime ge` are both supported
+filter operators on `/messages` (and on `sentItems`), so this query needs no
+advanced-query headers. `conversationId`/`sentDateTime` are also safe to
+combine with `and`. Fallback if it ever misbehaves: fetch sent Items since
+`now-7d` once per cycle (metadata only), build a conversationId set in
+memory — mailbox volume makes this cheap.
+
 ### 3.3 Two LLM calls maximum per candidate message
 
 1. **Classify** → strict JSON: `language`, `category`, `criticality`,
@@ -113,6 +121,11 @@ In `observe` mode only call #1 runs. Spam/unknown senders never reach the LLM
 
 * Persist `send_attempted_at` **before** the POST; a timeout/4xx never
   blind-retries (PC-A round-27: duplicate-reply class).
+* Resolve `internetMessageId` → Graph `id` **at send time** with
+  `$filter=internetMessageId eq '...'` (OData `'` doubled), then
+  `POST /users/{upn}/messages/{graphId}/reply` — the exact proven PC-A
+  `cmd_approve` sequence (`webLink` in §3.1 `$select` is display-only; it is
+  **not** a `$filter`-able property and must never appear in a filter).
 * State machine in `mail_messages.state`:
   `received → classified → replied | ignored_spam | ignored_unknown | notify_only | needs_review | send_failed`.
 * One reply per conversation per 24 h + daily global cap (safety valve).
@@ -239,9 +252,10 @@ MAIL_AGENT_NOTIFY_PHONE=+41797481975
 | 2 | `Mail.Send` (application) + admin consent | ✅ done (M365_APP_SETUP.md §3) | none |
 | 3 | **`Mail.Read` (application) + admin consent** | ⚠️ used by PC-A poller, **not** listed in the setup doc | **verify in Entra portal → add + consent if missing** (blocking) |
 | 4 | WhatsApp Cloud API token | ✅ in task-definition | none |
-| 5 | LLM key (Groq/OpenAI/Anthropic) | ✅ injected by deploy.yml | pick default provider (§9 Q3) |
+| 5 | LLM key (Groq/OpenAI/Anthropic) | ⚠️ deploy.yml injects only when the GitHub secret is set (`if v:` — silently skipped otherwise) | confirm `GROQ_API_KEY` exists in GitHub repo secrets before Phase A |
 | 6 | DB tables | auto via `create_all` + idempotent ALTER (repo pattern, no alembic) | none |
 | 7 | **PC-A poller must be stopped at cutover** | ⚠️ PC-A `mail_watch_poll` (10-min) still watches the **same mailbox** | **disable it when cloud goes live — otherwise double replies** (blocking) |
+| 7b | Entra app identity shared with PC-A | ⚠️ setup docs say "one identity for everything", but PC-A's env (`/home/wa/wa-web/web.env`) lives on PC-A and could not be read from this machine — if PC-A uses a *different* app registration, its `Mail.Read` grant does not help this backend | compare `M365_CLIENT_ID` on PC-A with task-def `7246abc4-b1d9-47d7-b8be-2e791de2f407` while verifying #3 |
 | 8 | ECS service desired count = 1 | ⚠️ not verifiable from repo | confirm in AWS console; ledger `INSERT … ON CONFLICT DO NOTHING` claim makes even N>1 tasks safe |
 | 9 | Mailbox choice | task-def says `vincent.verbeke@kuroliv.ch`, `.env.example` says `vincent@kubotics.ch` | confirm target mailbox (§9 Q1) |
 | 10 | Rate/throttling | Graph throttles on 60 s metadata polls are trivial for 1 mailbox | none expected; backoff on 429 implemented |
