@@ -20,17 +20,20 @@ Built with **Python 3.14**, **FastAPI**, **uv**, and **SQLAlchemy (asyncpg)**.
       ▼
 [AWS ECS Fargate Task (kubotics-backend container)]
       │
-      ├── PostgreSQL (AWS RDS / schema: kubotics)
-      │     ├── companies
+      ├── PostgreSQL (AWS RDS / db: kubotics, schema: crm)
+      │     ├── organizations
       │     ├── contacts
       │     ├── addresses (decoupled 1-to-many)
       │     ├── contact_mailphone (decoupled 1-to-many)
-      │     ├── deals (pipeline state machine)
-      │     ├── chat_sessions & interaction_messages
-      │     └── agent_tasks (human-in-the-loop queue)
+      │     ├── opportunities (pipeline state machine)
+      │     ├── conversations & messages
+      │     ├── agent_runs (human-in-the-loop queue)
+      │     └── mail_messages (Kubot mail agent ledger)
       │
       ├── Microsoft 365 Tenant (Graph API / Teams)
-      │     └── Schedules discovery calls & Unitree H2 Test Days
+      │     ├── Schedules discovery calls & Unitree H2 Test Days
+      │     └── Kubot Mail Agent: watch + auto-reply as "Kubot"
+      │           (docs/KUBOT_MAIL_AGENT_PLAN.md)
       │
       └── Cloud LLM Engine (Claude / Gemini / OpenAI)
             └── Autonomous lead qualification & entity extraction
@@ -72,13 +75,20 @@ Or specify a custom port:
 ## 3. Normalized Database Schema
 
 The database model decouples personal identity from addresses and communication channels:
-1. **`companies`**: Organization details, industry (CNC, Machining, Watchmaking), size.
+1. **`organizations`**: Organization details, industry (CNC, Machining, Watchmaking), size.
 2. **`contacts`**: Core personal identity, lifecycle stage (`lead`, `opportunity`, `customer`), AI summary, and marketing UTM tags.
 3. **`addresses`**: Decoupled address records (`street_line1`, `postal_code`, `city`, `canton`, `country`). A contact can have multiple addresses (e.g. office, plant/factory, billing).
 4. **`contact_mailphone`**: Decoupled communication channels (`email`, `phone_mobile`, `phone_office`, `whatsapp`). A contact can have multiple emails and phone numbers.
-5. **`deals`**: Commercial opportunities and pipeline stages (`inbound_discovery`, `testday_scheduled`, `won`).
-6. **`chat_sessions` & `interaction_messages`**: Real-time conversation logs with JSONB `extracted_entities` and token tracking.
-7. **`agent_tasks`**: Autonomous agent queue with human approval gates for the founder.
+5. **`opportunities`**: Commercial opportunities and pipeline stages (`inbound_discovery`, `testday_scheduled`, `won`).
+6. **`conversations` & `messages`**: Real-time conversation logs with JSONB `extracted_entities` and token tracking.
+7. **`agent_runs`**: Autonomous agent queue with human approval gates for the founder.
+8. **`mail_messages`**: Kubot mail agent ledger — one row per inbound message, state machine
+   (`received` → `replied` / `ignored_*` / `needs_review` / `send_failed`), idempotent claim key
+   (`internet_message_id`), send-attempt markers.
+9. **`mail_watch_senders`**: Mail agent sender override list (contact-management API for the agent).
+
+The mail agent's full design, priority matrix, and operations runbook live in
+[`docs/KUBOT_MAIL_AGENT_PLAN.md`](docs/KUBOT_MAIL_AGENT_PLAN.md).
 
 The complete SQL DDL is available in [`src/app/db/schema.sql`](src/app/db/schema.sql).
 
@@ -108,6 +118,9 @@ M365_TENANT_ID=your-azure-tenant-id
 M365_CLIENT_ID=your-azure-client-id
 M365_CLIENT_SECRET=your-azure-client-secret
 M365_ORGANIZER_EMAIL=vincent@kubotics.ch
+MAIL_AGENT_ENABLED=true
+MAIL_AGENT_MODE=auto
+MAIL_AGENT_ONLY_SENDERS=          # Phase B: Liz's addresses; cleared at go-live (Phase C)
 ```
 
 ---

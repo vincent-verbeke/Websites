@@ -621,13 +621,15 @@ Go-live approval = you have run T1–T7 and accept the wording; then Phase C
 
 ## 10. Estimated build order (after your approval)
 
-**STATUS 2026-11-08 12:09 — steps 1-5 ALL DONE, Phase B LIVE in prod since
-10:53** (commits 178517d → 736442d: models/config, poll loop, LLM chain,
-send path, admin API, deploy config, CI gate, QA fixes, outage self-heal).
-82/82 tests. Outage self-heal observed live 12:08 (`proc_requeued=1` — Liz's
-parked row auto-retried; will complete the moment the GEMINI key is
-replaced). Remaining: his 2 GitHub secrets → §8.1 T1–T7 (Liz) → approval →
-Phase C go-live (one env flip).
+**STATUS 2026-11-08 13:05 — steps 1-5 ALL DONE, Phase B LIVE in prod since
+10:53** (commits 178517d → a613769: models/config, poll loop, LLM chain,
+send path, admin API, deploy config, CI gate, QA fixes, outage self-heal,
+inbound_events emission, §6 `.env` conformance, §8.1 script corrections).
+84/84 tests; CI deploys green (last: a613769, 12:48). Loop healthy at 60s
+(providers `[gemini]` until his 2 keys land; self-heal requeue observed
+12:08/12:28). Remaining: 2 GitHub secrets (invalid `GEMINI_API_KEY` +
+`MIMO_API_KEY` not in container) → §8.1 T1–T7 (Liz) → approval → Phase C
+go-live (one env flip). §7.5 pickup checks armed ~hourly (max 3/day, OOO).
 
 1. Models + config + migrations pattern (Phase 0, no behaviour change).
 2. Poll loop + hard filters + ledger (service stays `MAIL_AGENT_ENABLED=false`
