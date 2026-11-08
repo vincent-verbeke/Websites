@@ -208,14 +208,22 @@ async def poll_now() -> dict:
 
 
 @router.post("/llm_probe")
-async def llm_probe() -> dict:
+async def llm_probe(provider: str | None = Query(default=None),
+                    model: str | None = Query(default=None)) -> dict:
     """Per-provider health: one tiny chat call per configured chain step.
 
     Answers "is this key actually working — and if not, what is the REAL
     provider error" after any secret rotation (plan §7.5). Returns ok,
     latency and a truncated error per provider — never key material.
-    Costs a few tokens per configured provider."""
+    Optional ``provider`` + ``model`` trial a single chain step with a
+    candidate model id (live model-id validation). Costs a few tokens."""
     chain = mail_llm.provider_chain()
+    if provider:
+        chain = [p for p in chain if p.name == provider.lower()]
+        if model and chain:
+            p = chain[0]
+            chain = [mail_llm.Provider(p.name, p.base_url, p.api_key, model)]
     return {"chain": settings.MAIL_AGENT_LLM_CHAIN,
-            "configured": [p.name for p in chain],
-            "providers": await mail_llm.probe_providers()}
+            "configured": [p.name for p in mail_llm.provider_chain()],
+            "trial": {"provider": provider, "model": model} if provider else None,
+            "providers": await mail_llm.probe_providers(chain=chain)}

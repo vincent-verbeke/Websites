@@ -248,16 +248,18 @@ async def chat_json(system: str, user: str) -> tuple[dict, str, str]:
     raise LLMUnavailable("all providers failed: " + ", ".join(errors)[:400])
 
 
-async def probe_providers(timeout_s: float = 20.0) -> list[dict]:
+async def probe_providers(*, chain: list[Provider] | None = None,
+                          timeout_s: float = 15.0) -> list[dict]:
     """Per-provider health probe (admin diagnostics): one tiny chat call each.
 
     Born from the 2026-11-08 debugging need ("MIMO should work or show me a
-    real error") — run after any key rotation. Never raises (one broken
-    provider must not hide the others) and never returns key material.
+    real error") — run after any key rotation, or pass a ``chain`` with a
+    model override to trial candidate model ids live. Never raises (one
+    broken provider must not hide the others) and never returns key material.
     Returns ``[{name, model, ok, ms, error}]`` in chain order.
     """
     results: list[dict] = []
-    for p in provider_chain():
+    for p in (chain if chain is not None else provider_chain()):
         entry: dict = {"name": p.name, "model": p.model, "ok": False,
                        "ms": None, "error": None}
         t0 = time.monotonic()

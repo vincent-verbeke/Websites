@@ -762,3 +762,23 @@ def test_probe_providers_survives_transport_errors(monkeypatch):
     assert len(results) == 1
     assert results[0]["ok"] is False
     assert "ConnectError" in results[0]["error"]
+
+
+def test_probe_providers_uses_explicit_chain_and_model_override():
+    """Trial mode: a caller-built chain (model-id candidate) is probed as-is
+    WITHOUT touching provider_chain() — live model-id validation."""
+    trial = ma.mail_llm.Provider("gemini", "https://gemini.test/v1",
+                                 "k-gem", "gemini-2.5-flash")
+    client = _ChainClient([_ok("OK")])
+    import app.services.mail_llm as _m  # same module; httpx attr patch below
+    orig = _m.httpx.AsyncClient
+    _m.httpx.AsyncClient = lambda *a, **k: client
+    try:
+        results = _run(_m.probe_providers(chain=[trial]))
+    finally:
+        _m.httpx.AsyncClient = orig
+
+    assert len(results) == 1
+    assert results[0]["name"] == "gemini"
+    assert results[0]["model"] == "gemini-2.5-flash"
+    assert results[0]["ok"] is True
