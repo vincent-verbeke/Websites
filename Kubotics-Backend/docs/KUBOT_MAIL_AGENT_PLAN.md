@@ -522,6 +522,14 @@ Operational notes:
   the REAL provider error per chain step — run it after any secret change
   instead of waiting for mail traffic (added 2026-11-08 from the T1
   debugging session: "MIMO should work or show me a real error").
+  Optional `?provider=&model=` trials one chain step with a candidate model
+  id. **First use (15:30):** `mimo` **ok, 3.0 s**; `gemini` **key
+  VALIDATED** — Google answers with model-level errors (auth passes; the old
+  invalid key gave a fast 400): `gemini-3.8-flash` exists and is current but
+  repeatedly returns **503 "high demand"** (the earlier ReadTimeouts = same
+  overload), while `gemini-2.5-flash`/`gemini-2.0-flash` are **404 retired
+  for new users** and `gemini-3.8-flash-lite` doesn't exist. Posture: mimo
+  healthy primary; gemini backup correct-but-busy — chain failover covers it.
 
 * **Privacy/consent:** auto-replies are sent from your mailbox to people who
   wrote to you — same posture as the PC-A flow, now unattended. Phase B
@@ -690,8 +698,9 @@ nested-workflow dead file (GitHub executes only the repo-root
 `.github/workflows/` — MIMO/XAI mapping, diagnostics and test gate moved
 there, dead subdir deleted), Graph id 152 chars vs `varchar(128)` (DDL
 widen + model + schema-pin test; marker-before-POST prevented double-send).
-Loop healthy at 60s, providers `['mimo','gemini']` (new gemini key unproven
-until the first failover). **Remaining: your T2–T7 (§8.1) + §5.6 OK →
+Loop healthy at 60s, providers `['mimo','gemini']` — **gemini key VALIDATED
+15:30** (model-level 503 "high demand" = auth fine; mimo healthy at 3 s —
+see §7.5 probe findings). **Remaining: your T2–T7 (§8.1) + §5.6 OK →
 Phase C = clear `MAIL_AGENT_ONLY_SENDERS` (one env flip) → GO-LIVE.**
 
 1. Models + config + migrations pattern (Phase 0, no behaviour change).
