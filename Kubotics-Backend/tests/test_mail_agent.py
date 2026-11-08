@@ -11,7 +11,9 @@ the config defaults must match the plan's documented values.
 from __future__ import annotations
 
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -376,4 +378,56 @@ def test_provider_chain_skips_missing_keys(monkeypatch):
     assert chain[0].base_url == "https://api.xiaomimimo.com/v1"
     monkeypatch.setenv("XAI_API_KEY", "xai-test")
     assert [p.name for p in mail_llm.provider_chain()] == ["mimo", "xai"]  # chain order
+
+
+# --- step 4: send-path guards (pure) -------------------------------------------
+
+def test_alert_window_q11_boundaries():
+    """WhatsApp only 07:30-22:00 Europe/Zurich; replies stay 24/7."""
+    tz = "Europe/Zurich"
+    def at(hour, minute, day=8):
+        return datetime(2026, 11, day, hour, minute, tzinfo=ZoneInfo(tz))
+    assert ma.in_alert_window(at(7, 30), "07:30", "22:00", tz)     # opens exactly
+    assert ma.in_alert_window(at(7, 29), "07:30", "22:00", tz) is False
+    assert ma.in_alert_window(at(12, 0), "07:30", "22:00", tz)
+    assert ma.in_alert_window(at(22, 0), "07:30", "22:00", tz)      # closes at 22:00
+    assert ma.in_alert_window(at(22, 1), "07:30", "22:00", tz) is False
+    # UTC time that is next-day morning in Zurich still counts local
+    utc_noon = datetime(2026, 11, 8, 12, 0, tzinfo=UTC)
+    assert ma.in_alert_window(utc_noon, "07:30", "22:00", tz)       # 13:00 local
+
+
+def test_reply_all_rule_q14():
+    assert ma.reply_all_required(1) is True
+    assert ma.reply_all_required(3) is True       # <= 3 -> replyAll
+    assert ma.reply_all_required(4) is False      # > 3 -> sender only
+    assert ma.reply_all_required(0) is True
+    assert ma.reply_all_required(None) is False   # unknown -> minimal exposure
+
+
+def test_cap_reached_uses_settings(monkeypatch):
+    monkeypatch.setattr(settings, "MAIL_AGENT_MAX_REPLIES_PER_DAY", 2)
+    assert ma._cap_reached(1) is False
+    assert ma._cap_reached(2) is True             # Q6: cap inclusive
+    assert ma._cap_reached(3) is True
+
+
+def test_sent_same_day_and_alert_text():
+    assert ma.sent_same_day(datetime.now(UTC)) is True
+    assert ma.sent_same_day(datetime.now(UTC) - timedelta(days=1)) is False
+    txt = ma.alert_text("P1", "board", "critical", "big@corp.ch", "s" * 300,
+                        "https://outlook.office.com/mail/x", digest=False)
+    assert txt.startswith("Kubot mail alert P1")
+    assert "https://outlook.office.com/mail/x" in txt
+    assert len(txt) <= 3800
+    dig = ma.alert_text("P3", "unknown", "informational", "a@b.ch", "s", None,
+                        digest=True)
+    assert dig.startswith("Kubot mail digest")
+    assert "https://" not in dig
+
+
+def test_hhmm_parser():
+    assert ma._hhmm("07:30") == (7, 30)
+    assert ma._hhmm("22:00") == (22, 0)
+    assert ma._hhmm("") == (0, 0)
 

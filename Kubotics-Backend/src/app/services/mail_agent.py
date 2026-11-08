@@ -21,6 +21,7 @@ import asyncio
 import logging
 import re
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy import select
@@ -32,6 +33,7 @@ from app.models.mail_agent import MailMessage, MailWatchSender
 from app.models.tasks import DeviceSnapshotCache
 from app.services import mail_llm
 from app.services.m365_service import m365_service
+from app.services.whatsapp_service import whatsapp_service
 
 logger = logging.getLogger(__name__)
 
@@ -363,6 +365,9 @@ async def run_once() -> dict:
     # step 3 pipeline: detail -> header filters -> route -> classify -> decide -> compose
     for key, val in (await process_pending()).items():
         stats[f"proc_{key}"] = val
+    # step 4: send ready replies + flush windowed WhatsApp alerts
+    for key, val in (await send_ready()).items():
+        stats[f"snd_{key}"] = val
 
     stats["pending"] = stats["claimed"] - stats["ignored"]
     if any(stats.values()):
@@ -601,6 +606,7 @@ async def _process_row(client, db, row, only, tier_map, overrides, contacts,
 
     body_html = (detail.get("body") or {}).get("content") or ""
     body_text = re.sub(r"<[^>]+>", " ", body_html) if "<" in body_html else body_html
+    rcpt_count = len(detail.get("toRecipients") or []) + len(detail.get("ccRecipients") or [])
 
     # --- routing (§3.2): thread -> contact card -> override -> unknown
     card = find_contact(sender, contacts)
@@ -660,6 +666,7 @@ async def _process_row(client, db, row, only, tier_map, overrides, contacts,
         **cls, "route": route, "tier": tier, "priority": action["priority"],
         "notify": action["notify"], "kind": action["kind"],
         "reason": action["reason"], "provider": provider, "model": model,
+        "rcpt_count": rcpt_count,   # Q14: replyAll <= 3, else sender-only
         "llm_attempts": int((row.classification or {}).get("llm_attempts", 0)),
     }
     row.llm_provider, row.llm_model = provider, model
@@ -699,6 +706,237 @@ async def _process_row(client, db, row, only, tier_map, overrides, contacts,
                           "compose_provider": cprovider, "compose_model": cmodel}
     row.state = "classified"             # step 4 sends (marker semantics)
     stats["ready"] += 1
+
+
+# --- step 4: send path + WhatsApp notifications (plan §3.4/§4.2, Q6/Q11) ------
+
+CAP_NOTICE_DATASET = "kubot_cap_notice"
+
+
+def _hhmm(value: str) -> tuple[int, int]:
+    hour, _, minute = (value or "0:0").partition(":")
+    return int(hour or 0), int(minute or 0)
+
+
+def in_alert_window(now: datetime, start: str, end: str, tz_name: str) -> bool:
+    """Q11: WhatsApp alerts only 07:30-22:00 Europe/Zurich (replies unaffected)."""
+    local = now.astimezone(ZoneInfo(tz_name))
+    sh, sm = _hhmm(start)
+    eh, em = _hhmm(end)
+    minutes = local.hour * 60 + local.minute
+    return sh * 60 + sm <= minutes <= eh * 60 + em
+
+
+def reply_all_required(rcpt_count: int | None) -> bool:
+    """Q14: replyAll by default; more than 3 To+CC recipients -> sender only.
+    Missing count (legacy rows) -> sender-only (minimal exposure)."""
+    if rcpt_count is None:
+        return False
+    return rcpt_count <= 3
+
+
+def sent_same_day(ts: datetime) -> bool:
+    now = datetime.now(UTC)
+    return ts.astimezone(UTC).date() == now.date()
+
+
+def alert_text(priority: str, tier: str, category: str, sender: str,
+               summary: str, web_link: str | None, digest: bool = False) -> str:
+    head = "Kubot mail digest" if digest else f"Kubot mail alert {priority}"
+    line = f"{head}: [{tier}/{category}] {sender} — {(summary or '').strip()[:180]}"
+    if web_link:
+        line += f"\n{web_link}"
+    return line[:3800]   # Meta limit 4096, keep headroom (whatsapp_service splits anyway)
+
+
+async def _cap_notice_latched(today: str) -> bool:
+    async with AsyncSessionLocal() as db:
+        row = (await db.execute(
+            select(DeviceSnapshotCache).where(
+                DeviceSnapshotCache.dataset == CAP_NOTICE_DATASET)
+        )).scalar_one_or_none()
+        return bool(row and isinstance(row.payload, dict)
+                    and row.payload.get("date") == today)
+
+
+async def _latch_cap_notice(today: str) -> None:
+    async with AsyncSessionLocal() as db:
+        row = (await db.execute(
+            select(DeviceSnapshotCache).where(
+                DeviceSnapshotCache.dataset == CAP_NOTICE_DATASET)
+        )).scalar_one_or_none()
+        if row:
+            row.payload = {"date": today}
+        else:
+            db.add(DeviceSnapshotCache(dataset=CAP_NOTICE_DATASET,
+                                       payload={"date": today}))
+        await db.commit()
+
+
+def _cap_reached(sent_today: int) -> bool:
+    """Q6: cap = MAIL_AGENT_MAX_REPLIES_PER_DAY (per calendar day)."""
+    return sent_today >= settings.MAIL_AGENT_MAX_REPLIES_PER_DAY
+
+
+async def resolve_graph_id(internet_message_id: str) -> str | None:
+    """PC-A cmd_approve: internetMessageId -> Graph id at send time."""
+    async with httpx.AsyncClient() as client:
+        tok = m365_service.get_access_token()
+        mid = internet_message_id.replace("'", "''")
+        resp = await client.get(
+            f"https://graph.microsoft.com/v1.0{_upn_path()}/mailFolders/inbox/messages",
+            params={"$top": "1", "$filter": f"internetMessageId eq '{mid}'",
+                    "$select": "id"},
+            headers={"Authorization": f"Bearer {tok}"},
+            timeout=20.0)
+        if resp.status_code == 429:
+            raise GraphThrottled(int(resp.headers.get("Retry-After") or "60"))
+        if resp.status_code != 200:
+            return None
+        values = resp.json().get("value", [])
+        return values[0]["id"] if values else None
+
+
+async def send_ready(limit: int = 20) -> dict:
+    """Step 4: ``classified`` -> Graph reply (marker semantics) + WhatsApp flush.
+
+    Safety re-checked at send time (§3.4): Phase-B gate, daily cap (Q6 ->
+    needs_review + one latched WhatsApp notice/day), 24h conversation cooldown,
+    Q14 replyAll<=3. WhatsApp delivery honours the Q11 07:30-22:00 window —
+    pending alerts (``whatsapp_notified_at IS NULL``) queue implicitly and
+    flush when the window opens.
+    """
+    stats = {"sent": 0, "cap_blocked": 0, "cooldown_skip": 0, "failed": 0,
+             "alerts_sent": 0, "alerts_pending": 0, "cap_notice": 0}
+    now = datetime.now(UTC)
+    only = parse_only_senders(settings.MAIL_AGENT_ONLY_SENDERS)
+    in_window = in_alert_window(
+        now, settings.MAIL_AGENT_ALERT_WINDOW_START,
+        settings.MAIL_AGENT_ALERT_WINDOW_END, settings.MAIL_AGENT_ALERT_TZ)
+
+    async with AsyncSessionLocal() as db:
+        # --- daily cap (Q6) ---
+        sent_today = (await db.execute(
+            select(MailMessage).where(MailMessage.sent_at.is_not(None))
+        )).scalars().all()
+        sent_today = [r for r in sent_today if r.sent_at and sent_same_day(r.sent_at)]
+        ready = (await db.execute(
+            select(MailMessage).where(MailMessage.state == "classified")
+            .order_by(MailMessage.received_at.asc()).limit(limit)
+        )).scalars().all()
+        if ready and _cap_reached(len(sent_today)):
+            for row in ready:
+                row.state = "needs_review"
+                row.summary = f"cap_reached:limit_{settings.MAIL_AGENT_MAX_REPLIES_PER_DAY}"
+                await db.commit()
+                stats["cap_blocked"] += 1
+            today = now.astimezone(ZoneInfo(settings.MAIL_AGENT_ALERT_TZ)).date().isoformat()
+            if in_window and not await _cap_notice_latched(today):
+                ok, _, _ = await whatsapp_service.send_text_message(
+                    settings.MAIL_AGENT_NOTIFY_PHONE,
+                    f"Kubot: daily reply cap reached "
+                    f"({settings.MAIL_AGENT_MAX_REPLIES_PER_DAY}) — "
+                    f"{stats['cap_blocked']} message(s) waiting in needs_review "
+                    "for your own answer.")
+                if ok:
+                    await _latch_cap_notice(today)
+                    stats["cap_notice"] = 1
+            ready = []
+
+        for row in ready:
+            # Phase-B gate re-checked at send time (defensive)
+            if only and (row.sender or "").lower() not in only:
+                row.state = "ignored_unknown"
+                row.summary = "restricted:phase_b_only_senders"
+                await db.commit()
+                continue
+            # 24h conversation cooldown (plan §3.4)
+            if row.conversation_id:
+                cooldown_edge = now - timedelta(
+                    hours=settings.MAIL_AGENT_CONVERSATION_COOLDOWN_H)
+                prior = (await db.execute(
+                    select(MailMessage).where(
+                        MailMessage.conversation_id == row.conversation_id,
+                        MailMessage.sent_at.is_not(None),
+                        MailMessage.sent_at >= cooldown_edge,
+                        MailMessage.id != row.id,
+                    ).limit(1)
+                )).scalar_one_or_none()
+                if prior:
+                    stats["cooldown_skip"] += 1   # stays classified -> retried
+                    continue
+            # --- PC-A marker semantics: persist BEFORE the POST ---
+            graph_id = await resolve_graph_id(row.internet_message_id)
+            if not graph_id:
+                row.state = "send_failed"
+                row.error = "resolve:graph_id_not_found (message gone)"
+                await db.commit()
+                stats["failed"] += 1
+                continue
+            row.graph_message_id = graph_id
+            row.send_attempted_at = now
+            await db.commit()   # marker durable BEFORE the network call
+            rcpt = (row.classification or {}).get("rcpt_count")
+            endpoint = "replyAll" if reply_all_required(rcpt) else "reply"
+            try:
+                async with httpx.AsyncClient() as client:
+                    tok = m365_service.get_access_token()
+                    resp = await client.post(
+                        f"https://graph.microsoft.com/v1.0{_upn_path()}/messages/"
+                        f"{graph_id}/{endpoint}",
+                        headers={"Authorization": f"Bearer {tok}",
+                                 "Content-Type": "application/json"},
+                        json={"comment": row.reply_text or ""},
+                        timeout=30.0)
+            except Exception as exc:  # noqa: BLE001 — unconfirmed: never retry
+                row.state = "send_failed"
+                row.error = (f"post_unconfirmed:{type(exc).__name__}: {exc} "
+                             f"— reply MAY have been sent, check Sent folder")[:500]
+                await db.commit()
+                stats["failed"] += 1
+                continue
+            if resp.status_code in (200, 202):
+                row.state = "replied"
+                row.sent_at = datetime.now(UTC)
+                row.error = None
+            else:
+                row.state = "send_failed"
+                row.error = f"reply HTTP {resp.status_code}: {resp.text[:200]}"
+                stats["failed"] += 1
+            await db.commit()
+            if row.state == "replied":
+                stats["sent"] += 1
+
+        # --- WhatsApp flush (Q11 window; pending = notify flag & not yet sent) ---
+        pending_alerts = (await db.execute(
+            select(MailMessage).where(
+                MailMessage.whatsapp_notified_at.is_(None),
+                MailMessage.state.in_(["replied", "classified", "notify_only",
+                                       "needs_review", "send_failed"]),
+            )
+        )).scalars().all()
+        pending_alerts = [r for r in pending_alerts
+                          if (r.classification or {}).get("notify") is True]
+        stats["alerts_pending"] = len(pending_alerts)
+        if in_window:
+            for row in pending_alerts:
+                cls = row.classification or {}
+                ok, _, _ = await whatsapp_service.send_text_message(
+                    settings.MAIL_AGENT_NOTIFY_PHONE,
+                    alert_text(cls.get("priority") or row.priority or "?",
+                               cls.get("tier") or "?", cls.get("category") or "?",
+                               row.sender or "?", cls.get("summary") or row.summary or "",
+                               row.web_link,
+                               digest=(row.state == "notify_only")))
+                if ok:
+                    row.whatsapp_notified_at = datetime.now(UTC)
+                    await db.commit()
+                    stats["alerts_sent"] += 1
+                    stats["alerts_pending"] -= 1
+                else:
+                    logger.warning("[mail-agent] WhatsApp alert failed for %s — retrying next cycle",
+                                   row.internet_message_id[:40])
+    return stats
 
 
 # --- background loop (trading_watch pattern) ----------------------------------
