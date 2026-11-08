@@ -385,7 +385,7 @@ MAIL_AGENT_ALERT_WINDOW_END=22:00     # outside window -> queued, flushed at 07:
 | 8 | ECS service desired count = 1 | ⚠️ not verifiable from repo | confirm in AWS console; ledger `INSERT … ON CONFLICT DO NOTHING` claim makes even N>1 tasks safe |
 | 9 | Mailbox | ✅ **answered Q1**: `vincent.verbeke@kuroliv.ch`, **contains multiple email addresses** — probed live: 28 `proxyAddresses` (sales/info@kubotics, qbotics, angerik, kuroliv, SailingFlorentine, 2thecloud, ecosailing.be, …). Own-mail filter uses the full discovered set + `MAIL_AGENT_OWN_ADDRESSES` extras | none — auto-discovered at loop start |
 | 10 | Rate/throttling | Graph throttles on 60 s metadata polls are trivial for 1 mailbox (measured volume: 21 inbox messages in the last 8 days ≈ 3/day, §7.1) | implement 429 backoff + retry-after in the loop (planned, not yet written) |
-| 11 | **CI has no test/lint gate** | ⚠️ verified 2026-11-08: `deploy.yml` job is named "Build, Test & Deploy" but runs no `pytest`/`ruff` — a push to main deploys regardless of test outcome | run the suite locally before every push (plan §10 keeps 34/34 green as gate); optionally add a pytest step to deploy.yml as a Phase 0 side-fix |
+| 11 | **CI test gate** | ✅ **ADDED 2026-11-08** with deploy config (97f7ec8): `setup-uv` + `uv run --frozen pytest -q` runs before build (verified green: 82/82 via the exact CI command) | none — deploys now fail on red |
 | 12 | **Signature source (Q8)** | 🟡 superseded by your Q8 answer: **combined-signature PROPOSAL in §5.6** (your sent-items block + Kubot tag + kubotics.ch promo, built from the real Sent-mail HTML; booking `cid:` image → text link) — **awaits your OK**. Old `mail_watch_sig.html` no longer needed; allowlist seeding moot (list emptied 10:06, contacts live in Outlook) | approve/edit §5.6 → stored as backend config |
 | 12b | **Approval-flow divergence (Q7)** | ✅ **answered: remove the approval gate, be extra careful if critical** — encoded as §5.4 critical ack-only rule + Q7 note + safety valves (cooldown, cap+notify, kill switch) | none — resolved |
 | 13 | **`Contacts.Read` for Outlook contacts (notes + categories)** | ✅ **GRANTED + live-verified 2026-11-08 09:49** (Vincent added the app permission): token roles now include `Contacts.Read`; `/users/{upn}/contacts` → **200, 15 contacts read**, Liz Mallet reviewed (§4.4) | none — resolved during review |
@@ -453,6 +453,12 @@ Operational notes:
 | `MIMO_API_KEY` | platform.xiaomimimo.com → Console → API Keys (`sk-…`) |
 | `XAI_API_KEY` | console.x.ai → API Keys (Grok) |
 
+**Observed live in prod (2026-11-08 10:47, `/mail/status`):**
+`llm_providers_configured = ["gemini"]` → the Gemini key IS present (chain
+works today via `gemini-2.5-flash`), **`OPENAI_API_KEY` is absent/empty** in
+repo secrets despite being listed in deploy.yml, MIMO/XAI not yet created.
+Both gaps are optional — the chain skips them until added.
+
 **GitHub secrets to CONFIRM present** (already referenced by deploy.yml):
 `OPENAI_API_KEY`, `GEMINI_API_KEY`, `AZURE_CLIENT_CERT_KEY`,
 `AZURE_CLIENT_CERT_THUMBPRINT`, `DATABASE_URL`, `API_SECRET_KEY`,
@@ -491,7 +497,7 @@ and the `MAIL_AGENT_ENABLED=false` kill switch.
 
 | Phase | Mode | What happens | Exit criterion |
 |---|---|---|---|
-| **B** | `mode=auto`, **Liz-only**: `MAIL_AGENT_ONLY_SENDERS=liz.mallet@kuroliv.ch,liz.mallet@hotmail.com` | Real auto-replies to Liz's test mails — thread match, language, Kubot intro, 48 h posture, verbatim signature, ledger row all verified in Outlook | Liz's threads look right **and you approve** |
+| **B** | `mode=auto`, **Liz-only**: `MAIL_AGENT_ONLY_SENDERS=liz.mallet@kuroliv.ch,liz.mallet@hotmail.com` | **DEPLOYED 2026-11-08 10:53** (commits …8571d2b; enabled=true, seed pass recorded watermark `2026-11-08T10:46:47Z`, loop live at 60s). First prod cycle already handled a real message correctly: `noreply@github.com` → `ignored_spam/hard_filter:noreply_sender`, zero sends. Chain: gemini only until MIMO/XAI secrets. Real auto-replies to Liz's test mails — thread, language, Kubot intro, 48 h posture, §5.6 signature, ledger row verified in Outlook | Liz's threads look right **and you approve** |
 | **C — GO-LIVE** | `mode=auto`, full contact store + thread replies; `MAIL_AGENT_ONLY_SENDERS=` cleared | **Immediately once T1–T7 pass (your Q4):** all R1/R2 replies + Q11-windowed WhatsApp alerts live; PC-A already stopped (10:06); low expected mail volume (measured ~3/day) = limited blast radius | live, no mis-sends in first days (cap = 20/day + cap-reached notice, Q6) |
 | **D** | Dashboard card | Senders/contacts view + message ledger in the Kubotics dashboard UI (frontend follow-up) | — |
 
