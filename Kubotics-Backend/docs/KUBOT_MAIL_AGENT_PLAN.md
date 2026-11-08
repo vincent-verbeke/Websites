@@ -603,10 +603,13 @@ Go-live approval = you have run T1–T7 and accept the wording; then Phase C
 
 ## 10. Estimated build order (after your approval)
 
-**STATUS 2026-11-08 10:56 — steps 1-5 ALL DONE, Phase B LIVE in prod since
-10:53** (commits 178517d → ecedaab: models/config, poll loop, LLM chain,
-send path, admin API, deploy config, CI gate). 82/82 tests. Remaining:
-§8.1 T1–T7 (Liz) → your approval → Phase C go-live (one env flip).
+**STATUS 2026-11-08 12:09 — steps 1-5 ALL DONE, Phase B LIVE in prod since
+10:53** (commits 178517d → 736442d: models/config, poll loop, LLM chain,
+send path, admin API, deploy config, CI gate, QA fixes, outage self-heal).
+82/82 tests. Outage self-heal observed live 12:08 (`proc_requeued=1` — Liz's
+parked row auto-retried; will complete the moment the GEMINI key is
+replaced). Remaining: his 2 GitHub secrets → §8.1 T1–T7 (Liz) → approval →
+Phase C go-live (one env flip).
 
 1. Models + config + migrations pattern (Phase 0, no behaviour change).
 2. Poll loop + hard filters + ledger (service stays `MAIL_AGENT_ENABLED=false`
