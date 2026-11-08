@@ -49,6 +49,7 @@ personalised thank-you instead.
 | *Follow-up 09:31:* LLM keys as **GitHub secrets**; default **Xiami MIMO Flash latest → OpenAI → Gemini → Grok**; models changeable by parameter/secret | §2 chain row, §6 config block (`MAIL_AGENT_LLM_CHAIN`/`MAIL_AGENT_LLM_MODEL_*`), §7 row 5, Q10 |
 | *Follow-up 09:31:* add any further questions so he can review better | §9 Q9–Q14 (contact store/categories, secrets, timing, mailbox state, languages, reply-vs-replyAll) |
 | *Follow-up 09:51:* **drop Phase A**, test with Liz (Phase B), go **live immediately on approval**; low expected mail volume → limited blast radius | §8 revised (B → GO-LIVE, safety valves listed), `MAIL_AGENT_ONLY_SENDERS` config, §10 step 6 |
+| *Answers 10:02 (all 14):* aliases, unknown=classify+answer, PC-A stop now, matrix OK, cap+notify, critical-care, signature proposal, category proposal, env list, alert window, never-modify, de/en/fr/it/nl, replyAll ≤3 | §9 (answered), §3.2–3.4, §4.2–4.3, §5 (incl. §5.6 proposal), §6, §7 rows 7/9/12/12b + §7.3, §8 |
 
 ---
 
@@ -64,7 +65,7 @@ personalised thank-you instead.
 | LLM provider chain (Vincent 2026-11-08: **Xiaomi MiMo Flash latest → OpenAI → Gemini → Grok/xAI**) | Keys **as GitHub secrets** (repo secrets → deploy.yml injection map → task-def env); `openai` SDK talks to all four (MiMo is OpenAI-compatible: `https://api.xiaomimimo.com/v1`, verified from vendor docs) | Classification + reply composition; chain order + model IDs overridable by env/secret (§6 config, §7 row 5) |
 | Normalised event stream | `inbound_events` (channel `email` already valid) | Observability / dashboard / needle |
 | Bearer auth helpers | `require_ingest_token` (API_SECRET_KEY) | New admin endpoints |
-| Test harness | 34 tests passing (baseline verified 2026-11-08) | New pure-function tests |
+| Test harness | 43 tests passing (34 baseline + 9 Phase 0, verified 2026-11-08) | New pure-function tests |
 
 **No new Python dependencies are required** (httpx, msal, openai, groq already
 in `pyproject.toml`).
@@ -122,8 +123,10 @@ flowchart TD
    an Outlook contact card** (Graph `/contacts`, `emailAddresses[]` — multi-address
    match; Vincent adds people there; `categories` supply the tier,
    `personalNotes` the personalisation, §4.1/§5.2) → eligible as `contact`;
-   else `unknown` → **ignore** (policy, §4.3). A small DB override list
-   (`mail_watch_senders`, optional) covers test senders without a contact card.
+   else `unknown` → **classify anyway and auto-answer real personal email**
+   (your Q2 answer, §4.3) — only spam/advertising is ignored. A small DB
+   override list (`mail_watch_senders`, optional) covers test senders without
+   a contact card.
    ⚠️ **Contact membership never bypasses the §3.1 hard filters or the R3
    spam verdict** — the live contact store contains newsletter/noreply senders
    (see §4.4); eligibility and desirability are separate checks.
@@ -146,9 +149,11 @@ memory — mailbox volume makes this cheap.
 2. **Compose** → the reply body (HTML + text), only when the decision says
    "reply".
 
-In `observe` mode only call #1 runs. Spam/unknown senders never reach the LLM
-(hard filters first) — cost and latency stay bounded, honouring the earlier
-"do not watch mail via llm" constraint for the polling path itself.
+Hard-filtered senders (own mail incl. all aliases, autoreplies, mailing
+lists, noreply — §3.4) never reach the LLM. **Unknown senders DO get call
+#1** (your Q2 answer: classify real-personal vs spam) — but only after the
+hard filters, so cost and latency stay bounded and the earlier "do not watch
+mail via llm" constraint on the polling path itself is honoured.
 
 ### 3.4 Send safety (ported failure contract)
 
@@ -156,15 +161,21 @@ In `observe` mode only call #1 runs. Spam/unknown senders never reach the LLM
   blind-retries (PC-A round-27: duplicate-reply class).
 * Resolve `internetMessageId` → Graph `id` **at send time** with
   `$filter=internetMessageId eq '...'` (OData `'` doubled), then
-  `POST /users/{upn}/messages/{graphId}/reply` — the exact proven PC-A
-  `cmd_approve` sequence (`webLink` in §3.1 `$select` is display-only; it is
-  **not** a `$filter`-able property and must never appear in a filter).
+  **`POST /messages/{graphId}/replyAll` by default; if To+CC recipients
+  > 3 → `POST /messages/{graphId}/reply` (sender only)** — your Q14 answer.
+  (`webLink` in §3.1 `$select` is display-only; it is **not** `$filter`-able
+  and must never appear in a filter.)
 * State machine in `mail_messages.state`:
   `received → classified → replied | ignored_spam | ignored_unknown | notify_only | needs_review | send_failed`.
 * One reply per conversation per 24 h + daily global cap (safety valve).
-* Never reply to: our own sent items, `Auto-Submitted`/auto-generated headers,
-  `Precedence: bulk`, `List-Unsubscribe`/`List-Id` (mailing lists),
+  **Cap hit (Q6):** message → `needs_review` **and a WhatsApp notice to
+  Vincent** (alert window, Q11) so he can override with his own answer.
+* Never reply to: our own mail (any of the 28 aliases, Q1), **auto-replies
+  (`Auto-Submitted`, auto-generated) — never answered, any sender, any tier
+  (Q14)**, `Precedence: bulk`, `List-Unsubscribe`/`List-Id` (mailing lists),
   `noreply@`/`do-not-reply@`/`mailer-daemon`.
+* **Never modify the mailbox (Q12):** no mark-as-read, no move, no delete —
+  the ledger is the only audit trail; Mail.ReadWrite is used for reading only.
 
 ---
 
@@ -197,12 +208,17 @@ the sender eligible (R2) — it just gets the default tier.
 
 | | board / vip | customer / partner / lead | unknown (no thread) |
 |---|---|---|---|
-| **critical** | **P1** WhatsApp now + auto-ack reply | **P1** WhatsApp now + auto-ack reply | log only |
-| **complaint** | **P1** WhatsApp now + auto-ack reply | **P2** WhatsApp + auto-ack reply | log only |
-| **request / high** | **P2** WhatsApp digest + reply | **P3** auto-reply only | log only |
+| **critical** | **P1** WhatsApp now + auto-ack reply | **P1** WhatsApp now + auto-ack reply | **P1** WhatsApp now + auto-ack reply |
+| **complaint** | **P1** WhatsApp now + auto-ack reply | **P2** WhatsApp + auto-ack reply | **P2** WhatsApp + auto-ack reply |
+| **request / high** | **P2** WhatsApp digest + reply | **P3** auto-reply only | **P3** auto-reply (Q2: if real personal) |
 | **followup** (R1/R5) | **P3** auto-reply | **P3** auto-reply | n/a (thread ⇒ eligible) |
-| **informational** (R4) | **P4** thank-you reply | **P4** thank-you reply | log only |
+| **informational** (R4) | **P4** thank-you reply | **P4** thank-you reply | **P4** thank-you reply (Q2: if real personal) |
 | **commercial_spam** (R3) | **P5** ignore | **P5** ignore | **P5** ignore |
+
+Unknown senders run through the same matrix at tier `unknown` (no board/vip
+boost) — per your Q2 answer they are classified first and only *real personal*
+email gets the reply cells; spam lands on P5. Approved by Vincent 2026-11-08
+(Q5).
 
 * **P1/P2** → immediate WhatsApp to Vincent (existing gateway): sender, tier,
   criticality, one-line summary, Graph `webLink` to open the mail.
@@ -213,14 +229,15 @@ This gives you criticality **per message** (LLM axis) *and* **per relationship**
 (tier axis), so a board member's "quick question" still escalates while a
 customer's newsletter does not.
 
-### 4.3 Unknown-sender default
+### 4.3 Unknown-sender default — **answered Q2 (Vincent 2026-11-08)**
 
-Default policy: **log & ignore, no reply** (matches your R1+R2 wording — only
-threads I started and my contacts get answered). Config switch
-`MAIL_AGENT_UNKNOWN_POLICY = ignore | notify` lets you get a WhatsApp digest of
-interesting unknown senders instead, without auto-committing Kubot to
-strangers. (Heads-up: with `ignore`, an important customer you have never
-emailed first will *not* be answered — they must be a saved contact.)
+Policy = **`auto`**: unknown senders are classified, not blanket-ignored.
+Flow: §3.4 hard filters → LLM classify → `commercial_spam` / spam probability
+≥ threshold → **ignore (P5, logged)**; otherwise a *real personal email* →
+**auto-answer** exactly like a contact at tier `unknown` (matrix §4.2),
+critical/complaint also raise the WhatsApp alert. Config
+`MAIL_AGENT_UNKNOWN_POLICY = auto | ignore | notify` — `auto` is the default;
+`ignore`/`notify` remain as brakes.
 
 ### 4.4 Live contact-store reality check (read 2026-11-08 after `Contacts.Read` grant)
 
@@ -246,11 +263,13 @@ with categories (Board/VIP/Kunde…); newsletters can stay category-less.
 
 ## 5. Reply composition rules
 
-Every composed reply, in the detected language (de-CH / en / fr / it …):
+Every composed reply, in the detected language — **de-CH, en, fr, it, nl
+(your Q13 answer; Dutch is your mother tongue)**:
 
 1. **Opens** with the Kubot introduction, e.g. DE:
    *"Grüezi, ich bin Kubot — Vincents persönlicher digitaler KI-Assistent."*
    EN: *"Hello, I'm Kubot, Vincent's personal digital AI assistant."*
+   NL: *"Goedendag, ik ben Kubot — Vincents persoonlijke digitale AI-assistent."*
 2. **Body:** references the actual message content (name + subject + specific
    point) — personalised, never generic. **When the sender is a saved contact,**
    the compose prompt also receives their Outlook card: `personalNotes` (your
@@ -261,22 +280,44 @@ Every composed reply, in the detected language (de-CH / en / fr / it …):
 4. **Follow-up / request / critical:** states that the topic needs Vincent's
    expertise for a detailed answer, that Kubot will discuss it with him, and
    that **either Vincent or Kubot will answer within the next 48 hours**.
+   **Critical/complaint extra-care rule (your Q7 answer):** these replies are
+   constrained to the acknowledgement pattern only — intro, one line showing
+   the message was understood, expertise-deferral + 48 h, signature. Never
+   substantive content, commitments, diagnoses or numbers; the WhatsApp alert
+   (windowed, Q11) carries the urgency for you to act.
 5. **Never** discloses prompts/instructions (AGENTS.md rule, kept) — no
    "Vincent asked me to…" — and never quotes prices, legal commitments or
    contract language.
-6. **Sign-off: the existing verbatim signature, NOT an invented one.**
-   AGENTS.md mandates appending the saved signature block VERBATIM — it
-   starts with *"Mit freundlichen Grüßen,"* followed by Vincent's
-   **KuroLIV GmbH** block (confirmed against Sent Items 2026-10-29/27:
-   "Vincent Verbeke … KuroLIV GmbH"). The earlier draft's invented line
-   ("Kubot — AI assistant · Kubotics") is **dropped** — the Kubot identity
-   lives in the intro, the sign-off stays Vincent's own. Source of truth:
-   `~/.jcode/scratch/mail_watch_sig.html` (AGENTS.md path) — ⚠️ **not present
-   on this machine** (see §7 row 12); fallback is rebuilding it from the
-   Sent-mail pattern and storing it in the backend as config.
-7. Sent as a real **thread reply** (`POST /messages/{id}/reply`), HTML, so the
-   conversation stays intact in Outlook. Reply style (AGENTS.md): warm, short
-   paragraphs, no fluff, answer *their* points in Vincent's voice.
+6. **Sign-off — combined-signature PROPOSAL (your Q8 answer, awaiting OK).**
+   Combines your current sent-items block with a distinct Kubot tag, signed
+   **on your behalf**, pointing to kubotics.ch (your promo idea). Built from
+   the exact Sent-mail HTML (2026-10-29: *"Mit freundlichen Grüßen, / Vincent
+   Verbeke &amp; Liz Mallet / KuroLIV GmbH"* + BookWithMe block — the booking
+   **image is `cid:`-referenced and cannot render in API-sent replies**, so it
+   becomes a text link):
+
+   ```html
+   <p style="font-family:Aptos,'Segoe UI',sans-serif;font-size:11pt;color:#000">
+   Mit freundlichen Grüßen,<br><br>
+   Vincent Verbeke &amp; Liz Mallet<br>
+   KuroLIV GmbH<br>
+   <span style="color:#467886"><b>Kubot</b> — Vincents persönlicher digitaler
+   KI-Assistent, antwortet in seinem Namen</span><br>
+   <a href="https://kubotics.ch" style="color:#467886">kubotics.ch</a> ·
+   <a href="https://outlook.office.com/bookwithme/user/01a588e5abd843b3b10fed3701fd338c@kuroliv.ch?anonymous&amp;ep=bwmEmailSignature" style="color:#467886">Termin mit Vincent buchen</a>
+   </p>
+   ```
+
+   The accent-coloured Kubot line (your brand teal `#467886`) makes Kubot's
+   answers instantly distinguishable from yours in the same thread. Localised
+   closing + tag for en/fr/it/nl (*"Kind regards," / "Kubot — Vincent's
+   personal AI assistant, answering on his behalf"*, …); name/company/links
+   constant. Stored as backend config; supersedes the AGENTS.md "never invent
+   a sign-off" rule per this Q8 instruction.
+7. Sent as a **thread reply** — `/replyAll` by default, `/reply` when
+   To+CC > 3 (your Q14 answer, §3.4) — HTML, so the conversation stays intact
+   in Outlook. Reply style (AGENTS.md): warm, short paragraphs, no fluff,
+   answer *their* points in Vincent's voice.
 
 Templates are prompt-driven with per-language example openers; output is
 validated (must contain the Kubot opener for the detected language, must be
@@ -309,18 +350,22 @@ MAIL_AGENT_MODE=auto               # auto | observe (debug only; rollout = Phase
 MAIL_AGENT_POLL_INTERVAL_S=60
 MAIL_AGENT_UPN=                     # default: M365_ORGANIZER_EMAIL (vincent.verbeke@kuroliv.ch)
 MAIL_AGENT_REPLY_WINDOW_DAYS=7
-MAIL_AGENT_UNKNOWN_POLICY=ignore    # ignore | notify
+MAIL_AGENT_UNKNOWN_POLICY=auto     # auto (Q2: classify + answer real personal) | ignore | notify
+MAIL_AGENT_LANGUAGES=de-CH,en,fr,it,nl  # reply openers (Q13 — Dutch = mother tongue)
+MAIL_AGENT_OWN_ADDRESSES=           # extra own aliases; base set auto-discovered from Graph proxyAddresses (28 found, Q1)
 MAIL_AGENT_LLM_CHAIN=mimo,openai,gemini,xai  # ordered failover (override via env/secret)
 MAIL_AGENT_LLM_MODEL_MIMO=mimo-v2.6-flash    # "Xiami MIMO Flash (latest)" — V2.6-Flash, V2.5 IDs retired 2026-10-21
 MAIL_AGENT_LLM_MODEL_OPENAI=                 # default at build time, secret-overridable
 MAIL_AGENT_LLM_MODEL_GEMINI=
 MAIL_AGENT_LLM_MODEL_XAI=
 MAIL_AGENT_LLM_BASE_MIMO=https://api.xiaomimimo.com/v1   # OpenAI-compatible
-MAIL_AGENT_TIER_MAP=Board=board;VIP=vip_customer;Kunde=customer  # Outlook categories → tiers
+MAIL_AGENT_TIER_MAP=Board=board;VIP=vip_customer;Kunde=customer;Partner=partner;Lead=lead;Test=test  # proposed category set (Q9)
 MAIL_AGENT_ONLY_SENDERS=              # comma list; when set, ONLY these senders get replies (Phase B: Liz; emergency brake: set to one address)
-MAIL_AGENT_MAX_REPLIES_PER_DAY=20
+MAIL_AGENT_MAX_REPLIES_PER_DAY=20     # Q6: cap hit -> needs_review + WhatsApp notice to Vincent
 MAIL_AGENT_SPAM_THRESHOLD=0.80
 MAIL_AGENT_NOTIFY_PHONE=+41797481975
+MAIL_AGENT_ALERT_WINDOW_START=07:30   # WhatsApp alerts only 07:30-22:00 Europe/Zurich (Q11);
+MAIL_AGENT_ALERT_WINDOW_END=22:00     # outside window -> queued, flushed at 07:30; email replies unaffected (24/7)
 ```
 
 ---
@@ -335,14 +380,14 @@ MAIL_AGENT_NOTIFY_PHONE=+41797481975
 | 4 | WhatsApp Cloud API token | ✅ in task-definition **and live-probed 2026-11-08**: `GET /api/whatsapp/send/health` → `configured=true`, `last_send 2026-11-06 ok`. (The a21 retirement of 2026-11-08 removed PC-A's fallback sender only — the container send path my alerts use is untouched.) | none |
 | 5 | **LLM keys as GitHub secrets (Vincent 2026-11-08) + provider chain** | ⚠️ repo secrets → deploy.yml `secrets_to_inject` (`if v:`) → task-def env. Currently injects `OPENAI_API_KEY`/`GEMINI_API_KEY` (+ Groq/Anthropic); **`MIMO_API_KEY` and `XAI_API_KEY` are NOT in the map yet** — Phase 0 must add them | create GitHub secrets `MIMO_API_KEY` (platform.xiaomimimo.com → API Keys) + `XAI_API_KEY`, confirm `OPENAI_API_KEY`/`GEMINI_API_KEY` exist, add both names to deploy.yml injection map; chain/model IDs overridable as env/secret |
 | 6 | DB tables | auto via `create_all` + idempotent ALTER (repo pattern, no alembic) | none |
-| 7 | **PC-A poller must be stopped at cutover** | ⚠️ PC-A `mail_watch_poll` (10-min) still watches the **same mailbox** | **disable it when cloud goes live — otherwise double replies** (blocking) |
+| 7 | **PC-A poller stopped (Q4: "stop PC-A immediately")** | ✅ **DONE 2026-11-08 10:06** — shared allowlist emptied via the dashboard API (`POST /api/mail/watchers` → `senders: []` = documented *watch off*); PC-A's 10-min poller now takes its cheapest exit (no scan, no spawn, no replies). Queue pending: 0 | done before test day; reversible by re-adding the 2 addresses if ever needed |
 | 7b | Entra app identity shared with PC-A | ✅ **no longer blocking** — live token 2026-11-08 shows app `7246abc4-…` (= task-def `AZURE_CLIENT_ID`) already reads the target mailbox (200s). PC-A's own identity only matters for its decommission, not for this backend | informational; compare PC-A `M365_CLIENT_ID` only if PC-A-side checks are ever re-enabled |
 | 8 | ECS service desired count = 1 | ⚠️ not verifiable from repo | confirm in AWS console; ledger `INSERT … ON CONFLICT DO NOTHING` claim makes even N>1 tasks safe |
-| 9 | Mailbox choice | task-def says `vincent.verbeke@kuroliv.ch`, `.env.example` says `vincent@kubotics.ch` | confirm target mailbox (§9 Q1) |
+| 9 | Mailbox | ✅ **answered Q1**: `vincent.verbeke@kuroliv.ch`, **contains multiple email addresses** — probed live: 28 `proxyAddresses` (sales/info@kubotics, qbotics, angerik, kuroliv, SailingFlorentine, 2thecloud, ecosailing.be, …). Own-mail filter uses the full discovered set + `MAIL_AGENT_OWN_ADDRESSES` extras | none — auto-discovered at loop start |
 | 10 | Rate/throttling | Graph throttles on 60 s metadata polls are trivial for 1 mailbox (measured volume: 21 inbox messages in the last 8 days ≈ 3/day, §7.1) | implement 429 backoff + retry-after in the loop (planned, not yet written) |
 | 11 | **CI has no test/lint gate** | ⚠️ verified 2026-11-08: `deploy.yml` job is named "Build, Test & Deploy" but runs no `pytest`/`ruff` — a push to main deploys regardless of test outcome | run the suite locally before every push (plan §10 keeps 34/34 green as gate); optionally add a pytest step to deploy.yml as a Phase 0 side-fix |
-| 12 | **Verbatim signature file + live allowlist for seeding** | ⚠️ AGENTS.md mandates `~/.jcode/scratch/mail_watch_sig.html` (KuroLIV block, never invent a sign-off) and `mail_watch_config.json` (current senders) — **neither exists on this machine**; both live on PC-A (deploy paths `/home/wa/…`) or were pruned | at cutover: copy the sig file from PC-A (or rebuild from Sent mail, §5.6) and export PC-A's allowlist to seed `mail_watch_senders` (cap 50, same address regex) |
-| 12b | **Approval-flow divergence** | ⚠️ documented PC-A rule: "NO send ever without explicit SEND" via WhatsApp — this plan deliberately removes that gate (your 2026-11-08 ask: fully automated), mitigated by the Liz-only Phase B + safety valves (§8) | confirm in §9; §8 is the compensating control |
+| 12 | **Signature source (Q8)** | 🟡 superseded by your Q8 answer: **combined-signature PROPOSAL in §5.6** (your sent-items block + Kubot tag + kubotics.ch promo, built from the real Sent-mail HTML; booking `cid:` image → text link) — **awaits your OK**. Old `mail_watch_sig.html` no longer needed; allowlist seeding moot (list emptied 10:06, contacts live in Outlook) | approve/edit §5.6 → stored as backend config |
+| 12b | **Approval-flow divergence (Q7)** | ✅ **answered: remove the approval gate, be extra careful if critical** — encoded as §5.4 critical ack-only rule + Q7 note + safety valves (cooldown, cap+notify, kill switch) | none — resolved |
 | 13 | **`Contacts.Read` for Outlook contacts (notes + categories)** | ✅ **GRANTED + live-verified 2026-11-08 09:49** (Vincent added the app permission): token roles now include `Contacts.Read`; `/users/{upn}/contacts` → **200, 15 contacts read**, Liz Mallet reviewed (§4.4) | none — resolved during review |
 
 ### 7.1 Live validation log (2026-11-08, read-only probes from this machine)
@@ -382,9 +427,9 @@ actually use):**
 
 **Externally blocked (honest constraints, not skipped checks):** GitHub
 secrets (`gh` CLI unavailable on this machine), ECS desired count (no AWS
-credentials), PC-A poller state (different machine), and the acceptance step
-itself — your §9 review — which is the user-gated stopping point of this
-phase.
+credentials), PC-A poller state (different machine — but the shared
+allowlist stop was executed from here, row 7), and the acceptance step
+itself — your §9 review, now answered (§9).
 
 Operational notes:
 
@@ -399,22 +444,55 @@ Operational notes:
 * **Rollback:** `MAIL_AGENT_ENABLED=false` + redeploy stops everything; sent
   replies are already in Sent Items (auditable).
 
+### 7.3 Complete env inventory (your Q10 answer)
+
+**GitHub repo secrets to CREATE (new):**
+
+| Secret | Where to get it |
+|---|---|
+| `MIMO_API_KEY` | platform.xiaomimimo.com → Console → API Keys (`sk-…`) |
+| `XAI_API_KEY` | console.x.ai → API Keys (Grok) |
+
+**GitHub secrets to CONFIRM present** (already referenced by deploy.yml):
+`OPENAI_API_KEY`, `GEMINI_API_KEY`, `AZURE_CLIENT_CERT_KEY`,
+`AZURE_CLIENT_CERT_THUMBPRINT`, `DATABASE_URL`, `API_SECRET_KEY`,
+`ELEVENLABS_API_KEY`, `TELEGRAM_BOT_TOKEN`, `WHATSAPP_VERIFY_TOKEN`,
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (GROQ/ANTHROPIC also present,
+unused by the mail agent).
+
+**Code change (Phase 0 scope):** add `MIMO_API_KEY`, `XAI_API_KEY` to
+deploy.yml `secrets_to_inject` (chain skips providers with missing keys →
+deploy works before you create them; MiMo activates the moment its key
+lands).
+
+**Task-definition env (non-secret, committed in `.aws/task-definition.json`):**
+`MAIL_AGENT_ENABLED`, `MAIL_AGENT_MODE`, `MAIL_AGENT_POLL_INTERVAL_S`,
+`MAIL_AGENT_UPN`, `MAIL_AGENT_REPLY_WINDOW_DAYS`, `MAIL_AGENT_UNKNOWN_POLICY`,
+`MAIL_AGENT_LANGUAGES`, `MAIL_AGENT_OWN_ADDRESSES`, `MAIL_AGENT_LLM_CHAIN`,
+`MAIL_AGENT_LLM_MODEL_MIMO/_OPENAI/_GEMINI/_XAI`, `MAIL_AGENT_LLM_BASE_MIMO`,
+`MAIL_AGENT_TIER_MAP`, `MAIL_AGENT_ONLY_SENDERS`,
+`MAIL_AGENT_MAX_REPLIES_PER_DAY`, `MAIL_AGENT_CONVERSATION_COOLDOWN_H`,
+`MAIL_AGENT_SPAM_THRESHOLD`, `MAIL_AGENT_NOTIFY_PHONE`,
+`MAIL_AGENT_ALERT_WINDOW_START/_END` — exact values in §6 (all already in
+`Settings`, Phase 0 done).
+
 ---
 
 ## 8. Rollout plan
 
-**Revised per Vincent 2026-11-08 09:51: Phase A (observe) is DROPPED** —
-straight to live testing with Liz, then immediate go-live on approval;
-expected low mail volume in the coming days keeps the blast radius small.
-The dropped observe phase is compensated by the safety valves below (all
-designed in, §3.4): per-conversation 24 h cooldown, `MAIL_AGENT_MAX_REPLIES_PER_DAY`,
-spam-verdict-always-wins, validation-failure → `needs_review` (no send), and
-the `MAIL_AGENT_ENABLED=false` kill switch.
+**Revised per Vincent 09:51, timeline confirmed 10:02 (Q4): Phase A DROPPED;
+PC-A stopped 10:06 (§7 row 7); TEST TODAY with Liz → go-live immediately
+once T1–T7 pass.** Low expected mail volume keeps the blast radius small.
+The dropped observe phase is compensated by the safety valves (all designed
+in, §3.4): per-conversation 24 h cooldown, `MAIL_AGENT_MAX_REPLIES_PER_DAY`
+(+ Q6 cap-reached WhatsApp notice), spam-verdict-always-wins,
+validation-failure → `needs_review` (no send), critical ack-only rule (Q7),
+and the `MAIL_AGENT_ENABLED=false` kill switch.
 
 | Phase | Mode | What happens | Exit criterion |
 |---|---|---|---|
 | **B** | `mode=auto`, **Liz-only**: `MAIL_AGENT_ONLY_SENDERS=liz.mallet@kuroliv.ch,liz.mallet@hotmail.com` | Real auto-replies to Liz's test mails — thread match, language, Kubot intro, 48 h posture, verbatim signature, ledger row all verified in Outlook | Liz's threads look right **and you approve** |
-| **C — GO-LIVE** | `mode=auto`, full contact store + thread replies; `MAIL_AGENT_ONLY_SENDERS=` cleared | **Immediately on your approval:** all R1/R2 replies + P1/P2 WhatsApp alerts live; **PC-A poller stopped in the same change**; low expected mail volume the next days (measured ~3/day today) = limited blast radius | live, no mis-sends in first days (cap = 20/day as brake) |
+| **C — GO-LIVE** | `mode=auto`, full contact store + thread replies; `MAIL_AGENT_ONLY_SENDERS=` cleared | **Immediately once T1–T7 pass (your Q4):** all R1/R2 replies + Q11-windowed WhatsApp alerts live; PC-A already stopped (10:06); low expected mail volume (measured ~3/day) = limited blast radius | live, no mis-sends in first days (cap = 20/day + cap-reached notice, Q6) |
 | **D** | Dashboard card | Senders/contacts view + message ledger in the Kubotics dashboard UI (frontend follow-up) | — |
 
 ### 8.1 Phase B test script (Liz) — the exact cases you approve on
@@ -437,55 +515,53 @@ Go-live approval = you have run T1–T7 and accept the wording; then Phase C
 
 ---
 
-## 9. Open questions for your review
+## 9. Questions → **your answers (2026-11-08 10:02) — all 14 received**
 
-1. **Mailbox:** `vincent.verbeke@kuroliv.ch` (what PC-A watched) or
-   `vincent@kubotics.ch`? Default proposed: kuroliv (same as PC-A/task-def).
-2. **Unknown senders:** confirm "log & ignore" (§4.3), or switch to
-   `notify` (WhatsApp digest, still no auto-reply)?
-3. ~~**LLM default provider**~~ **RESOLVED (Vincent 2026-11-08):** chain =
-   **Xiaomi MiMo Flash (latest, `mimo-v2.6-flash`) → OpenAI → Gemini → Grok
-   (xAI)**; keys as GitHub secrets; chain order + model IDs changeable by
-   env parameter/secret. Remaining: secret/model names (Q10).
-4. **Cutover:** confirm you want PC-A's mail watch stopped when Phase C goes
-   live (it must be, to avoid double answers).
-5. **Priority matrix (§4.2):** approve as proposed, or adjust e.g. "every
-   board-member mail also WhatsApp-pings me regardless of criticality"?
-6. **Daily cap:** 20 auto-replies/day default — OK?
-7. **Approval gate removed (§7 row 12b):** the PC-A flow required your
-   explicit WhatsApp `SEND` for every reply; this plan sends unattended
-   (that is what "fully automated" means) with the Liz-only Phase B test and
-   the safety valves (cooldown, daily cap, kill switch, §8) as the ramp.
-   Confirm you accept that divergence.
-8. **Sign-off (§5.6):** replies end with your verbatim KuroLIV GmbH
-   signature (AGENTS.md rule, Kubot only in the intro). Please share
-   `mail_watch_sig.html` (PC-A) or approve rebuilding it from your Sent
-   mail.
-9. ~~**Contact store + your categories**~~ **RESOLVED 2026-11-08 09:49** — you
-   granted `Contacts.Read`; I read the store: Liz Mallet found in **Outlook
-   People** (notes reviewed, §4.4), 15 contacts total. **Follow-up:** no
-   contact has categories set yet — do you plan to tag them (e.g. Liz →
-   `VIP`/`Board`/`Partner`)? Until then everyone lands in the default tier
-   `contact` (matrix behaves like customer) and the spam guards carry the load.
-10. **GitHub secrets (your LLM instruction):** create `MIMO_API_KEY`
-    (platform.xiaomimimo.com → API Keys) and `XAI_API_KEY`, confirm
-    `OPENAI_API_KEY` + `GEMINI_API_KEY` exist, and Phase 0 adds both new
-    names to deploy.yml's injection map. Model IDs overridable via
-    `MAIL_AGENT_LLM_MODEL_*` env/secret — naming OK?
-11. **Reply timing:** auto-replies 24/7 as mail arrives, or only business
-    hours (Europe/Zurich, no weekends)? Default proposed: 24/7 for
-    allowlisted/thread mail (the 48 h promise absorbs off-hours), critical
-    WhatsApp always.
-12. **Mailbox state:** should the service mark processed messages as read
-    (Mail.ReadWrite allows it) or **never modify** your mailbox? Default
-    proposed: never touch read state — the ledger is the audit trail.
-13. **Reply languages:** the opener must exist per language you receive —
-    confirm the set: **de-CH, en, fr, it** (add others?)
-14. **Reply vs reply-all:** PC-A (and this plan) send `POST /messages/{id}/reply`
-    = **reply to the sender only**. If a board/customer mail has CC'd
-    recipients, should Kubot (a) reply sender-only (default, proposed — an
-    unattended auto-answer shouldn't broadcast to a whole thread), or
-    (b) reply-all?
+1. **Mailbox** → `vincent.verbeke@kuroliv.ch` **contains multiple email
+   addresses** — encoded §3.4/§7 row 9: own-mail set = 28 probed
+   `proxyAddresses` + `MAIL_AGENT_OWN_ADDRESSES` extras, discovered at loop
+   start.
+2. **Unknown senders** → **classify; if a real personal email, auto-answer** —
+   encoded §4.3 (`UNKNOWN_POLICY=auto`), unknown column of §4.2, §3.3 (they
+   reach classify call #1, never the hard-filtered ones).
+3. **LLM** → chain **MiMo Flash (`mimo-v2.6-flash`) → OpenAI → Gemini →
+   Grok/xAI**, keys as GitHub secrets, chain + model IDs parameter/secret-
+   overridable (§6, §7 row 5).
+4. **Cutover** → **stop PC-A immediately, test today, go-live once tested** —
+   PC-A **stopped 10:06** (§7 row 7); §8 timeline = test today → go-live on
+   T1–T7 approval.
+5. **Priority matrix** → **approved** (§4.2, incl. the Q2 unknown column).
+6. **Daily cap** → 20/day OK, **notify me on WhatsApp when the cap is reached
+   so I can override** — encoded §3.4: cap → `needs_review` + windowed
+   WhatsApp notice (Q11).
+7. **Approval gate** → **remove it; be extra careful if critical** — encoded
+   §5.4: critical/complaint replies are ack-only (intro + understanding +
+   48 h + signature, nothing substantive) + immediate WhatsApp.
+8. **Signature** → propose a combination of your sent signature + Kubot tag,
+   signed on your behalf, pointing to kubotics.ch — **PROPOSAL in §5.6**
+   (built from your real Sent-mail HTML; booking image `cid:` → text link;
+   accent-colored Kubot line makes Kubot answers distinct). **Your OK needed**
+   before Phase B (or edit it — it becomes backend config).
+9. **Categories** → **proposed set (§6 `MAIL_AGENT_TIER_MAP`):**
+   `Board` → board, `VIP` → vip_customer, `Kunde` → customer, `Partner` →
+   partner, `Lead` → lead, `Test` → test. Suggested tagging: yourself-side
+   board members → `Board`, Liz → `VIP`, newsletters/bots → no category
+   (they stay filtered by §4.4 guards). Names are yours — tag in Outlook,
+   map in the env.
+10. **Env inventory** → **full list in §7.3**: create `MIMO_API_KEY` +
+    `XAI_API_KEY` (the only two new secrets), confirm the 11 existing ones,
+    Phase 0 adds both names to deploy.yml; all non-secret `MAIL_AGENT_*`
+    live in the task definition (§6).
+11. **Timing** → **replies 24/7; WhatsApp notifications 07:30–22:00**
+    (Europe/Zurich) — outside the window alerts queue and flush at 07:30.
+    Encoded §6 `MAIL_AGENT_ALERT_WINDOW_*`.
+12. **Mailbox state** → **never modify** — encoded §3.4: no mark-as-read, no
+    move, no delete.
+13. **Languages** → **de-CH, en, fr, it, nl** (Dutch = mother tongue) —
+    encoded §5.1 openers + `MAIL_AGENT_LANGUAGES`.
+14. **Reply vs reply-all** → **never answer auto-replies; replyAll by
+    default; >3 To+CC recipients → reply to sender only** — encoded §3.4 +
+    §5.7.
 
 ---
 
@@ -497,7 +573,8 @@ Go-live approval = you have run T1–T7 and accept the wording; then Phase C
 3. LLM classify/compose + decision matrix + tests.
 4. Send path (marker semantics) + WhatsApp fan-out.
 5. Admin endpoints (senders CRUD = your contact management).
-6. Phase B deploy (Liz-only) → your approval → **immediate go-live (C)** with
-   PC-A poller stopped in the same change (§8 — observe phase dropped 2026-11-08).
+6. Phase B deploy (Liz-only, **today**) → T1–T7 (§8.1) → **immediate
+   go-live (C)** — PC-A already stopped 10:06 (§8, Q4).
 
-Baseline test suite: **34/34 passing** (verified 2026-11-08) — must stay green.
+Baseline test suite: **43/43 passing** (Phase 0 + baseline, verified
+2026-11-08) — must stay green.

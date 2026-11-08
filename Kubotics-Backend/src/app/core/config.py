@@ -110,7 +110,12 @@ class Settings(BaseSettings):
     MAIL_AGENT_POLL_INTERVAL_S: int = 60
     MAIL_AGENT_UPN: str = ""                   # empty -> M365_ORGANIZER_EMAIL
     MAIL_AGENT_REPLY_WINDOW_DAYS: int = 7
-    MAIL_AGENT_UNKNOWN_POLICY: str = "ignore"  # ignore | notify
+    # Q2 answer: classify unknown senders; auto-answer real personal email, ignore spam
+    MAIL_AGENT_UNKNOWN_POLICY: str = "auto"     # auto | ignore | notify
+    # Q13 answer: reply openers (Dutch = mother tongue)
+    MAIL_AGENT_LANGUAGES: str = "de-CH,en,fr,it,nl"
+    # Q1 answer: extra own aliases; base set auto-discovered from Graph proxyAddresses (28 found)
+    MAIL_AGENT_OWN_ADDRESSES: str = ""
     # LLM provider chain (Vincent 2026-11-08): Xiaomi MiMo Flash -> OpenAI -> Gemini -> Grok/xAI.
     # Keys arrive as GitHub secrets via deploy.yml; chain order + model IDs are
     # parameter/secret-overridable. All four are OpenAI-API-compatible.
@@ -129,6 +134,11 @@ class Settings(BaseSettings):
     MAIL_AGENT_CONVERSATION_COOLDOWN_H: int = 24
     MAIL_AGENT_SPAM_THRESHOLD: float = 0.80
     MAIL_AGENT_NOTIFY_PHONE: str = "+41797481975"
+    # Q11 answer: WhatsApp alerts only 07:30-22:00 Europe/Zurich (outside -> queued;
+    # email replies are unaffected, 24/7). Q6: cap-reached notice uses the same window.
+    MAIL_AGENT_ALERT_WINDOW_START: str = "07:30"
+    MAIL_AGENT_ALERT_WINDOW_END: str = "22:00"
+    MAIL_AGENT_ALERT_TZ: str = "Europe/Zurich"
 
     model_config = SettingsConfigDict(
         env_file=".env",

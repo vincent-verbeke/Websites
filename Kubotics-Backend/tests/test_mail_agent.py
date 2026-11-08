@@ -40,7 +40,9 @@ def test_plan_config_defaults():
     assert settings.MAIL_AGENT_MODE == "auto"
     assert settings.MAIL_AGENT_POLL_INTERVAL_S == 60
     assert settings.MAIL_AGENT_REPLY_WINDOW_DAYS == 7
-    assert settings.MAIL_AGENT_UNKNOWN_POLICY == "ignore"
+    assert settings.MAIL_AGENT_UNKNOWN_POLICY == "auto"  # Q2: classify + answer real personal
+    assert settings.MAIL_AGENT_LANGUAGES == "de-CH,en,fr,it,nl"  # Q13 (Dutch mother tongue)
+    assert settings.MAIL_AGENT_OWN_ADDRESSES == ""  # Q1: extras; base from Graph proxyAddresses
     assert settings.MAIL_AGENT_MAX_REPLIES_PER_DAY == 20
     assert settings.MAIL_AGENT_CONVERSATION_COOLDOWN_H == 24
     assert settings.MAIL_AGENT_SPAM_THRESHOLD == 0.80
@@ -57,6 +59,13 @@ def test_llm_chain_defaults_match_vincents_order():
 
 def test_notify_phone_is_vincents_number():
     assert settings.MAIL_AGENT_NOTIFY_PHONE == "+41797481975"
+
+
+def test_alert_window_matches_q11_answer():
+    """WhatsApp alerts only 07:30-22:00 Europe/Zurich; replies stay 24/7."""
+    assert settings.MAIL_AGENT_ALERT_WINDOW_START == "07:30"
+    assert settings.MAIL_AGENT_ALERT_WINDOW_END == "22:00"
+    assert settings.MAIL_AGENT_ALERT_TZ == "Europe/Zurich"
 
 
 # --- model registration (create_all contract, plan §6) -----------------------
