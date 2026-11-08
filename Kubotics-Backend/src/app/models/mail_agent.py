@@ -59,7 +59,10 @@ class MailMessage(Base):
 
     # send audit — PC-A send-attempt marker semantics (never blind-retry)
     reply_text = Column(Text, nullable=True)
-    graph_message_id = Column(String(128), nullable=True)
+    # Graph message ids exceed 128 chars in this tenant (live send attempt hit
+    # "value too long" at 14:35 and crashed the cycle before any POST) — keep
+    # generous headroom next to internet_message_id's 1024.
+    graph_message_id = Column(String(512), nullable=True)
     send_attempted_at = Column(DateTime(timezone=True), nullable=True)
     sent_at = Column(DateTime(timezone=True), nullable=True)
     whatsapp_notified_at = Column(DateTime(timezone=True), nullable=True)

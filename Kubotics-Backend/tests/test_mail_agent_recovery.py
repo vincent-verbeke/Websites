@@ -604,6 +604,16 @@ def test_process_pending_observe_mode_classifies_without_compose(monkeypatch):
 
 # --- cross-module contract: decide() kinds vs compose REPLY_RULES ------------
 
+def test_graph_message_id_column_fits_real_graph_ids():
+    """Schema pin: the live send attempt (2026-11-08 14:35) proved Graph
+    message ids exceed 128 chars — the marker UPDATE crashed the whole cycle
+    BEFORE the POST, deadlocking the loop. Keep the column wide."""
+    col = MailMessage.__table__.c.graph_message_id
+    assert col.type.length is not None and col.type.length >= 256, (
+        f"graph_message_id width {col.type.length} — real ids are >128 chars; "
+        f"widening requires an ALTER on live tables too")
+
+
 def test_decide_reply_kinds_all_have_compose_rules():
     """contract: every kind decide() can emit for action=reply must exist in
     mail_llm.REPLY_RULES — otherwise compose_reply raises ReplyInvalid and the
