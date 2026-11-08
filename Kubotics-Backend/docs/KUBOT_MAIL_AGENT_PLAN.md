@@ -45,6 +45,9 @@ personalised thank-you instead.
 | Critical → **WhatsApp** me to review urgently | R6, §4.2 P1/P2 alerts |
 | Review process + dependencies + what it takes to run in the backend | §3 process, §7 checklist, §6 build plan |
 | **Implementation plan for my review before we continue** | this document, status DRAFT, §9 open questions — no code written |
+| *Follow-up 09:31:* use contact **notes + categories** for very personal replies (Liz Mallet example) | §3.2 contact match, §4.1 tier-from-categories, §5.2 notes in compose prompt, §7 row 13 (`Contacts.Read` — live 403, Q9) |
+| *Follow-up 09:31:* LLM keys as **GitHub secrets**; default **Xiami MIMO Flash latest → OpenAI → Gemini → Grok**; models changeable by parameter/secret | §2 chain row, §6 config block (`MAIL_AGENT_LLM_CHAIN`/`MAIL_AGENT_LLM_MODEL_*`), §7 row 5, Q10 |
+| *Follow-up 09:31:* add any further questions so he can review better | §9 Q9–Q13 (contact store/categories, secrets, timing, mailbox state, languages) |
 
 ---
 
@@ -57,7 +60,7 @@ personalised thank-you instead.
 | Proven reply mechanics: `POST /messages/{id}/reply`, watermark, internetMessageId dedupe, **send-attempt marker (no blind retry)** | PC-A `mail_watch.py` (rounds 16–38 hardened) | Ported 1:1 into DB-backed state machine |
 | Background loop in FastAPI lifespan | `trading_watch.watch_loop` in `main.py` | Identical pattern for the mail loop |
 | WhatsApp Cloud API sender | `whatsapp_service.send_text_message` | Critical alerts (R6) |
-| LLM keys (Groq/OpenAI/Anthropic/Gemini) | deploy.yml → task-def, **conditional** (`if v:` — only when the GitHub secret exists; local `.env` has a Groq key) | Classification + reply composition (verify secret, §7 row 5) |
+| LLM provider chain (Vincent 2026-11-08: **Xiaomi MiMo Flash latest → OpenAI → Gemini → Grok/xAI**) | Keys **as GitHub secrets** (repo secrets → deploy.yml injection map → task-def env); `openai` SDK talks to all four (MiMo is OpenAI-compatible: `https://api.xiaomimimo.com/v1`, verified from vendor docs) | Classification + reply composition; chain order + model IDs overridable by env/secret (§6 config, §7 row 5) |
 | Normalised event stream | `inbound_events` (channel `email` already valid) | Observability / dashboard / needle |
 | Bearer auth helpers | `require_ingest_token` (API_SECRET_KEY) | New admin endpoints |
 | Test harness | 34 tests passing (baseline verified 2026-11-08) | New pure-function tests |
@@ -75,7 +78,7 @@ flowchart TD
     B -->|own mail / auto-reply headers /<br/>List-Unsubscribe / noreply@ /<br/>bulk headers| X[Ignore - logged]
     B --> C[Fetch body of new messages only]
     C --> D{Sender tier lookup}
-    D -->|allowlisted contact| E[ board / vip / customer / partner / lead ]
+    D -->|contact match (Outlook contacts w/ notes+categories)| E[ tier from categories: board / vip / customer / partner / lead ]
     D -->|thread match: conversationId found in<br/>Sent Items within last 7 days| F[thread_reply]
     D -->|neither| G[unknown]
     G --> X
@@ -114,8 +117,11 @@ flowchart TD
 1. Take incoming `conversationId`.
 2. Query Sent Items:
    `messages?$filter=conversationId eq '{cid}' and sentDateTime ge {now-7d}&$top=1`.
-3. Hit → eligible as `thread_reply`; miss → fall back to sender allowlist (R2),
-   else `unknown` → **ignore** (policy, §4.3).
+3. Hit → eligible as `thread_reply`; miss → **sender in my Outlook contacts**
+   (Graph `/contacts` — Vincent adds them there; `categories` supply the tier,
+   `personalNotes` the personalisation, §4.1/§5.2) → eligible as `contact`;
+   else `unknown` → **ignore** (policy, §4.3). A small DB override list
+   (`mail_watch_senders`, optional) covers test senders without a contact card.
 
 This is the only reliable way to enforce "my original email was sent in the
 last 7 days" (In-Reply-To alone cannot tell the age of *our* message).
@@ -172,9 +178,15 @@ In `observe` mode only call #1 runs. Spam/unknown senders never reach the LLM
 | `critical` | urgent, legal, financial, safety, deadline, outage | critical |
 | `commercial_spam` | advertising, cold sales, newsletter | — (ignored) |
 
-**Sender axis (Vincent's allowlist assigns a tier):**
+**Sender axis (my Outlook contacts assign a tier via their `categories`):**
 
 `board` > `vip_customer` > `customer` > `partner` > `lead` > `test` > `unknown`
+
+Category-name → tier mapping is one env parameter
+(`MAIL_AGENT_TIER_MAP`, e.g. `Board=board;VIP=vip_customer;Kunde=customer`);
+contacts whose categories match nothing default to tier `contact` (behaves
+like `customer` in §4.2). A contact card with **no** categories still makes
+the sender eligible (R2) — it just gets the default tier.
 
 ### 4.2 Priority matrix (content × sender → action)
 
@@ -215,7 +227,11 @@ Every composed reply, in the detected language (de-CH / en / fr / it …):
    *"Grüezi, ich bin Kubot — Vincents persönlicher digitaler KI-Assistent."*
    EN: *"Hello, I'm Kubot, Vincent's personal digital AI assistant."*
 2. **Body:** references the actual message content (name + subject + specific
-   point) — personalised, never generic.
+   point) — personalised, never generic. **When the sender is a saved contact,**
+   the compose prompt also receives their Outlook card: `personalNotes` (your
+   notes) + `categories` + job title/company → the "very personal" replies you
+   asked for (2026-11-08): reference the relationship context from the notes,
+   never quote the notes verbatim back unless natural.
 3. **Informational:** warm thank-you, no promises.
 4. **Follow-up / request / critical:** states that the topic needs Vincent's
    expertise for a detailed answer, that Kubot will discuss it with him, and
@@ -250,8 +266,8 @@ send.
 |---|---|
 | `src/app/models/mail_agent.py` | `mail_messages` ledger (UNIQUE `internet_message_id`, state machine, classification JSON, reply audit) + `mail_watch_senders` allowlist (`email` UNIQUE, `tier`, `language`, `display_name`, `active`) — **must be imported in `app/models/__init__.py`** (boot-verified 2026-11-08: `create_all` only sees tables whose modules are imported before lifespan runs; needle/tasks use exactly this registration pattern) |
 | `src/app/services/mail_agent.py` | Poll loop (lifespan task), watermark/dedupe, thread check, decision matrix, send path, WhatsApp fan-out, daily caps |
-| `src/app/services/mail_llm.py` | Classify + compose prompts, provider adapter (Groq/OpenAI/Anthropic via existing keys), JSON parsing, output validation |
-| `src/app/api/v1/mail_agent.py` | `GET /status`, `GET/POST/DELETE /senders` (CRUD — "I will add contacts"), `GET /messages?state=`, `POST /poll` (manual trigger), all Bearer `API_SECRET_KEY` |
+| `src/app/services/mail_llm.py` | Classify + compose prompts, **provider-chain adapter** (MiMo → OpenAI → Gemini → xAI, all OpenAI-compatible: one adapter, per-provider base_url/key/model from env; failover on 429/5xx), JSON parsing, output validation |
+| `src/app/api/v1/mail_agent.py` | `GET /status`, `GET/POST/DELETE /senders` (override-list CRUD + cached contact view — primary contacts are maintained by Vincent in **Outlook**), `GET /messages?state=`, `POST /poll` (manual trigger), all Bearer `API_SECRET_KEY` |
 | `src/app/core/config.py` | New settings block (§7) |
 | `src/app/main.py` | Register router + `asyncio.create_task(mail_agent_loop)` gated by `MAIL_AGENT_ENABLED` |
 | `.aws/task-definition.json`, `.env.example`, `.env` | Env vars (non-secret) |
@@ -269,7 +285,13 @@ MAIL_AGENT_POLL_INTERVAL_S=60
 MAIL_AGENT_UPN=                     # default: M365_ORGANIZER_EMAIL (vincent.verbeke@kuroliv.ch)
 MAIL_AGENT_REPLY_WINDOW_DAYS=7
 MAIL_AGENT_UNKNOWN_POLICY=ignore    # ignore | notify
-MAIL_AGENT_LLM_PROVIDER=groq        # groq | openai | anthropic
+MAIL_AGENT_LLM_CHAIN=mimo,openai,gemini,xai  # ordered failover (override via env/secret)
+MAIL_AGENT_LLM_MODEL_MIMO=mimo-v2.6-flash    # "Xiami MIMO Flash (latest)" — V2.6-Flash, V2.5 IDs retired 2026-10-21
+MAIL_AGENT_LLM_MODEL_OPENAI=                 # default at build time, secret-overridable
+MAIL_AGENT_LLM_MODEL_GEMINI=
+MAIL_AGENT_LLM_MODEL_XAI=
+MAIL_AGENT_LLM_BASE_MIMO=https://api.xiaomimimo.com/v1   # OpenAI-compatible
+MAIL_AGENT_TIER_MAP=Board=board;VIP=vip_customer;Kunde=customer  # Outlook categories → tiers
 MAIL_AGENT_MAX_REPLIES_PER_DAY=20
 MAIL_AGENT_SPAM_THRESHOLD=0.80
 MAIL_AGENT_NOTIFY_PHONE=+41797481975
@@ -285,7 +307,7 @@ MAIL_AGENT_NOTIFY_PHONE=+41797481975
 | 2 | `Mail.Send` (application) + admin consent | ✅ done (M365_APP_SETUP.md §3) | none |
 | 3 | **`Mail.Read`-equivalent application permission** | ✅ **verified live 2026-11-08** — app-only token roles: `Mail.ReadWrite` (superset of `Mail.Read`) + `Mail.Send`; inbox scan, sentItems filter, and internetMessageId resolve all returned 200 against the target mailbox | none (optional later: narrow `Mail.ReadWrite` → `Mail.Read` if write access to mail is unwanted) |
 | 4 | WhatsApp Cloud API token | ✅ in task-definition **and live-probed 2026-11-08**: `GET /api/whatsapp/send/health` → `configured=true`, `last_send 2026-11-06 ok`. (The a21 retirement of 2026-11-08 removed PC-A's fallback sender only — the container send path my alerts use is untouched.) | none |
-| 5 | LLM key (Groq/OpenAI/Anthropic) | ⚠️ deploy.yml injects only when the GitHub secret is set (`if v:` — silently skipped otherwise) | confirm `GROQ_API_KEY` exists in GitHub repo secrets before Phase A |
+| 5 | **LLM keys as GitHub secrets (Vincent 2026-11-08) + provider chain** | ⚠️ repo secrets → deploy.yml `secrets_to_inject` (`if v:`) → task-def env. Currently injects `OPENAI_API_KEY`/`GEMINI_API_KEY` (+ Groq/Anthropic); **`MIMO_API_KEY` and `XAI_API_KEY` are NOT in the map yet** — Phase 0 must add them | create GitHub secrets `MIMO_API_KEY` (platform.xiaomimimo.com → API Keys) + `XAI_API_KEY`, confirm `OPENAI_API_KEY`/`GEMINI_API_KEY` exist, add both names to deploy.yml injection map; chain/model IDs overridable as env/secret |
 | 6 | DB tables | auto via `create_all` + idempotent ALTER (repo pattern, no alembic) | none |
 | 7 | **PC-A poller must be stopped at cutover** | ⚠️ PC-A `mail_watch_poll` (10-min) still watches the **same mailbox** | **disable it when cloud goes live — otherwise double replies** (blocking) |
 | 7b | Entra app identity shared with PC-A | ✅ **no longer blocking** — live token 2026-11-08 shows app `7246abc4-…` (= task-def `AZURE_CLIENT_ID`) already reads the target mailbox (200s). PC-A's own identity only matters for its decommission, not for this backend | informational; compare PC-A `M365_CLIENT_ID` only if PC-A-side checks are ever re-enabled |
@@ -295,6 +317,7 @@ MAIL_AGENT_NOTIFY_PHONE=+41797481975
 | 11 | **CI has no test/lint gate** | ⚠️ verified 2026-11-08: `deploy.yml` job is named "Build, Test & Deploy" but runs no `pytest`/`ruff` — a push to main deploys regardless of test outcome | run the suite locally before every push (plan §10 keeps 34/34 green as gate); optionally add a pytest step to deploy.yml as a Phase 0 side-fix |
 | 12 | **Verbatim signature file + live allowlist for seeding** | ⚠️ AGENTS.md mandates `~/.jcode/scratch/mail_watch_sig.html` (KuroLIV block, never invent a sign-off) and `mail_watch_config.json` (current senders) — **neither exists on this machine**; both live on PC-A (deploy paths `/home/wa/…`) or were pruned | at cutover: copy the sig file from PC-A (or rebuild from Sent mail, §5.6) and export PC-A's allowlist to seed `mail_watch_senders` (cap 50, same address regex) |
 | 12b | **Approval-flow divergence** | ⚠️ documented PC-A rule: "NO send ever without explicit SEND" via WhatsApp — this plan deliberately removes that gate (your 2026-11-08 ask: fully automated), with observe → test-sender → full as the mitigation | confirm in §9; the phased rollout is the compensating control |
+| 13 | **`Contacts.Read` for Outlook contacts (notes + categories)** | ❌ **NOT granted — live-probed 2026-11-08: 403 `ErrorAccessDenied`, exact Graph message: requires `Contacts.Read, Contacts.Read.All, Contacts.Read.Shared`** (Liz Mallet therefore unreadable from here; R2 + personalisation blocked without it) | **Entra admin consent for application `Contacts.Read`** (you are tenant admin, one click — same flow as Mail.Send) before Phase B; blocking for R2 |
 
 ### 7.1 Live validation log (2026-11-08, read-only probes from this machine)
 
@@ -313,6 +336,28 @@ MAIL_AGENT_NOTIFY_PHONE=+41797481975
 | Sent-mail signature pattern scan (10 newest, read-only) | KuroLIV sign-off confirmed on real replies (2026-10-29/27) — basis for §5.6 |
 
 No message was sent, modified, or deleted during validation.
+
+### 7.2 Real-path acceptance evidence (2026-11-08 — observed behaviour, not inspection)
+
+**How the result was exercised (the interfaces the finished service will
+actually use):**
+
+| Real interface | Observed behaviour |
+|---|---|
+| **This app booted for real** (`uvicorn app.main:app`, local `.env`, trading-watch off) | `/health` → 200 `healthy`; OpenAPI served **45 paths**; `create_all` ensured tables; clean log |
+| **Auth boundary my endpoints will join** | `GET /api/v1/needle/inbox` **401** without token → **200 with real inbox rows**; `POST /api/v1/events` without Bearer → **401** |
+| **Gap this plan fills** | `GET /api/v1/mail/status` → **404** (router does not exist yet — exactly what §6 adds) |
+| **Prod public API** (`https://api.kubotics.ch`) | `/health` 200 `environment=production`; `/dashboard/leads` = 1 lead (Dr. Thomas Meier), conversations/summary 200 → **Liz Mallet not in CRM anywhere** (basis for Q9) |
+| **Graph mail path** (§7.1) | inbox scan / sentItems thread filter / internetMessageId resolve → all 200 against the live mailbox |
+| **Graph contacts path** | `/users/{upn}/contacts` → **403 ErrorAccessDenied** (`Contacts.Read` missing) → recorded as dependency row 13, not papered over |
+| **WhatsApp send path** | `/api/whatsapp/send/health` → 200 `configured=true`, `last_send ok` |
+| **Vendor contract for the default LLM** | Xiaomi MiMo docs fetched live: OpenAI-compatible `https://api.xiaomimimo.com/v1`, env `MIMO_API_KEY`, latest Flash = `mimo-v2.6-flash` (V2.5 IDs retired 2026-10-21) |
+
+**Externally blocked (honest constraints, not skipped checks):** GitHub
+secrets (`gh` CLI unavailable on this machine), ECS desired count (no AWS
+credentials), PC-A poller state (different machine), and the acceptance step
+itself — your §9 review — which is the user-gated stopping point of this
+phase.
 
 Operational notes:
 
@@ -346,9 +391,10 @@ Operational notes:
    `vincent@kubotics.ch`? Default proposed: kuroliv (same as PC-A/task-def).
 2. **Unknown senders:** confirm "log & ignore" (§4.3), or switch to
    `notify` (WhatsApp digest, still no auto-reply)?
-3. **LLM default provider:** Groq (cheap/fast; local `.env` key present,
-   GitHub secret conditional — §7 row 5) vs OpenAI (higher quality).
-   Proposed: **Groq classify + Groq compose**, one env var to switch.
+3. ~~**LLM default provider**~~ **RESOLVED (Vincent 2026-11-08):** chain =
+   **Xiaomi MiMo Flash (latest, `mimo-v2.6-flash`) → OpenAI → Gemini → Grok
+   (xAI)**; keys as GitHub secrets; chain order + model IDs changeable by
+   env parameter/secret. Remaining: secret/model names (Q10).
 4. **Cutover:** confirm you want PC-A's mail watch stopped when Phase C goes
    live (it must be, to avoid double answers).
 5. **Priority matrix (§4.2):** approve as proposed, or adjust e.g. "every
@@ -362,6 +408,28 @@ Operational notes:
    signature (AGENTS.md rule, Kubot only in the intro). Please share
    `mail_watch_sig.html` (PC-A) or approve rebuilding it from your Sent
    mail.
+9. **Contact store + your categories (blocks R2):** I searched everywhere I
+   can reach — local CRM DB, prod API (`/dashboard/leads`: only Dr. Thomas
+   Meier), all website/repos — **no Liz Mallet**; Graph `/contacts` answers
+   **403 `ErrorAccessDenied` (needs `Contacts.Read`)**, so I assume you added
+   her in **Outlook People**. Confirm that, (a) grant admin consent for
+   application permission **`Contacts.Read`** (Phase 0 dependency), and (b)
+   tell me the exact **category names** you used (e.g. Board/VIP/Kunde) so I
+   can pre-fill `MAIL_AGENT_TIER_MAP` — I cannot read them until (a).
+10. **GitHub secrets (your LLM instruction):** create `MIMO_API_KEY`
+    (platform.xiaomimimo.com → API Keys) and `XAI_API_KEY`, confirm
+    `OPENAI_API_KEY` + `GEMINI_API_KEY` exist, and Phase 0 adds both new
+    names to deploy.yml's injection map. Model IDs overridable via
+    `MAIL_AGENT_LLM_MODEL_*` env/secret — naming OK?
+11. **Reply timing:** auto-replies 24/7 as mail arrives, or only business
+    hours (Europe/Zurich, no weekends)? Default proposed: 24/7 for
+    allowlisted/thread mail (the 48 h promise absorbs off-hours), critical
+    WhatsApp always.
+12. **Mailbox state:** should the service mark processed messages as read
+    (Mail.ReadWrite allows it) or **never modify** your mailbox? Default
+    proposed: never touch read state — the ledger is the audit trail.
+13. **Reply languages:** the opener must exist per language you receive —
+    confirm the set: **de-CH, en, fr, it** (add others?)
 
 ---
 
