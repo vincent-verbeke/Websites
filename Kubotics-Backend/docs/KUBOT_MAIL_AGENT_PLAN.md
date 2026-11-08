@@ -248,17 +248,32 @@ MAIL_AGENT_NOTIFY_PHONE=+41797481975
 
 | # | Dependency | Status | Action |
 |---|---|---|---|
-| 1 | Entra app cert auth in cloud | ✅ done (`AZURE_CLIENT_CERT_KEY` injected by deploy.yml) | none |
+| 1 | Entra app cert auth in cloud | ✅ done — live-probed from the same cert material 2026-11-08 (token 200). Container gets the key **only** via `AZURE_CLIENT_CERT_KEY` env (Dockerfile copies no `certs/`), injected by deploy.yml **conditionally (`if v:`)** — since prod M365 features already work, the secret is present | confirm `AZURE_CLIENT_CERT_KEY`/`_THUMBPRINT` GitHub secrets remain set before Phase A (same failure mode as row 5) |
 | 2 | `Mail.Send` (application) + admin consent | ✅ done (M365_APP_SETUP.md §3) | none |
-| 3 | **`Mail.Read` (application) + admin consent** | ⚠️ used by PC-A poller, **not** listed in the setup doc | **verify in Entra portal → add + consent if missing** (blocking) |
-| 4 | WhatsApp Cloud API token | ✅ in task-definition | none |
+| 3 | **`Mail.Read`-equivalent application permission** | ✅ **verified live 2026-11-08** — app-only token roles: `Mail.ReadWrite` (superset of `Mail.Read`) + `Mail.Send`; inbox scan, sentItems filter, and internetMessageId resolve all returned 200 against the target mailbox | none (optional later: narrow `Mail.ReadWrite` → `Mail.Read` if write access to mail is unwanted) |
+| 4 | WhatsApp Cloud API token | ✅ in task-definition **and live-probed 2026-11-08**: `GET /api/whatsapp/send/health` → `configured=true`, `last_send 2026-11-06 ok`. (The a21 retirement of 2026-11-08 removed PC-A's fallback sender only — the container send path my alerts use is untouched.) | none |
 | 5 | LLM key (Groq/OpenAI/Anthropic) | ⚠️ deploy.yml injects only when the GitHub secret is set (`if v:` — silently skipped otherwise) | confirm `GROQ_API_KEY` exists in GitHub repo secrets before Phase A |
 | 6 | DB tables | auto via `create_all` + idempotent ALTER (repo pattern, no alembic) | none |
 | 7 | **PC-A poller must be stopped at cutover** | ⚠️ PC-A `mail_watch_poll` (10-min) still watches the **same mailbox** | **disable it when cloud goes live — otherwise double replies** (blocking) |
-| 7b | Entra app identity shared with PC-A | ⚠️ setup docs say "one identity for everything", but PC-A's env (`/home/wa/wa-web/web.env`) lives on PC-A and could not be read from this machine — if PC-A uses a *different* app registration, its `Mail.Read` grant does not help this backend | compare `M365_CLIENT_ID` on PC-A with task-def `7246abc4-b1d9-47d7-b8be-2e791de2f407` while verifying #3 |
+| 7b | Entra app identity shared with PC-A | ✅ **no longer blocking** — live token 2026-11-08 shows app `7246abc4-…` (= task-def `AZURE_CLIENT_ID`) already reads the target mailbox (200s). PC-A's own identity only matters for its decommission, not for this backend | informational; compare PC-A `M365_CLIENT_ID` only if PC-A-side checks are ever re-enabled |
 | 8 | ECS service desired count = 1 | ⚠️ not verifiable from repo | confirm in AWS console; ledger `INSERT … ON CONFLICT DO NOTHING` claim makes even N>1 tasks safe |
 | 9 | Mailbox choice | task-def says `vincent.verbeke@kuroliv.ch`, `.env.example` says `vincent@kubotics.ch` | confirm target mailbox (§9 Q1) |
 | 10 | Rate/throttling | Graph throttles on 60 s metadata polls are trivial for 1 mailbox | none expected; backoff on 429 implemented |
+| 11 | **CI has no test/lint gate** | ⚠️ verified 2026-11-08: `deploy.yml` job is named "Build, Test & Deploy" but runs no `pytest`/`ruff` — a push to main deploys regardless of test outcome | run the suite locally before every push (plan §10 keeps 34/34 green as gate); optionally add a pytest step to deploy.yml as a Phase 0 side-fix |
+
+### 7.1 Live validation log (2026-11-08, read-only probes from this machine)
+
+| Probe | Result |
+|---|---|
+| App-only token via local cert (`certs/m365_app.key`) | 200 — roles `Mail.ReadWrite`, `Mail.Send`, `User.Read.All`, calendar/Teams perms |
+| Inbox metadata scan (`$top=3`, `$orderby=receivedDateTime desc`, plan §3.1 `$select` incl. `webLink`) | 200 — all selected fields present |
+| Sent-items thread check (`conversationId eq` + `sentDateTime ge now-7d`, plan §3.2) | 200 — correct empty result for an unthreaded conversation |
+| Sent-items 7-day window (fallback variant) | 200 — 2 messages returned |
+| `internetMessageId` → Graph `id` resolve (plan §3.4) | 200 — id returned |
+| WhatsApp container send health (`api.kubotics.ch`) | 200 — `configured=true`, `last_send ok` |
+| Local test suite | 34/34 pass |
+
+No message was sent, modified, or deleted during validation.
 
 Operational notes:
 
