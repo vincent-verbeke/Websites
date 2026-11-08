@@ -829,3 +829,19 @@ answer-only replies — commits `ae85967`, `1850307`).
 - Native `jcode mcp login ibkr` is configured but blocked by a Jcode OAuth
   discovery 403 bug (maintainer report filed 09:06) — manual client above is
   the working path meanwhile.
+- **Refresh continuity PROVEN (09:29)**: access tokens live ~299 s and rotate
+  via `refresh_token` — two consecutive `refresh()` calls succeeded after the
+  consent at 09:28 (client `ba3ab3ee-…` reused, no re-registration), live call
+  on the rotated token = 200. No further browser consent needed unless the
+  refresh grant is revoked/expired. (Two bugs fixed on the way: 415 =
+  form-encoded token requests; rotation must be saved immediately or the old
+  refresh token dies.)
+- **ORDER-PREP STANDING AUTHORIZATION (Vincent, 2026-11-08 09:24)**: "you can
+  make the order prep and then ask me to review and submit" → Jcode may call
+  `create_order_instruction` (and list/delete its own instructions) when an
+  order is due, then notify him to **review & submit in IBKR**
+  (flow_type=REVIEW_AND_APPROVE, currently `instructions=[]`). LIVE EXECUTION
+  tools (`submit_order`/`modify_order`/`cancel_order`/`answer_order_question`)
+  remain FORBIDDEN for Jcode in all cases (also blocked by missing
+  `mcp.orders.submit` scope) — he submits; `daily_invest.py`/n3ibkr stays the
+  only automated gateway path (C3 unchanged).
