@@ -600,3 +600,32 @@ def test_process_pending_observe_mode_classifies_without_compose(monkeypatch):
     assert row.reply_text is None
     assert calls["classify"] and calls["compose"] == []
     assert row.category == "informational"  # classify still ran (node O fires)
+
+
+# --- cross-module contract: decide() kinds vs compose REPLY_RULES ------------
+
+def test_decide_reply_kinds_all_have_compose_rules():
+    """contract: every kind decide() can emit for action=reply must exist in
+    mail_llm.REPLY_RULES — otherwise compose_reply raises ReplyInvalid and the
+    row dies as compose_validation on EVERY send (T1 total failure). Catches:
+    a new decide kind without a prompt rule, and orphaned prompt rules."""
+    kinds: set[str] = set()
+    tiers = ("board", "vip_customer", "customer", "partner", "lead", "test",
+             "contact", "unknown")
+    for category in sorted(ma.mail_llm.VALID_CATEGORIES):
+        for criticality in ("low", "normal", "high", "critical"):
+            for tier in tiers:
+                action = ma.decide(
+                    category=category, criticality=criticality, tier=tier,
+                    spam_probability=0.1, personal_email=True,
+                    route="thread_reply" if tier == "unknown" else "contact",
+                    unknown_policy="auto", spam_threshold=0.80)
+                if action["action"] == "reply":
+                    assert action["kind"] in ma.mail_llm.REPLY_RULES, (
+                        f"decide() kind {action['kind']!r} (category={category}, "
+                        f"tier={tier}) has no compose rule — would ReplyInvalid "
+                        f"at send time")
+                    kinds.add(action["kind"])
+    # vocabulary pinned BOTH ways: no silent additions/removals on either side
+    assert kinds == {"thank_you", "holding", "ack_only"}
+    assert set(ma.mail_llm.REPLY_RULES) == {"thank_you", "holding", "ack_only"}
