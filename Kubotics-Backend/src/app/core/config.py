@@ -103,6 +103,33 @@ class Settings(BaseSettings):
     SPEND_SEARCH_CAP_CHF: float = 70.0        # google search sub-cap
     SPEND_APPROVAL_PHRASE: str = "APPROVE-SPEND"  # typed by Vincent in the UI
 
+    # --- Kubot mail agent (docs/KUBOT_MAIL_AGENT_PLAN.md §6) -------------
+    # Master switch: False everywhere until Phase B (Liz test) is deployed.
+    MAIL_AGENT_ENABLED: bool = False
+    MAIL_AGENT_MODE: str = "auto"              # auto | observe (debug only)
+    MAIL_AGENT_POLL_INTERVAL_S: int = 60
+    MAIL_AGENT_UPN: str = ""                   # empty -> M365_ORGANIZER_EMAIL
+    MAIL_AGENT_REPLY_WINDOW_DAYS: int = 7
+    MAIL_AGENT_UNKNOWN_POLICY: str = "ignore"  # ignore | notify
+    # LLM provider chain (Vincent 2026-11-08): Xiaomi MiMo Flash -> OpenAI -> Gemini -> Grok/xAI.
+    # Keys arrive as GitHub secrets via deploy.yml; chain order + model IDs are
+    # parameter/secret-overridable. All four are OpenAI-API-compatible.
+    MAIL_AGENT_LLM_CHAIN: str = "mimo,openai,gemini,xai"
+    MAIL_AGENT_LLM_MODEL_MIMO: str = "mimo-v2.6-flash"
+    MAIL_AGENT_LLM_MODEL_OPENAI: str = ""
+    MAIL_AGENT_LLM_MODEL_GEMINI: str = ""
+    MAIL_AGENT_LLM_MODEL_XAI: str = ""
+    MAIL_AGENT_LLM_BASE_MIMO: str = "https://api.xiaomimimo.com/v1"
+    # Outlook contact category -> tier map (plan §4.1); empty -> all contacts tier "contact"
+    MAIL_AGENT_TIER_MAP: str = ""
+    # When set (comma list), ONLY these senders are ever replied to (Phase B: Liz;
+    # doubles as emergency brake). Empty = normal contact/thread rules.
+    MAIL_AGENT_ONLY_SENDERS: str = ""
+    MAIL_AGENT_MAX_REPLIES_PER_DAY: int = 20
+    MAIL_AGENT_CONVERSATION_COOLDOWN_H: int = 24
+    MAIL_AGENT_SPAM_THRESHOLD: float = 0.80
+    MAIL_AGENT_NOTIFY_PHONE: str = "+41797481975"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
