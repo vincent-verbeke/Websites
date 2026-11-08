@@ -417,6 +417,24 @@ the `MAIL_AGENT_ENABLED=false` kill switch.
 | **C — GO-LIVE** | `mode=auto`, full contact store + thread replies; `MAIL_AGENT_ONLY_SENDERS=` cleared | **Immediately on your approval:** all R1/R2 replies + P1/P2 WhatsApp alerts live; **PC-A poller stopped in the same change**; low expected mail volume the next days (measured ~3/day today) = limited blast radius | live, no mis-sends in first days (cap = 20/day as brake) |
 | **D** | Dashboard card | Senders/contacts view + message ledger in the Kubotics dashboard UI (frontend follow-up) | — |
 
+### 8.1 Phase B test script (Liz) — the exact cases you approve on
+
+Each case: Liz sends (or replies to) a mail → observable expectation:
+
+| # | Test | Expect in Outlook / ledger / WhatsApp |
+|---|---|---|
+| T1 | Liz sends a plain **informational** mail (EN) | Reply within ~2 min: opens with the Kubot intro in English, warm personalised thank-you referencing her subject, verbatim KuroLIV sign-off; ledger row `replied` |
+| T2 | Liz sends a **question** (DE) | Reply: Kubot intro in German, her point addressed, "needs Vincent's expertise … answer within 48 h" posture, KuroLIV sign-off; ledger `replied` |
+| T3 | **Thread test**: you email Liz first, she answers within 7 days | Handled via thread rule even if she writes from an address not yet seen; reply lands **in the same thread** (Outlook conversation intact) |
+| T4 | Liz sends from her **other address** (`hotmail`) | Same contact matched (multi-address, §3.2); personalisation note applied |
+| T5 | **Newsletter/spam** (forward a Digitec mail with headers intact, or any `List-Unsubscribe` sender) | **No reply**; ledger `ignored_spam`; no WhatsApp |
+| T6 | **Critical** mail ("urgent", deadline, or complaint wording) | Auto-ack reply **+ immediate WhatsApp** to you with sender/summary/webLink |
+| T7 | Contact note personalisation | A reply referencing her relationship context (§4.4 note) where natural — not verbatim-quotey |
+| T8 | Daily-cap brake | 21st reply same day → `needs_review`, no send (verify via `GET /messages?state=`) |
+
+Go-live approval = you have run T1–T7 and accept the wording; then Phase C
+(`MAIL_AGENT_ONLY_SENDERS=` cleared + PC-A poller stopped) in one change.
+
 ---
 
 ## 9. Open questions for your review
