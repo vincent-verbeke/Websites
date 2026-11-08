@@ -805,3 +805,27 @@ change — `needle_inbox.meta JSON` and `row_dict` already exist):
 until this lands, explicit `session <name>:` steering and default routing
 keep working (already fixed+deployed today: case-insensitive steering,
 answer-only replies — commits `ae85967`, `1850307`).
+
+## IBKR MCP READ PATH LIVE (Jcode, 2026-11-08 09:22 UTC) — official connector, OAuth done
+
+- **Endpoint** `https://api.ibkr.com/v1/api/mcp-public` (official IBKR AI
+  Integration, server `ibkr-cpapi-mcp` 1.2.2, 56 tools). Auth = IBKR-hosted
+  OAuth2 (auth-code+PKCE S256+DCR), **independent of the CP-gateway SSO**.
+- **Token**: `~/ibkr_mcp_tokens.json` (mode 600, refresh grant; expires ~299 s,
+  helper auto-refreshes). Granted scope = `mcp.read mcp.write` — IBKR did NOT
+  grant `mcp.orders.submit`, and live `flow_type=REVIEW_AND_APPROVE` (not
+  AUTONOMOUS) → order-execution tools are unusable by design here.
+- **Helpers**: `~/.local/bin/ibkr_mcp.py` (`tools-list` | `call <tool> [json]`)
+  and `~/.local/bin/ibkr_mcp_login.py` (re-consent). Secrets never printed.
+- **Verified live**: `get_account_positions` returned real positions (CHSPI,
+  CORC, CSBGC7, IWDC 18.46 @ 92.25, VAGX — matches daily_invest's fill) and
+  `get_flow_type` → REVIEW_AND_APPROVE.
+- **Standing rules (C3)**: READ tools any time (reviews, dashboard
+  cross-checks, reconcile corroboration). WRITE tools (alerts/watchlists/
+  screeners/order-instruction prep) only on Vincent's explicit request.
+  NEVER call `submit_order`/`modify_order`/`cancel_order`/`answer_order_question`
+  — money path stays `daily_invest.py` (n3ibkr executor) or Vincent's own
+  review-and-submit. Revoke: Client Portal → Manage Third-Party Consents.
+- Native `jcode mcp login ibkr` is configured but blocked by a Jcode OAuth
+  discovery 403 bug (maintainer report filed 09:06) — manual client above is
+  the working path meanwhile.
