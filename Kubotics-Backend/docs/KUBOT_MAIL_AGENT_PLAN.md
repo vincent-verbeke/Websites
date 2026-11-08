@@ -454,6 +454,24 @@ itself — your §9 review, now answered (§9).
 5. **Standing rule from (1):** never run destructive SQL on this database
    without first echoing and verifying the connection target.
 
+### 7.5 Secrets pickup protocol (how a GitHub secret change reaches prod)
+
+Secret values are baked into the ECS task definition **at deploy time** —
+changing a secret alone does nothing. To pick up new/rotated keys:
+
+1. Vincent fixes the secret in repo `vincent-verbeke/Websites` (or confirms done).
+2. Trigger a redeploy with any commit touching `Kubotics-Backend/**`
+   (an EMPTY commit does NOT match the workflow path filter — a real file
+   must change; a one-line docs append doubles as the audit entry below).
+3. Watch `/api/v1/mail/status` → `llm_providers_configured` shows the new
+   provider (e.g. `mimo` appears), then `/mail/messages` — Liz's parked row
+   self-heals within ≤15 min and completes classify → compose → reply.
+
+Pickup checks armed 2026-11-08 12:33 UTC (first wake 13:20Z, rescheduled
+while Vincent is OOO) — each attempt appends a line here:
+
+- (pending 13:20Z)
+
 Operational notes:
 
 * **Privacy/consent:** auto-replies are sent from your mailbox to people who
