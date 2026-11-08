@@ -21,3 +21,13 @@
 
 ## Workflows
 - Always check `.agent/workflows` for specific project steps.
+
+## CI / GitHub Actions
+- **Only `.github/workflows/` at the REPO ROOT executes.** Workflow files in
+  subdirectories (e.g. `Kubotics-Backend/.github/workflows/deploy.yml`) are
+  silently ignored by GitHub — edit the root pipeline, never a nested copy.
+  (2026-11-08 incident: MIMO/XAI secret mapping + the pytest gate sat in a
+  dead nested file for hours while the live pipeline ran without them; see
+  `Kubotics-Backend/docs/KUBOT_MAIL_AGENT_PLAN.md` §7.4/6. The live pipeline
+  `/.github/workflows/deploy.yml` gates every deploy with
+  `uv run --frozen pytest -q` — keep that gate green before pushing.)
