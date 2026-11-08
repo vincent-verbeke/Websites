@@ -294,6 +294,141 @@ def test_alert_flush_queues_outside_window(monkeypatch):
     assert row.whatsapp_notified_at is None
 
 
+def test_alert_flush_failed_send_stays_pending_for_retry(monkeypatch):
+    """WhatsApp delivery failure must NOT mark the alert — retried next cycle."""
+    row = _row(state="classified", whatsapp_notified_at=None,
+               classification={"notify": True, "priority": "P1"})
+    wa = _FakeWhatsApp(ok=False)
+    monkeypatch.setattr(settings, "MAIL_AGENT_ALERT_WINDOW_START", "00:00")
+    monkeypatch.setattr(settings, "MAIL_AGENT_ALERT_WINDOW_END", "23:59")
+    monkeypatch.setattr(ma, "whatsapp_service", wa)
+    monkeypatch.setattr(ma, "AsyncSessionLocal",
+                        lambda: _FakeDb([[], [], [0], [row]]))
+
+    stats = _run(ma.send_ready())
+
+    assert stats["alerts_sent"] == 0 and stats["alerts_pending"] == 1
+    assert len(wa.calls) == 1            # attempt happened
+    assert row.whatsapp_notified_at is None  # but not recorded as delivered
+
+
+# --- Graph POST semantics (marker-before-send, success/failure handling) -----
+
+class _FakeResp:
+    def __init__(self, status_code, text=""):
+        self.status_code = status_code
+        self.text = text
+
+
+class _FakeHttpClient:
+    """Stands in for httpx.AsyncClient inside send_ready's POST block."""
+
+    def __init__(self, behavior):
+        self.behavior = behavior      # int status | Exception instance
+        self.posts: list[dict] = []
+        self.on_post = None           # callable run at post time (ordering asserts)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def post(self, url, headers=None, json=None, timeout=None):
+        if self.on_post:
+            self.on_post()
+        if isinstance(self.behavior, Exception):
+            raise self.behavior
+        self.posts.append({"url": url, "json": json,
+                           "bearer": (headers or {}).get("Authorization")})
+        return _FakeResp(self.behavior, "" if self.behavior < 400 else "forbidden")
+
+
+def _stub_send(monkeypatch, row, *, graph_id="GRAPH-ID-1", behavior=202):
+    """Common send_ready setup: canned db, Graph resolve, token, POST client."""
+    fake_db = _FakeDb([[], [row], [0], []])   # sent_today, ready, capped, flush
+    graph = _GraphSpy(graph_id)
+    client = _FakeHttpClient(behavior)
+    wa = _FakeWhatsApp()
+    monkeypatch.setattr(settings, "MAIL_AGENT_ONLY_SENDERS", "")
+    monkeypatch.setattr(ma, "resolve_graph_id", graph)
+    monkeypatch.setattr(ma, "whatsapp_service", wa)
+    monkeypatch.setattr(ma, "AsyncSessionLocal", lambda: fake_db)
+    monkeypatch.setattr(ma.m365_service, "get_access_token", lambda: "test-token")
+    monkeypatch.setattr(ma.httpx, "AsyncClient", lambda: client)
+    return fake_db, graph, client, wa
+
+
+def test_send_post_success_marks_replied_after_durable_marker(monkeypatch):
+    """202 -> replied; the send_attempted_at marker is committed BEFORE the POST
+    (PC-A unconfirmed semantics: a crash mid-POST must never auto-retry)."""
+    row = _row(state="classified", reply_text="<p>Answer</p>")
+    fake_db, _graph, client, wa = _stub_send(monkeypatch, row)
+
+    def _assert_marker_durable():
+        assert row.graph_message_id == "GRAPH-ID-1"
+        assert row.send_attempted_at is not None
+        assert fake_db.commits >= 1, "marker must be persisted before the POST"
+
+    client.on_post = _assert_marker_durable
+
+    stats = _run(ma.send_ready())
+
+    assert stats["sent"] == 1 and stats["failed"] == 0
+    assert row.state == "replied" and row.sent_at is not None
+    assert row.error is None
+    assert len(client.posts) == 1
+    post = client.posts[0]
+    assert post["url"].endswith("/messages/GRAPH-ID-1/reply")
+    assert post["bearer"] == "Bearer test-token"
+    assert post["json"]["comment"] == "<p>Answer</p>"
+    assert wa.calls == []
+
+
+def test_send_post_http_error_marks_send_failed(monkeypatch):
+    """Non-2xx reply -> send_failed with the Graph error captured (no retry)."""
+    row = _row(state="classified", reply_text="<p>Answer</p>")
+    _fake_db, _graph, _client, _wa = _stub_send(monkeypatch, row, behavior=403)
+
+    stats = _run(ma.send_ready())
+
+    assert stats["failed"] == 1 and stats["sent"] == 0
+    assert row.state == "send_failed"
+    assert row.error.startswith("reply HTTP 403")
+    assert row.sent_at is None
+
+
+def test_send_post_transport_error_is_unconfirmed_never_retryable(monkeypatch):
+    """Network drop mid-POST: send_failed + post_unconfirmed (reply MAY have
+    gone out — a silent retry could double-reply a real person)."""
+    row = _row(state="classified", reply_text="<p>Answer</p>")
+    _, _, client, _ = _stub_send(
+        monkeypatch, row, behavior=ma.httpx.ConnectError("connection reset"))
+
+    stats = _run(ma.send_ready())
+
+    assert stats["failed"] == 1
+    assert row.state == "send_failed"
+    assert row.error.startswith("post_unconfirmed:ConnectError")
+    assert "MAY have been sent" in row.error
+    assert len(client.posts) == 0        # the fake raised before recording
+
+
+def test_send_resolve_failure_never_constructs_post(monkeypatch):
+    """Message gone from mailbox -> send_failed BEFORE any network client."""
+    row = _row(state="classified", reply_text="<p>Answer</p>")
+    fake_db, graph, client, _ = _stub_send(monkeypatch, row, graph_id=None)
+
+    stats = _run(ma.send_ready())
+
+    assert stats["failed"] == 1
+    assert row.state == "send_failed"
+    assert row.error.startswith("resolve:graph_id_not_found")
+    assert row.graph_message_id is None and row.send_attempted_at is None
+    assert graph.calls and client.posts == []
+    assert fake_db.commits == 1         # only the state commit, no marker needed
+
+
 # --- process_pending pipeline (all network/LLM seams stubbed) ----------------
 
 _CLS_OK = ({"language": "en", "category": "informational", "criticality": "normal",
