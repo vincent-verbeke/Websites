@@ -53,8 +53,7 @@ personalised thank-you instead.
 | Asset | Where | Reuse for |
 |---|---|---|
 | Graph cert auth (app-only, MSAL) | `src/app/services/m365_service.py` | Token for inbox read + reply |
-| `Mail.Send` application permission | Entra app (docs/M365_APP_SETUP.md §3) | Sending replies (already proven) |
-| `Mail.Read` used by PC-A poller | same Entra app | Reading inbox (verify, §7) |
+| Application mail permissions on the shared Entra app | Entra app `7246abc4-…` — roles verified live 2026-11-08: `Mail.ReadWrite` + `Mail.Send` (details §7 rows 2–3) | Inbox read + sending replies |
 | Proven reply mechanics: `POST /messages/{id}/reply`, watermark, internetMessageId dedupe, **send-attempt marker (no blind retry)** | PC-A `mail_watch.py` (rounds 16–38 hardened) | Ported 1:1 into DB-backed state machine |
 | Background loop in FastAPI lifespan | `trading_watch.watch_loop` in `main.py` | Identical pattern for the mail loop |
 | WhatsApp Cloud API sender | `whatsapp_service.send_text_message` | Critical alerts (R6) |
@@ -213,7 +212,7 @@ emailed first will *not* be answered — they must be on the allowlist.)
 Every composed reply, in the detected language (de-CH / en / fr / it …):
 
 1. **Opens** with the Kubot introduction, e.g. DE:
-   *"Grüezi, ich bin Kubot — Vincent' persönlicher digitaler KI-Assistent."*
+   *"Grüezi, ich bin Kubot — Vincents persönlicher digitaler KI-Assistent."*
    EN: *"Hello, I'm Kubot, Vincent's personal digital AI assistant."*
 2. **Body:** references the actual message content (name + subject + specific
    point) — personalised, never generic.
@@ -282,7 +281,7 @@ MAIL_AGENT_NOTIFY_PHONE=+41797481975
 
 | # | Dependency | Status | Action |
 |---|---|---|---|
-| 1 | Entra app cert auth in cloud | ✅ done — live-probed from the same cert material 2026-11-08 (token 200). Container gets the key **only** via `AZURE_CLIENT_CERT_KEY` env (Dockerfile copies no `certs/`), injected by deploy.yml **conditionally (`if v:`)** — since prod M365 features already work, the secret is present | confirm `AZURE_CLIENT_CERT_KEY`/`_THUMBPRINT` GitHub secrets remain set before Phase A (same failure mode as row 5) |
+| 1 | Entra app cert auth in cloud | ✅ done — live-probed from the same cert material 2026-11-08 (token 200). Container gets the key **only** via `AZURE_CLIENT_CERT_KEY` env (Dockerfile copies no `certs/`), injected by deploy.yml **conditionally (`if v:`)** — presumed present (other container M365 features use the same secret) but not directly observable from this machine | confirm `AZURE_CLIENT_CERT_KEY`/`_THUMBPRINT` GitHub secrets remain set before Phase A (same failure mode as row 5) |
 | 2 | `Mail.Send` (application) + admin consent | ✅ done (M365_APP_SETUP.md §3) | none |
 | 3 | **`Mail.Read`-equivalent application permission** | ✅ **verified live 2026-11-08** — app-only token roles: `Mail.ReadWrite` (superset of `Mail.Read`) + `Mail.Send`; inbox scan, sentItems filter, and internetMessageId resolve all returned 200 against the target mailbox | none (optional later: narrow `Mail.ReadWrite` → `Mail.Read` if write access to mail is unwanted) |
 | 4 | WhatsApp Cloud API token | ✅ in task-definition **and live-probed 2026-11-08**: `GET /api/whatsapp/send/health` → `configured=true`, `last_send 2026-11-06 ok`. (The a21 retirement of 2026-11-08 removed PC-A's fallback sender only — the container send path my alerts use is untouched.) | none |
@@ -334,7 +333,7 @@ Operational notes:
 
 | Phase | Mode | What happens | Exit criterion |
 |---|---|---|---|
-| **A** | `enabled=true, mode=observe` | Poll, classify, ledger only — **no replies, no WhatsApp** (except optionally P1 alerts off) | 3–5 days of classifications reviewed in ledger/dashboard; spam filter and tiers look right |
+| **A** | `enabled=true, mode=observe` | Poll, classify, ledger only — **no replies, no WhatsApp alerts at all** | 3–5 days of classifications reviewed in ledger/dashboard; spam filter and tiers look right |
 | **B** | `mode=auto`, allowlist = 1 test sender only | Real replies to the test sender, thread + language + 48 h posture verified | Test threads look correct in Outlook |
 | **C** | `mode=auto`, full allowlist | R2 contacts + R1 threads live; P1/P2 WhatsApp alerts live; PC-A poller stopped | One week without mis-sends |
 | **D** | Dashboard card | Senders CRUD + message ledger in the Kubotics dashboard UI (frontend follow-up) | — |
