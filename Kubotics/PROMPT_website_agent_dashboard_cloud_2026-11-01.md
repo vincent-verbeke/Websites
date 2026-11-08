@@ -856,3 +856,22 @@ answer-only replies — commits `ae85967`, `1850307`).
   `/api/v1/investments` age 2.1 s `stale:false` with cash 5113.31 / equity
   9992.27 / 5 positions / 8 sleeves from `mcp.ok`. Dashboard numbers no longer
   depend on the CP-gateway browser session.
+
+### Always-online follow-ups (Jcode, 2026-11-08 10:12, Vincent directives 09:24/10:03)
+
+- **Dashboard chip fixed** (frontend, commit `a1402d1`, `ng build` green):
+  3-state gateway badge — authenticated → green; not authenticated but
+  `snapshot.mcp.ok` → amber "Gateway offline — data live via IBKR MCP";
+  neither → original red message. Type gains optional `mcp {ok,ts}`.
+- **Investment logic survives gateway downtime** (ros2 commit `ea8d293`,
+  batteries 17/17 + fills/only/reconcile/pusher regressions): when
+  `daily_invest` can't authenticate, the CONFIRMED plan now flows to his
+  review queue via `create_order_instruction` (positions reconcile-first so
+  fills landed-while-down are booked and never re-bought; ACTIVE-order and
+  pending-instruction dedupe; SMALL/price/fx/qty guards; WhatsApp
+  "IBKR review queue" notice). Execution tools untouched (C3).
+- **Split-spread orders** = IBKR's term for any limit priced INSIDE the
+  bid/ask (official pages). Current LIMIT-at-last already lands mid-spread
+  most days; optional upgrade (awaiting Vincent's GO, no code yet): price
+  instructions at bid/mid via MCP `get_price_snapshot` — est. saving ≈
+  half-spread ≈ 0.05-0.15% per fill, rebates negligible on SIX lines.
