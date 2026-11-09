@@ -857,6 +857,21 @@ answer-only replies — commits `ae85967`, `1850307`).
   9992.27 / 5 positions / 8 sleeves from `mcp.ok`. Dashboard numbers no longer
   depend on the CP-gateway browser session.
 
+- **16h FEED OUTAGE + HARDENING (Jcode, 2026-11-09 12:38)**: Investments feed
+  was stale 2026-11-08 20:20 → 11-09 12:38 (age 58,516 s, offline=true) while
+  every other probe stayed green. Root cause: `~/.jcode/scratch/.cloud_needle_token`
+  AND `ibkr_pusher.json` were removed by scratch garbage-collection (~7-day
+  mtime policy) — pusher exited every 12 s with 'token file missing' and its
+  404/backoff logic stayed silent. FIX: token rewritten to durable
+  `~/.config/ibkr/cloud_needle_token` (600) + `~/.config/ibkr/pusher.json`
+  (url+token_file) + unit `Environment=IBKR_PUSHER_CFG=...` → feed age 0.1 s
+  within one tick. HARDENING: `n3_watchdog.py` (PC-A, .bak_feedage_20261109)
+  gained `check_feed_age()` — alerts when /investments age > 900 s (15-min
+  grid; failed alert sends do NOT consume the 2 h cooldown, so the first alert
+  lands as soon as the a50 cloud-send P0 is fixed). NOTE for anyone storing
+  long-lived files in `.jcode/scratch/`: GC removes them on mtime age —
+  put durable credentials under `~/.config/` instead.
+
 - **CAPITAL-WEIGHTING LIVE (Jcode, 2026-11-08 11:13, Vincent: "pls implement")**:
   sleeve targets now derive at runtime as `target_pct × _meta.capital`
   (`scaled_port()` in daily_invest for plan/orders + `summary()` for display;
