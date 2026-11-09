@@ -886,3 +886,42 @@ answer-only replies — commits `ae85967`, `1850307`).
   most days; optional upgrade (awaiting Vincent's GO, no code yet): price
   instructions at bid/mid via MCP `get_price_snapshot` — est. saving ≈
   half-spread ≈ 0.05-0.15% per fill, rebates negligible on SIX lines.
+
+
+## P0 WORK ORDER (Jcode, 2026-11-09 08:25 UTC): CLOUD WHATSAPP SEND TOKEN DEAD — Meta error 190
+
+**Symptom:** `POST /api/whatsapp/send` fails (HTTP 502 upstream) with
+`{'error': {'message': 'Authentication Error', 'code': 190, 'type': 'OAuthException'}}`
+— captured by `GET /api/whatsapp/send/health` (`last_send.last_success=false`,
+first failure 2026-11-09 08:09:20Z = the ibkr-run outcome notify).
+
+**Impact (everything using whatsapp_service / send endpoint):** needle intake
+replies, bi-daily review verdicts (if cloud-routed), trading/Binance alerts
+(trading_watch._send_whatsapp), and **mail-agent PhaseC critical alerts that
+went live 07:06 today** — all silently failing. Jcode's direct wa.py path
+(unaffected) delivered every message today (08:17 + 08:25).
+
+**Timeline:** cloud sends OK through Nov 8 ~11:00 (needle replies HTTP 200 +
+wamids); first failure 09-09 08:09. Candidates in window: `d6dfd56` (11-08
+15:32 deploy.yml restructure — WHATSAPP_ACCESS_TOKEN mapping present in the
+current file at job env line 75 + python inject map ✓) and `62d0081` PhaseC
+GO-LIVE redeploy (07:06 today). Repo task-def literal fallback = len 206 ✓
+present. Local `.env` present ✓. **190 = Meta rejects the token value itself**
+(not a missing env: missing would differ, and both injection paths carry a
+value) → the token is expired/revoked/invalidated on Meta's side (issued ~11-01
+era; natural expiry not due ⇒ likely invalidated in Meta console/WABA).
+
+**Fix (needs Vincent for the token value):**
+1. Vincent: Meta Business Manager → WhatsApp → API Setup (or Developers →
+   your app) → generate a NEW system-user access token (60-day), copy it.
+2. Put it in GitHub repo secret `WHATSAPP_ACCESS_TOKEN` AND update the literal
+   fallback in `Kubotics-Backend/.aws/task-definition.json` (currently 206
+   chars) — same precedent as 127d094 (11-01 "keep WhatsApp send credentials
+   across CI task-def re-registration").
+3. Push to main → CI redeploys automatically.
+4. Verify: `GET /api/whatsapp/send/health` → `last_send.last_success=true`
+   after one send; Jcode will run a test send and confirm.
+
+**Ownership:** website agent executes steps 2-4 in their deploy lane; step 1 =
+Vincent only (secret generation). Until fixed: do NOT rely on cloud sends for
+anything critical — alerts currently LOSE. Jcode monitors via send/health.
