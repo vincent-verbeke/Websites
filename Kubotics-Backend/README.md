@@ -120,7 +120,7 @@ M365_CLIENT_SECRET=your-azure-client-secret
 M365_ORGANIZER_EMAIL=vincent@kubotics.ch
 MAIL_AGENT_ENABLED=true
 MAIL_AGENT_MODE=auto
-MAIL_AGENT_ONLY_SENDERS=          # Phase B: Liz's addresses; cleared at go-live (Phase C)
+MAIL_AGENT_ONLY_SENDERS=          # cleared at go-live (Phase C, 2026-11-09) — empty = all senders
 ```
 
 ---

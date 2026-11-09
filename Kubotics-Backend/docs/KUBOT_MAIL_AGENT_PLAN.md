@@ -603,7 +603,7 @@ and the `MAIL_AGENT_ENABLED=false` kill switch.
 | Phase | Mode | What happens | Exit criterion |
 |---|---|---|---|
 | **B** | `mode=auto`, **Liz-only**: `MAIL_AGENT_ONLY_SENDERS=liz.mallet@kuroliv.ch,liz.mallet@hotmail.com` | **DEPLOYED 2026-11-08 10:53** (commits …8571d2b; enabled=true, seed pass recorded watermark `2026-11-08T10:46:47Z`, loop live at 60s). First prod cycle already handled a real message correctly: `noreply@github.com` → `ignored_spam/hard_filter:noreply_sender`, zero sends. Chain: gemini only until MIMO/XAI secrets. Real auto-replies to Liz's test mails — thread, language, Kubot intro, 48 h posture, §5.6 signature, ledger row verified in Outlook | Liz's threads look right **and you approve** |
-| **C — GO-LIVE** | `mode=auto`, full contact store + thread replies; `MAIL_AGENT_ONLY_SENDERS=` cleared | **Immediately once T1–T7 pass (your Q4):** all R1/R2 replies + Q11-windowed WhatsApp alerts live; PC-A already stopped (10:06); low expected mail volume (measured ~3/day) = limited blast radius | live, no mis-sends in first days (cap = 20/day + cap-reached notice, Q6) |
+| **C — GO-LIVE ✅ 2026-11-09 07:07Z** | `mode=auto`, full contact store + thread replies; `MAIL_AGENT_ONLY_SENDERS=` cleared (task-def JSON — NOT a GitHub secret; empty string = unrestricted, GitHub secrets simply cannot be empty) | **EXECUTED on Vincent's approval 07:06Z** ("test with Liz worked perfectly fine, i am happy with the result, can we bring this in PROD?"). All R1/R2 replies + Q11-windowed WhatsApp alerts live for every sender; PC-A stopped (10:06, yesterday); safety valves active (24h cooldown, 20/day cap, spam-always-wins, needs_review fallback, kill switch). T2–T7 now observed on real traffic instead of scripted (low volume ~3/day) | live, no mis-sends in first days (cap = 20/day + cap-reached notice, Q6) |
 | **D** | Dashboard card | Senders/contacts view + message ledger in the Kubotics dashboard UI (frontend follow-up) | — |
 
 ### 8.1 Phase B test script (Liz) — the exact cases you approve on
@@ -619,6 +619,11 @@ message **in HTML**" (our §5.6 HTML signature renders as intended), the
 endpoints are the native `reply`/`replyAll` operations (threading handled by
 Graph; `replyTo` honoured per RFC 2822), and success answers **202 Accepted**
 — matching the implemented payload and response handling exactly.
+
+**APPROVAL: 2026-11-09 07:06Z** — Vincent: *"Tee test with Liz yesterday
+worked perfectly fine, i am happy with the result, can we bring this in
+PROD?"* → **Phase C executed 07:07Z** (§8). T2–T7 continue as production
+observation on real traffic instead of scripted runs (volume ~3/day).
 
 | # | Test | Expect in Outlook / ledger / WhatsApp |
 |---|---|---|
@@ -688,20 +693,18 @@ Go-live approval = you have run T1–T7 and accept the wording; then Phase C
 
 ## 10. Estimated build order (after your approval)
 
-**STATUS 2026-11-08 15:01 — Phase B LIVE; ✅ T1 DELIVERED 14:50:18Z**
-(Sent Items `RE: I love you` → liz.mallet@kuroliv.ch in-thread, 947 chars,
-composed by **mimo** per your chain order, §5.6 EN signature verbatim,
-ledger `replied`). Commits 178517d → 7d541ad+: full build, **106/106
-tests**, first REAL CI pytest gate green (`0a8ddc3`), 19 deploys. Today's
-three prod bugs fixed + logged (§7.4): invalid GEMINI key (you replaced it),
-nested-workflow dead file (GitHub executes only the repo-root
-`.github/workflows/` — MIMO/XAI mapping, diagnostics and test gate moved
-there, dead subdir deleted), Graph id 152 chars vs `varchar(128)` (DDL
-widen + model + schema-pin test; marker-before-POST prevented double-send).
-Loop healthy at 60s, providers `['mimo','gemini']` — **gemini key VALIDATED
-15:30** (model-level 503 "high demand" = auth fine; mimo healthy at 3 s —
-see §7.5 probe findings). **Remaining: your T2–T7 (§8.1) + §5.6 OK →
-Phase C = clear `MAIL_AGENT_ONLY_SENDERS` (one env flip) → GO-LIVE.**
+**STATUS 2026-11-09 07:09 — ✅ PROD GO-LIVE (Phase C)**
+Approved by Vincent 07:06Z after the Liz test ("worked perfectly fine, i am
+happy with the result, can we bring this in PROD?") → `MAIL_AGENT_ONLY_SENDERS`
+cleared in `.aws/task-definition.json` (empty string = unrestricted; it is a
+task-def env, **not** a GitHub secret — secrets cannot be empty, task-def envs
+can). **Auto-replies + Q11-windowed WhatsApp alerts now live for EVERY
+sender**; PC-A stopped; safety valves active (24h cooldown, 20/day cap,
+spam-always-wins, `needs_review` fallback, kill switch =
+`MAIL_AGENT_ENABLED=false` + redeploy). Yesterday: T1 delivered 14:50:18Z
+(mimo, 947 chars, in-thread, §5.6 signature), both keys evidenced via
+`POST /mail/llm_probe`, 112/112 tests, incidents §7.4/1–7 logged. T2–T7 now
+observed on real traffic (Phase D dashboard = follow-up).
 
 1. Models + config + migrations pattern (Phase 0, no behaviour change).
 2. Poll loop + hard filters + ledger (service stays `MAIL_AGENT_ENABLED=false`
