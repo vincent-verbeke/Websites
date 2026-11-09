@@ -925,3 +925,27 @@ era; natural expiry not due ⇒ likely invalidated in Meta console/WABA).
 **Ownership:** website agent executes steps 2-4 in their deploy lane; step 1 =
 Vincent only (secret generation). Until fixed: do NOT rely on cloud sends for
 anything critical — alerts currently LOSE. Jcode monitors via send/health.
+
+### 08:27 UPDATE — root cause NARROWED (no Meta console trip likely needed)
+
+Decisive probe (Jcode, 08:27, read-only Graph calls, token never printed):
+the **repo literal token (206 chars in task-definition.json) is VALID**
+— `GET /me` → 200 `{"id":"122151686937109106","name":"Vincent"}` and the
+phone-number object resolves. ⇒ the good token exists in-repo; the ECS
+container is serving the **GitHub-secret override**, which must now be EMPTY
+or DIFFERENT (the workflow comment: 'a GitHub secret with the same name
+overrides the literal when present'; python injects `os.environ.get(...)`
+with no literal fallback). Correlates with `d6dfd56` (11-08 15:32 env-mapping
+restructure) applied by the 09-09 07:06 PhaseC redeploy.
+
+**Revised fix order (fastest first):**
+1. Check GitHub repo secret `WHATSAPP_ACCESS_TOKEN` — if empty/rotated →
+   set it to the SAME 206-char value as `Kubotics-Backend/.aws/task-definition.json`
+   literal (or delete the secret so the literal wins, if the python falls back).
+2. Harden inject (website agent): `"WHATSAPP_ACCESS_TOKEN":
+   os.environ.get("WHATSAPP_ACCESS_TOKEN") or <literal-from-JSON>` — a missing
+   secret must never null-out a working literal.
+3. Push → CI redeploy → Jcode verifies: one send → `send/health`
+   `last_send.last_success=true`.
+Only if step 1 shows the secret ALREADY equals the valid literal (i.e. ECS
+somehow holds something else) → fall back to minting a fresh WABA token.
