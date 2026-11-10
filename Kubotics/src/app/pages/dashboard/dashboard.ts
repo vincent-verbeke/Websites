@@ -127,10 +127,17 @@ interface TabItem {
               <button class="btn-logout" (click)="auth.logout()">Sign out</button>
             </div>
           } @else {
-            <button class="btn-login" (click)="auth.login()">
+            <button
+              class="btn-login"
+              type="button"
+              [disabled]="auth.isLoading() || auth.isRedirecting()"
+              (click)="auth.login()">
               <svg width="18" height="18" viewBox="0 0 21 21"><path fill="#f25022" d="M1 1h9v9H1z"/><path fill="#00a4ef" d="M1 11h9v9H1z"/><path fill="#7fba00" d="M11 1h9v9H11z"/><path fill="#ffb900" d="M11 11h9v9H11z"/></svg>
-              Sign in with Microsoft 365
+              {{ auth.isRedirecting() ? 'Opening Microsoft…' : 'Sign in with Microsoft 365' }}
             </button>
+            @if (auth.loginError(); as authMsg) {
+              <span class="auth-error" role="alert">{{ authMsg }}</span>
+            }
           }
         </div>
       </header>
@@ -161,9 +168,16 @@ interface TabItem {
           </div>
           <h2>Enterprise Operations Access Restricted</h2>
           <p>Please authenticate using your authorized Microsoft Entra ID tenant account to manage autonomous devices, execute Needle tasks, and access live telemetry.</p>
-          <button class="btn-login-hero" (click)="auth.login()">
-            Sign in with Microsoft 365
+          <button
+            class="btn-login-hero"
+            type="button"
+            [disabled]="auth.isLoading() || auth.isRedirecting()"
+            (click)="auth.login()">
+            {{ auth.isRedirecting() ? 'Opening Microsoft…' : 'Sign in with Microsoft 365' }}
           </button>
+          @if (auth.loginError(); as authMsg) {
+            <p class="auth-error auth-error-hero" role="alert">{{ authMsg }}</p>
+          }
         </div>
       } @else {
         <!-- TAB CONTENT VIEWS -->
@@ -621,6 +635,24 @@ interface TabItem {
     }
     .btn-login:hover, .btn-login-hero:hover {
       background: #106ebe;
+    }
+    .btn-login:disabled, .btn-login-hero:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+    /* Sign-in failure notice — never let a dead tap be silent (2026-11-10) */
+    .auth-error {
+      color: #f87171;
+      font-size: 0.72rem;
+      line-height: 1.35;
+      max-width: 17rem;
+      text-align: right;
+    }
+    .auth-error-hero {
+      max-width: 34rem;
+      text-align: center;
+      font-size: 0.85rem;
+      margin: 0.75rem auto 0;
     }
 
     /* TAB NAVIGATION */

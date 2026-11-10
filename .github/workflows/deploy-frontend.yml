@@ -48,7 +48,22 @@ jobs:
 
       - name: Sync Prerendered Static Site to S3
         run: |
-          aws s3 sync Kubotics/dist/Kubotics/browser/ s3://${{ env.S3_BUCKET }}/ --delete
+          set -euo pipefail
+          # Cache discipline (2026-11-10): hashed bundles are immutable, HTML is
+          # never cached. index.html has no Cache-Control today, so browsers use
+          # HEURISTIC caching and can keep serving an old bundle for days — which
+          # is exactly how Vincent's phone stayed on the popup-era login while
+          # desktops had the 2026-11-01 Android redirect fix (mobile sign-in
+          # opened a new tab with the same Sign-in button and did nothing).
+          # Pass 1: everything except HTML, forever. Pass 2: HTML revalidated on
+          # every load (either order of the two passes yields the same result,
+          # because pass 2 re-creates anything pass 1 may have skipped/deleted).
+          aws s3 sync Kubotics/dist/Kubotics/browser/ s3://${{ env.S3_BUCKET }}/ \
+            --delete --exclude "*.html" \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 sync Kubotics/dist/Kubotics/browser/ s3://${{ env.S3_BUCKET }}/ \
+            --exclude "*" --include "*.html" \
+            --cache-control "no-cache, must-revalidate"
 
       - name: Invalidate CloudFront Distribution Cache
         env:

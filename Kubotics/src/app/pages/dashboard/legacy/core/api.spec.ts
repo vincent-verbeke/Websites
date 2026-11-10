@@ -593,7 +593,9 @@ describe('apiGet / apiPost typed client', () => {
   it('apiGet issues GET to the route path (no catchError inside the client)', () => {
     let body: Telemetry | undefined;
     apiGet<Telemetry>(http, API.telemetry.get).subscribe((t) => (body = t));
-    const req = ctrl.expectOne('/api/telemetry');
+    // apiGet prefixes the host base (localhost:8001 here, the PC-A funnel in
+    // prod) — match on the path so the assertion survives either base.
+    const req = ctrl.expectOne((r) => r.url.endsWith('/api/telemetry'));
     expect(req.request.method).toBe('GET');
     req.flush({ low_state: { online: false } });
     expect(body?.low_state?.online).toBe(false);
@@ -604,7 +606,7 @@ describe('apiGet / apiPost typed client', () => {
     let res: ServiceToggleResponse | undefined;
     apiPost<ServiceToggleResponse>(http, API.service.toggle, payload)
       .subscribe((r) => (res = r));
-    const req = ctrl.expectOne('/api/service/toggle');
+    const req = ctrl.expectOne((r) => r.url.endsWith('/api/service/toggle'));
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual(payload);
     req.flush({ success: true, service: 'videohub', enabled: true, msg: 'ok' });

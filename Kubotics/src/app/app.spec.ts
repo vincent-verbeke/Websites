@@ -1,23 +1,27 @@
 import { TestBed } from '@angular/core/testing';
-import { App } from './app';
+import { provideRouter } from '@angular/router';
+import { AppComponent } from './app';
 
-describe('App', () => {
+// Repaired 2026-11-10: this scaffold spec still imported a non-existent `App`
+// export and asserted the "Hello, Kubotics" template of an earlier scaffold, so
+// `ng test` failed to even BUILD (which blocked every other spec). It now covers
+// what the root component actually is: the shell (header + outlet), created
+// without rendering the three.js intro cube.
+describe('AppComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [App],
+      imports: [AppComponent],
+      providers: [provideRouter([])],
     }).compileComponents();
   });
 
-  it('should create the app', () => {
-    const fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance;
-    expect(app).toBeTruthy();
+  it('creates the shell', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    expect(fixture.componentInstance).toBeTruthy();
   });
 
-  it('should render title', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-    const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent).toContain('Hello, Kubotics');
+  it('injects the router-driven shell state', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    expect(typeof fixture.componentInstance.onIntroDone).toBe('function');
   });
 });

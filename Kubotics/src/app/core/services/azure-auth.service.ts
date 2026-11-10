@@ -25,6 +25,13 @@ export class AzureAuthService {
   isAuthenticated = signal<boolean>(false);
   currentAccount = signal<AccountInfo | null>(null);
   isLoading = signal<boolean>(true);
+  /** True while the browser is being handed over to Microsoft (full-page
+   * login/logout redirect) — drives the button's "Opening Microsoft…" state. */
+  isRedirecting = signal<boolean>(false);
+  /** Set only when a sign-in attempt did NOT leave the page (or the redirect
+   * return failed). Rendered next to the sign-in button — a dead click must
+   * never be silent again (Vincent 2026-11-10: "clicking does not do anything"). */
+  loginError = signal<string | null>(null);
 
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
@@ -69,8 +76,17 @@ export class AzureAuthService {
             this.isAuthenticated.set(true);
             window.history.replaceState({}, document.title, window.location.pathname);
           }
-        } catch (redirectErr) {
+        } catch (redirectErr: any) {
           console.warn('[AzureAuth] Redirect promise handled with warning:', redirectErr);
+          // The return leg failed (stale/pending state, blocked exchange, …).
+          // Clear the stuck flags so the NEXT tap starts a clean flow, and tell
+          // the user why — previously this was a console-only warning, which
+          // left a working-looking "Sign in" button that did nothing on retry.
+          this.clearStaleInteractionState();
+          this.loginError.set(
+            'Microsoft sign-in did not complete'
+            + (redirectErr?.errorCode ? ` (${redirectErr.errorCode})` : '')
+            + '. Tap "Sign in" to try again.');
         }
       } else {
         // Safe check for promise to ensure internal queue clears
@@ -96,62 +112,65 @@ export class AzureAuthService {
   }
 
   /**
-   * Android/iOS browsers turn popup windows into TABS, which breaks MSAL's
-   * popup completion (opener/tab correlation): the user lands back on
-   * /dashboard in a NEW tab that never receives the account — exactly the
-   * "new tab, same content, not logged in" symptom Vincent saw on his
-   * Android Chrome tablet (2026-11-01). Mobile browsers therefore use the
-   * full-page redirect flow (single document — the proven
-   * handleRedirectPromise path in initMsal picks the account up from
-   * localStorage on return). Desktop keeps loginPopup unchanged.
+   * Sign-in is ALWAYS a full-page redirect — no popup, on any device
+   * (2026-11-10, regression of the 2026-11-01 Android fix).
+   *
+   * Why the platform sniff is gone: `loginPopup` on Android/Chrome (and on any
+   * browser whose user agent does not match, e.g. Chrome's "Desktop site" mode
+   * on his tablet) turns the popup into a TAB, so MSAL's opener/tab correlation
+   * never completes: the user lands on /dashboard in a NEW tab that still shows
+   * the sign-in button, and every further tap either opened yet another tab or
+   * died on `interaction_in_progress` in the console only. A redirect cannot
+   * open a window, so it behaves identically on desktop, Android, in-app
+   * browsers and installed shortcuts — and it does not depend on UA sniffing.
+   * initMsal()'s handleRedirectPromise picks the account up on return.
    */
-  private static isMobileBrowser(): boolean {
-    return typeof navigator !== 'undefined'
-      && /android|ipad|iphone|ipod|mobile/i.test(navigator.userAgent || '');
-  }
-
   async login(): Promise<void> {
-    if (!this.msalInstance) return;
-    this.isLoading.set(true);
+    if (!this.msalInstance || this.isRedirecting() || this.isLoading()) return;
+    this.loginError.set(null);
+    this.isRedirecting.set(true);
     this.clearStaleInteractionState();
-    if (AzureAuthService.isMobileBrowser()) {
-      // navigates away — initMsal() handles the redirect return
+    try {
       await this.msalInstance.loginRedirect({
         scopes: ['User.Read', 'openid', 'profile', 'email'],
         redirectUri: window.location.origin + '/dashboard'
       });
-      return;
-    }
-    try {
-      const response = await this.msalInstance.loginPopup({
-        scopes: ['User.Read', 'openid', 'profile', 'email'],
-        redirectUri: window.location.origin + '/dashboard'
-      });
-      if (response && response.account) {
-        this.msalInstance.setActiveAccount(response.account);
-        this.currentAccount.set(response.account);
-        this.isAuthenticated.set(true);
-      }
+      // loginRedirect() resolves once navigation is *requested*. If the browser
+      // never leaves the page (blocked navigation, in-app browser quirks), give
+      // the button back with a reason instead of freezing it as a dead control.
+      window.setTimeout(() => {
+        if (!this.isAuthenticated() && !window.location.search.includes('code=')) {
+          this.isRedirecting.set(false);
+          this.loginError.set('Sign-in did not start — tap "Sign in with Microsoft 365" to retry.');
+        }
+      }, 4000);
     } catch (err: any) {
-      console.warn('[AzureAuth] Popup login error:', err);
-      if (err.errorCode === 'interaction_in_progress') {
-        this.clearStaleInteractionState();
-      }
-    } finally {
-      this.isLoading.set(false);
+      console.warn('[AzureAuth] Redirect login error:', err);
+      this.isRedirecting.set(false);
+      this.loginError.set(
+        'Sign-in could not start'
+        + (err?.errorCode ? ` (${err.errorCode})` : '')
+        + ' — tap "Sign in with Microsoft 365" to retry.');
     }
   }
 
+  /** Sign-out is also a full-page redirect: same no-window rule as login()
+   * (logoutPopup has the identical Android-tab problem). MSAL defaults
+   * post_logout_redirect_uri to the current page (/dashboard), exactly as the
+   * old mobile branch did. */
   async logout(): Promise<void> {
     if (!this.msalInstance) return;
     const account = this.currentAccount();
     this.isAuthenticated.set(false);
     this.currentAccount.set(null);
-    if (AzureAuthService.isMobileBrowser()) {
+    this.isRedirecting.set(true);
+    try {
       await this.msalInstance.logoutRedirect({ account: account || undefined });
-      return;
+    } catch (err) {
+      console.warn('[AzureAuth] Redirect logout error:', err);
+      this.isRedirecting.set(false);
+      // Local state is already cleared above — the device is signed out either way.
     }
-    await this.msalInstance.logoutPopup({ account: account || undefined });
   }
 
   async getAccessToken(): Promise<string | null> {
@@ -167,10 +186,14 @@ export class AzureAuthService {
       return tokenResponse.accessToken;
     } catch (error) {
       if (error instanceof InteractionRequiredAuthError) {
-        const tokenResponse = await this.msalInstance.acquireTokenPopup({
+        // Redirect, never popup: the popup path is broken on Android (see login()).
+        // acquireTokenRedirect() returns void — the browser is on its way to
+        // Microsoft; the result is persisted into the MSAL cache on the redirect
+        // return, so the NEXT silent call succeeds. This attempt returns null.
+        await this.msalInstance.acquireTokenRedirect({
           scopes: ['User.Read']
         });
-        return tokenResponse.accessToken;
+        return null;
       }
       return null;
     }
