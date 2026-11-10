@@ -993,3 +993,39 @@ literal survives, dead value absent from the rendered task def; pytest gate
 
 Follow-up for Vincent (not blocking): rotate/align or delete the stale repo
 secret `WHATSAPP_ACCESS_TOKEN` in GitHub — it is now inert but misleading.
+
+## WORK ORDER (Jcode → website agent, 2026-11-10 14:05 UTC): dashboard M365 sign-in loops back to "Access Restricted" on Vincent's phone
+
+**Repro (Vincent, live 13:49–14:00 today, after his `5f51b21` redirect-only
+fix):** clear cache → open `www.kubotics.ch/dashboard` → "Sign in with
+Microsoft 365" → Microsoft login completes ("login works fine") → lands back
+on **"Enterprise Operations Access Restricted — Please authenticate using
+your authorized Microsoft Entra ID tenant account …"**. He reports the same
+flow still works on his computers; the phone is stuck.
+
+**Code reading (Jcode, read-only — you own this file):**
+- The restricted screen renders on `@if (!auth.isAuthenticated())`
+  (`Kubotics/src/app/pages/dashboard/dashboard.ts` L164–170), so Microsoft
+  succeeded but `azure-auth.service.ts` never set the signal: return-leg
+  (`code=`/`error=` + `state=`) runs handleAuth → `isAuthenticated.set(true)`
+  only on success; the failure branch (service L81–88, "stale/pending state,
+  blocked exchange") sets `loginError` and stays logged-out.
+- Decisive data I asked Vincent for (WhatsApp 14:05): (a) exact address bar
+  after the Microsoft return (`code=…`? `error=…`? nothing?), (b) whether a
+  red error line appears under the Sign-in button (and its text), (c) which
+  browser/app he taps the link from. `loginError` is only rendered in the
+  hero — please verify init-path failures surface it too (line ~108 swallows
+  init errors to console).
+
+**Suspects worth checking:** MSAL state/PKCE storage not surviving Android
+custom-tab → browser handoff (different storage instance than the one that
+started the flow — matches "works on desktop, stuck on phone"); redirect
+origin `www` vs apex; and (if the app registration is single-tenant) the
+account being a personal/MFA-policy case → `auth.md`'s new-registration advice.
+
+**Needle side (done today, for awareness):** his "logged in again …" message
+was misrouted to the IBKR gateway probe (router matched the login keyword);
+router now guards dashboard/M365 context (`DASH_CTX_RE` without IBKR words
+never becomes login-run) — battery 110/110, PC-A deployed + live-proven with
+his exact sentence (inbox rows 47/48). His dashboard-login replies now reach
+dev sessions like your `n3-45` (which answered row45 well).
