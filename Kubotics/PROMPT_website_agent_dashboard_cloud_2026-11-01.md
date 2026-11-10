@@ -777,6 +777,16 @@ sanitized acks. Evidence: row id14 was manually re-acked 200 during triage.
 > needle side is deployed and proven (suite 105/105, `thread_map` live,
 > answer-only replies + anchored extraction shipped); this is the LAST piece
 > for reply-by-quote routing. Ping Jcode/Vincent if ownership is unclear.
+>
+> **STATUS 2026-11-10 14:00 UTC — STILL UNCLAIMED after 3 scheduled checks
+> (11-08 14:01, 11-09 14:00, 11-10 14:00: `grep -c context_id whatsapp.py`
+> = 0 every time; `main` moved only for the P0 send-fix trio `227a44e`/
+> `db52565`/`35d9256` + Vincent's own `5f51b21` auth fix).** Monitor closed;
+> Vincent got ONE WhatsApp at 14:00 (“apply it myself?”) — next step is his
+> choice: Jcode implements the 4 lines directly, or this work order gets
+> picked up. Needle side now 108/108 (+3 router guards: explicit
+> `session <name>` beats the status/health keyword — his id40 phrasing
+> steers again; commit `923ea28`, PC-A deployed + live-proven row43/44).
 
 **Why**: Vincent now operates needle ONLY over WhatsApp and wants to answer a
 dev session by QUOTING the session's reply instead of typing
