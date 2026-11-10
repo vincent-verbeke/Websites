@@ -478,6 +478,27 @@ itself — your §9 review, now answered (§9).
    schema-pin test (`0a8ddc3`). The background loop's very next attempt
    sent T1 at **14:50:18Z**. Note: the marker-before-POST semantics
    correctly prevented any send during the crash (no double-send risk).
+8. **WhatsApp cloud-send P0 — my `d6dfd56` regression (2026-11-09 08:09Z
+   → fixed 2026-11-10 07:27Z):** as part of the nested-workflow fix I wired
+   `WHATSAPP_ACCESS_TOKEN`/`PHONE_NUMBER_ID` from GitHub secrets into the
+   LIVE root workflow's step env ("completes 127d094's override intent") —
+   without verifying the secret values. The GH secrets hold dead values, so
+   from the 11-09 07:06 deploy on they **overrode the known-good 206-char
+   literal** in `.aws/task-definition.json` and every cloud WhatsApp send
+   failed (Meta `190 OAuthException`, HTTP 502 from `/api/whatsapp/send`).
+   **Impact on this agent: zero lost alerts** — no mail crossed the
+   notify/P1–P2 bar while the channel was down (soak confirmed all sends
+   `notify=false`), but Q11 would have silently failed if a critical had
+   arrived. Diagnosed and fixed by Vincent/another session in `227a44e` +
+   `db52565` (inject map now `env_vars.get(KEY) or os.environ.get(KEY)` =
+   repo literal wins, secret only fills an absent literal) — both deploys
+   CI-green 07:26/07:27, live-verified 07:35: `GET /api/whatsapp/send/health`
+   → `healthy, configured:true`, `last_send 07:31:18Z last_success:true`.
+   **Lesson (mine):** never layer a GitHub secret over a known-good literal
+   without first proving the secret's VALUE; my MIMO/XAI wiring in the same
+   commit was safe only because those had no literal fallback. Head's pytest
+   gate + MIMO/XAI + diagnostics all intact after the foreign fix (verified
+   07:35).
 
 ### 7.5 Secrets pickup protocol (how a GitHub secret change reaches prod)
 
