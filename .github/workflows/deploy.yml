@@ -113,11 +113,21 @@ jobs:
               "AZURE_CLIENT_CERT_THUMBPRINT": os.environ.get("AZURE_CLIENT_CERT_THUMBPRINT"),
               "TELEGRAM_BOT_TOKEN": os.environ.get("TELEGRAM_BOT_TOKEN"),
               "WHATSAPP_VERIFY_TOKEN": os.environ.get("WHATSAPP_VERIFY_TOKEN"),
-              # WhatsApp send credentials: repo JSON carries literal fallbacks
-              # (same precedent as NEEDLE_TOKEN); a GitHub secret with the same
-              # name overrides the literal when present (Jcode, 2026-11-01).
-              "WHATSAPP_ACCESS_TOKEN": os.environ.get("WHATSAPP_ACCESS_TOKEN"),
-              "WHATSAPP_PHONE_NUMBER_ID": os.environ.get("WHATSAPP_PHONE_NUMBER_ID"),
+              # WhatsApp send credentials: the repo JSON literal WINS over the
+              # GitHub secret (P0 2026-11-10). d6dfd56 (11-08) first wired the
+              # secrets into this step's env, so from the 11-09 07:06 deploy on
+              # the GH secret overrode the good literal — Meta rejected it
+              # (190 OAuthException) and EVERY cloud send failed from
+              # 2026-11-09 08:09Z, while the 206-char literal in
+              # .aws/task-definition.json still authenticates (Graph /me 200,
+              # re-verified 2026-11-10). Rotation therefore = update the
+              # literal (precedent 127d094); the secret only fills in when the
+              # literal is absent and must never null-out or override a
+              # working literal again.
+              "WHATSAPP_ACCESS_TOKEN": env_vars.get("WHATSAPP_ACCESS_TOKEN")
+                  or os.environ.get("WHATSAPP_ACCESS_TOKEN"),
+              "WHATSAPP_PHONE_NUMBER_ID": env_vars.get("WHATSAPP_PHONE_NUMBER_ID")
+                  or os.environ.get("WHATSAPP_PHONE_NUMBER_ID"),
           }
 
           for k, v in secrets_to_inject.items():

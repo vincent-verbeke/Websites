@@ -964,3 +964,22 @@ restructure) applied by the 09-09 07:06 PhaseC redeploy.
    `last_send.last_success=true`.
 Only if step 1 shows the secret ALREADY equals the valid literal (i.e. ECS
 somehow holds something else) → fall back to minting a fresh WABA token.
+
+### 10.11 UPDATE 2026-11-10 08:27 — fix EXECUTED (no gh CLI ⇒ literal-wins inject)
+
+The GH secret could not be inspected from this machine (no `gh`, no PAT), and
+failures had continued into today (replies `needle3-40` 07:05 and
+`n3-dashboard` 07:31 → HTTP 502, Meta 190), so step 1 of the revised order was
+unreachable → took the "literal wins" branch instead: `deploy.yml` inject map
+now computes `env_vars.get(<KEY>) or os.environ.get(<KEY>)` for
+`WHATSAPP_ACCESS_TOKEN` **and** `WHATSAPP_PHONE_NUMBER_ID` — the 206-char
+literal in `.aws/task-definition.json` (Graph `/me` 200 re-verified today)
+takes precedence; the secret only fills in if the literal is ever removed.
+Static check: extracted the inject script, ran it with a dead secret value →
+literal survives, dead value absent from the rendered task def; pytest gate
+112 passed locally. Push → CI redeploy → verify: test send via
+`POST /api/whatsapp/send` must return 200 + wamid and
+`GET /api/whatsapp/send/health` → `last_send.last_success=true`.
+
+Follow-up for Vincent (not blocking): rotate/align or delete the stale repo
+secret `WHATSAPP_ACCESS_TOKEN` in GitHub — it is now inert but misleading.
