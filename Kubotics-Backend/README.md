@@ -128,3 +128,14 @@ MAIL_AGENT_ONLY_SENDERS=          # cleared at go-live (Phase C, 2026-11-09) —
 ## 5. Continuous Deployment (CI/CD)
 
 The GitHub Actions workflow in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) automatically builds the multi-stage Docker container on push to `main`, pushes to Amazon ECR, and triggers an in-place rolling update on AWS ECS Fargate without downtime.
+
+**WhatsApp send credentials — precedence (P0 2026-11-10):** the literal
+`WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` in
+`.aws/task-definition.json` **wins** over the same-named GitHub secrets (the
+inject map is `env_vars.get(KEY) or os.environ.get(KEY)`). The secret only
+fills in if the literal is ever removed. History: from the 2026-11-09 07:06
+deploy the dead GH secret overrode the good literal → Meta 190
+OAuthException → every cloud WhatsApp send 502'd until fixed (work order:
+`Kubotics/PROMPT_website_agent_dashboard_cloud_2026-11-01.md`). To rotate:
+update the literal in the task-def JSON (precedent `127d094`) — and keep the
+GitHub secret in sync or delete it.
