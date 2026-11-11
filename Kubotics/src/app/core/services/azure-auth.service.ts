@@ -60,7 +60,16 @@ export class AzureAuthService {
 
   private async initMsal(): Promise<void> {
     try {
-      this.clearStaleInteractionState();
+      // NOTE: interaction state is deliberately NOT cleared here. On the RETURN
+      // leg from Microsoft the URL carries `#code=…&state=…`, and
+      // `msal.interaction.status` (written by loginRedirect into this tab's
+      // sessionStorage) is exactly what handleRedirectPromise() checks first.
+      // Clearing it before handling made MSAL treat the callback as stale: it
+      // wiped the fragment itself (→ clean address bar) and returned null (→
+      // the code was never exchanged, the account never cached) — Vincent's
+      // phone kept landing on "Access Restricted" with no error, over and over
+      // (regression pin in azure-auth.service.spec.ts, 2026-11-11). The safe
+      // place to clear is login(), before STARTING a new flow.
       this.msalInstance = new PublicClientApplication(MSAL_CONFIG);
       await this.msalInstance.initialize();
 
@@ -75,6 +84,15 @@ export class AzureAuthService {
             this.currentAccount.set(response.account);
             this.isAuthenticated.set(true);
             window.history.replaceState({}, document.title, window.location.pathname);
+          } else if (this.msalInstance.getAllAccounts().length === 0) {
+            // The callback was consumed (MSAL clears the fragment itself) but
+            // no session was established — e.g. the tab's sessionStorage did
+            // not survive the hop to Microsoft. A dead "Access Restricted"
+            // screen with no reason is exactly what Vincent kept hitting, so
+            // surface it and offer the retry.
+            this.loginError.set(
+              'Microsoft sign-in did not complete'
+              + ' — tap "Sign in with Microsoft 365" to try again.');
           }
         } catch (redirectErr: any) {
           console.warn('[AzureAuth] Redirect promise handled with warning:', redirectErr);
@@ -106,6 +124,10 @@ export class AzureAuthService {
       }
     } catch (err) {
       console.error('[AzureAuth] Initialization failed:', err);
+      // A broken init must not leave a dead Sign-in button (work order 91a5a14:
+      // "loginError is only rendered in the hero — init-path failures swallow
+      // to console"). login() no-ops when MSAL failed to boot, so say it here.
+      this.loginError.set('Sign-in is unavailable — reload the page and try again.');
     } finally {
       this.isLoading.set(false);
     }
@@ -139,7 +161,9 @@ export class AzureAuthService {
       // never leaves the page (blocked navigation, in-app browser quirks), give
       // the button back with a reason instead of freezing it as a dead control.
       window.setTimeout(() => {
-        if (!this.isAuthenticated() && !window.location.search.includes('code=')) {
+        // The sign-in response arrives in the #fragment (MSAL's default
+        // response_mode is fragment), never in location.search — check href.
+        if (!this.isAuthenticated() && !window.location.href.includes('code=')) {
           this.isRedirecting.set(false);
           this.loginError.set('Sign-in did not start — tap "Sign in with Microsoft 365" to retry.');
         }

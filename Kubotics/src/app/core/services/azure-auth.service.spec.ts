@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
-import { AzureAuthService } from './azure-auth.service';
+import { PublicClientApplication } from '@azure/msal-browser';
+import { AzureAuthService, MSAL_CONFIG } from './azure-auth.service';
 
 /**
  * Regression suite for Vincent's 2026-11-10 report: on his Android phone the
@@ -99,5 +100,40 @@ describe('AzureAuthService sign-in contract', () => {
     expect(fake.logoutRedirect).toHaveBeenCalledTimes(1);
     expect(fake.logoutPopup).not.toHaveBeenCalled();
     expect(svc.isAuthenticated()).toBe(false);
+  });
+
+  it('keeps the interaction flag in place while MSAL handles the Microsoft return leg', async () => {
+    // Regression (Vincent 2026-11-11: "same issue over and over again").
+    // On his phone the return from Microsoft landed on the Access Restricted
+    // screen with a CLEAN address bar and no error message. Cause: initMsal()
+    // wiped `msal.interaction.status` BEFORE calling handleRedirectPromise(),
+    // so MSAL saw no in-progress interaction, cleared the #code= fragment
+    // itself and returned null — the authorization code was never exchanged
+    // and the account never reached the cache. The flag MSAL reads must still
+    // exist at the exact moment handleRedirectPromise() runs.
+    history.replaceState({}, '', '/dashboard#code=stub&state=stub');
+    sessionStorage.setItem(
+      'msal.interaction.status',
+      JSON.stringify({ clientId: MSAL_CONFIG.auth.clientId, type: 'signin' }),
+    );
+    let flagWhenHandled: string | null = 'handleRedirectPromise never called';
+    const original = PublicClientApplication.prototype.handleRedirectPromise;
+    PublicClientApplication.prototype.handleRedirectPromise = async function () {
+      flagWhenHandled = sessionStorage.getItem('msal.interaction.status');
+      return null;
+    };
+    try {
+      const svc = TestBed.inject(AzureAuthService);
+      await ready(svc);
+
+      expect(flagWhenHandled).not.toBe('handleRedirectPromise never called');
+      expect(flagWhenHandled).not.toBeNull();
+      // A return leg that established no session must never be silent:
+      expect(svc.loginError()).toContain('Microsoft sign-in did not complete');
+    } finally {
+      PublicClientApplication.prototype.handleRedirectPromise = original;
+      sessionStorage.removeItem('msal.interaction.status');
+      history.replaceState({}, '', '/');
+    }
   });
 });
