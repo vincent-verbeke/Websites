@@ -138,6 +138,25 @@ def test_empty_llm_reply_uses_fallback(monkeypatch):
     assert "Kubotics Sales Engineer" in r.json()["reply"]
 
 
+def test_markdown_emphasis_is_stripped_from_llm_reply(monkeypatch):
+    """The widget renders plain text — raw ** must never reach a visitor."""
+    async def md(system, user):
+        return ("**Setup:** CRM + Agents.\n\n"
+                "## Monthly budget\nUse `spend caps` and *your approval*."), \
+               "mimo", "model-x"
+
+    monkeypatch.setattr(ep.mail_llm, "chat_text", md)
+
+    r = _post("Wie funktioniert das Pricing?")
+    d = r.json()
+    assert "**" not in d["reply"]
+    assert "##" not in d["reply"]
+    assert "`" not in d["reply"]
+    assert "Setup: CRM + Agents." in d["reply"]
+    assert "spend caps" in d["reply"]
+    assert "your approval" in d["reply"]
+
+
 def test_payload_validation():
     """Oversized / empty messages are rejected by the schema (422)."""
     assert _post("").status_code == 422

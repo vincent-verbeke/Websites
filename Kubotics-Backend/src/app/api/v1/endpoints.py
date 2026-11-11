@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -193,7 +194,19 @@ async def _llm_chat_reply(payload: ChatMessagePayload) -> str | None:
         logger.warning("[webchat] LLM reply unavailable, using fallback: %s", e)
         return None
     text = (content or "").strip()
-    return text or None
+    return _strip_chat_markdown(text) or None
+
+
+def _strip_chat_markdown(text: str) -> str:
+    """The chat widget renders plain text: drop emphasis/code markup so
+    visitors never see raw ** or backticks (models do this despite the
+    prompt)."""
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"__(.+?)__", r"\1", text)
+    text = re.sub(r"(?<!\w)[*_](.+?)[*_](?!\w)", r"\1", text)
+    text = re.sub(r"`{1,3}(.+?)`{1,3}", r"\1", text)
+    text = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", text)
+    return text.strip()
 
 
 @router.post("/leads", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
