@@ -180,7 +180,7 @@ import { LeadAgentService, BOOKING_PAGE_URL } from './lead-agent.service';
               type="text" 
               [(ngModel)]="userInput" 
               name="userInput"
-              placeholder="Frage zu Unitree H2, CNC-Automation, Rechnungs-LLM..." 
+              placeholder="Frage zu Unitree H2, CNC-Automation, Rechnungs-LLM, KI-Marketing..." 
               class="chat-input"
               autocomplete="off" />
             <button type="submit" class="send-btn" [disabled]="!userInput.trim() || agent.isLoading()" aria-label="Send message">

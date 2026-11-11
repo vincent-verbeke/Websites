@@ -43,6 +43,30 @@ export interface MeetingScheduleResponse {
   event_id: string;
 }
 
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface WebChatMessagePayload {
+  session_token: string;
+  message: string;
+  sender?: string;
+  /** Page path, topic, UTM, qualification summary — sent as LLM context. */
+  extracted_context?: Record<string, string | number>;
+  /** Rolling conversation transcript so the LLM answers with full context. */
+  history?: ChatTurn[];
+}
+
+export interface WebChatResponse {
+  reply: string;
+  session_token: string;
+  intent?: string | null;
+  quick_replies?: string[];
+  meeting_link?: string | null;
+  lead_qualified?: boolean;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -56,5 +80,14 @@ export class KuboticsApiService {
 
   scheduleMeeting(payload: MeetingSchedulePayload): Observable<MeetingScheduleResponse> {
     return this.http.post<MeetingScheduleResponse>(`${this.baseUrl}/meetings/schedule`, payload);
+  }
+
+  /**
+   * Website CTA chat — answered by the backend's LLM provider chain
+   * (same chain the Kubot mail/chat agent uses) with conversation history
+   * and page context attached as context.
+   */
+  chatMessage(payload: WebChatMessagePayload): Observable<WebChatResponse> {
+    return this.http.post<WebChatResponse>(`${this.baseUrl}/chat/message`, payload);
   }
 }

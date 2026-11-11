@@ -1,6 +1,11 @@
 import { Injectable, signal, inject, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
-import { KuboticsApiService } from '../../core/services/kubotics-api.service';
+import { timeout } from 'rxjs';
+import {
+  KuboticsApiService,
+  ChatTurn,
+  WebChatResponse
+} from '../../core/services/kubotics-api.service';
 
 export interface ChatMessage {
   id: string;
@@ -25,7 +30,7 @@ export interface LeadQualificationData {
   phone?: string;
   company?: string;
   role?: string;
-  interest?: 'Humanoid Robotics' | 'Manufacturing Automation' | 'IT Automation' | 'Consulting Test Day';
+  interest?: 'Humanoid Robotics' | 'Manufacturing Automation' | 'IT Automation' | 'Consulting Test Day' | 'AI Marketing & Sales';
   processProblem?: string;
   estimatedVolume?: string;
   recommendedSolution?: string;
@@ -69,6 +74,7 @@ export class LeadAgentService {
         'Maschinenbeschickung CNC',
         'Unitree H2 Testtag',
         'Rechnungsprüfung LLM',
+        'KI-Marketing & Sales Automation',
         'Palettierung & Logistik'
       ]
     };
@@ -140,10 +146,31 @@ export class LeadAgentService {
     this.messages.update(list => [...list, userMsg]);
     this.saveSession();
 
+    // Structured conversion intents (contact capture -> booking form) are
+    // handled locally first: they drive UI state the LLM reply cannot.
+    const conversion = this.detectConversionIntent(text.trim());
+    if (conversion) {
+      this.messages.update(list => [...list, conversion]);
+      this.saveSession();
+      return;
+    }
+
+    // Keep CRM interest tagging deterministic regardless of the LLM answer.
+    this.trackInterestLocally(text.trim());
+
     this.isLoading.set(true);
 
     try {
-      const reply = await this.processSalesEngineerReasoning(text.trim());
+      let reply: ChatMessage;
+      try {
+        // Primary path: backend LLM provider chain with conversation +
+        // page context (the "LLM we use to chat", combined with context).
+        reply = await this.askLlmAgent(text.trim());
+      } catch (llmErr) {
+        // Offline / timeout / backend down: canned state-machine fallback.
+        console.warn('[LeadAgentService] LLM path failed, using local fallback:', llmErr);
+        reply = await this.processSalesEngineerReasoning(text.trim());
+      }
       this.messages.update(list => [...list, reply]);
       this.saveSession();
     } catch (err) {
@@ -158,6 +185,189 @@ export class LeadAgentService {
       ]);
     } finally {
       this.isLoading.set(false);
+    }
+  }
+
+  /**
+   * One chat turn through the backend LLM (same provider chain the Kubot
+   * mail/chat agent uses), carrying the rolling transcript + page/lead
+   * context so answers are conversational and product-aware.
+   */
+  private async askLlmAgent(text: string): Promise<ChatMessage> {
+    const res: WebChatResponse | undefined = await this.api.chatMessage({
+      session_token: this.sessionToken(),
+      message: text,
+      history: this.buildHistory(),
+      extracted_context: this.buildChatContext(text)
+    }).pipe(timeout(35000)).toPromise();
+
+    if (!res || !res.reply || !res.reply.trim()) {
+      throw new Error('empty LLM reply');
+    }
+
+    if (res.lead_qualified) {
+      this.currentStage.set('conversion');
+    }
+
+    return {
+      id: 'agent-' + Date.now(),
+      sender: 'agent',
+      stage: this.currentStage(),
+      text: res.reply.trim(),
+      timestamp: new Date(),
+      quickReplies: res.quick_replies && res.quick_replies.length > 0
+        ? res.quick_replies
+        : undefined,
+      actionLink: res.meeting_link
+        ? { label: 'Direkt Termin buchen (M365)', url: res.meeting_link, type: 'meeting' }
+        : undefined
+    };
+  }
+
+  /** Rolling transcript for the LLM: everything except the just-sent message. */
+  private buildHistory(): ChatTurn[] {
+    return this.messages()
+      .filter(m => m.sender !== 'system')
+      .slice(0, -1)
+      .slice(-12)
+      .map(m => ({ role: m.sender === 'user' ? 'user' as const : 'assistant' as const, content: m.text }));
+  }
+
+  /** Page path, topic, UTM and qualification summary sent as LLM context. */
+  private buildChatContext(currentText: string): Record<string, string | number> {
+    const q = this.qualification();
+    const ctx: Record<string, string | number> = {};
+
+    if (isPlatformBrowser(this.platformId)) {
+      ctx['page'] = window.location.pathname;
+      ctx['language'] = navigator.language || 'de-CH';
+    }
+
+    const topic = currentText.match(/^\[Thema:\s*([^\]]+)\]/);
+    if (topic) {
+      ctx['topic'] = topic[1].trim();
+    }
+
+    if (q.interest) ctx['interest'] = q.interest;
+    if (q.company) ctx['company'] = q.company;
+    if (q.processProblem) ctx['process_problem'] = q.processProblem.slice(0, 300);
+    if (q.estimatedVolume) ctx['volume'] = q.estimatedVolume;
+    if (q.utmSource) ctx['utm_source'] = q.utmSource;
+    if (q.utmMedium) ctx['utm_medium'] = q.utmMedium;
+    if (q.utmCampaign) ctx['utm_campaign'] = q.utmCampaign;
+
+    return ctx;
+  }
+
+  private sessionTokenValue = '';
+
+  private sessionToken(): string {
+    if (!isPlatformBrowser(this.platformId)) return 'ssr';
+    if (!this.sessionTokenValue) {
+      this.sessionTokenValue =
+        sessionStorage.getItem('kubotics_chat_session_token') ||
+        'web-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+      sessionStorage.setItem('kubotics_chat_session_token', this.sessionTokenValue);
+    }
+    return this.sessionTokenValue;
+  }
+
+  /**
+   * UI-critical conversion flows the LLM cannot trigger: capturing an email/
+   * phone from a message, or an explicit booking request -> booking form.
+   * Returns null when the message needs a normal (LLM) answer.
+   */
+  private detectConversionIntent(input: string): ChatMessage | null {
+    const lower = input.toLowerCase();
+    const emailMatch = input.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    const phoneMatch = input.match(/(\+?[0-9]{2,3}[ -]?[0-9]{2,3}[ -]?[0-9]{3}[ -]?[0-9]{2,4}|07[6-9][ -]?[0-9]{3}[ -]?[0-9]{2}[ -]?[0-9]{2})/);
+
+    if (emailMatch || phoneMatch) {
+      if (emailMatch) this.qualification.update(q => ({ ...q, email: emailMatch[0] }));
+      if (phoneMatch) this.qualification.update(q => ({ ...q, phone: phoneMatch[0].trim() }));
+
+      this.currentStage.set('conversion');
+      this.syncLeadData();
+
+      const topic = this.qualification().interest || 'Automations-Potenzialanalyse';
+      return {
+        id: 'agent-' + Date.now(),
+        sender: 'agent',
+        stage: 'conversion',
+        text: `Vielen Dank für Ihre Kontaktdaten! Ich habe Ihre Angaben erfasst.\n\nDamit wir Ihren Termin direkt und verbindlich in Vincents Kalender eintragen können, wählen Sie bitte Ihr Wunschdatum:`,
+        timestamp: new Date(),
+        showBookingForm: true,
+        bookingTopic: topic,
+        quickReplies: ['Direkt im Kalender buchen', 'Via WhatsApp abstimmen', 'Später anrufen']
+      };
+    }
+
+    if (
+      lower.includes('beratung') ||
+      lower.includes('termin') ||
+      lower.includes('vincent') ||
+      lower.includes('call') ||
+      lower.includes('buchen') ||
+      lower.includes('meeting') ||
+      lower.includes('gespräch') ||
+      lower.includes('slot') ||
+      lower.includes('discovery')
+    ) {
+      this.currentStage.set('conversion');
+      const topic = this.qualification().recommendedSolution || this.qualification().interest || 'Discovery Call & Beratung';
+
+      return {
+        id: 'agent-' + Date.now(),
+        sender: 'agent',
+        stage: 'conversion',
+        text: `Sehr gerne! Für eine direkte Beratung mit Vincent Verbeke (Founder) erfassen wir nachfolgend kurz Ihre Kontaktdaten und Wunschzeit. Der Termin wird via Microsoft Teams direkt in Vincents Outlook-Kalender gebucht:`,
+        timestamp: new Date(),
+        showBookingForm: true,
+        bookingTopic: topic,
+        quickReplies: ['Via WhatsApp chatten (+41 78 220 68 96)', 'Frage zu Robotern stellen', 'Zurück']
+      };
+    }
+
+    return null;
+  }
+
+  /** Deterministic CRM interest tagging, independent of the LLM reply. */
+  private trackInterestLocally(input: string) {
+    const lower = input.toLowerCase();
+    if (/(marketing|sales|werbung|vertrieb|kampagne|campaign|lead\s?gen|outreach|linkedin|google ads)/.test(lower)) {
+      this.qualification.update(q => ({
+        ...q,
+        interest: 'AI Marketing & Sales',
+        processProblem: input,
+        recommendedSolution: 'Fully Automated AI-Driven Marketing & Sales Engine'
+      }));
+      return;
+    }
+    if (/(h2|humanoid|testtag|unitree)/.test(lower)) {
+      this.qualification.update(q => ({
+        ...q,
+        interest: 'Humanoid Robotics',
+        processProblem: input,
+        recommendedSolution: 'Unitree H2 Hands-On Test Day & Feasibility'
+      }));
+      return;
+    }
+    if (/(cnc|beschickung|\barm\b|cobot|tending|fabrik)/.test(lower)) {
+      this.qualification.update(q => ({
+        ...q,
+        interest: 'Manufacturing Automation',
+        processProblem: input,
+        recommendedSolution: 'Turnkey Cobot / 6-Achs-Roboterzelle für Maschinenbeschickung'
+      }));
+      return;
+    }
+    if (/(rechnung|invoice|beleg|ocr|scan|dokument)/.test(lower)) {
+      this.qualification.update(q => ({
+        ...q,
+        interest: 'IT Automation',
+        processProblem: input,
+        recommendedSolution: 'Multimodale LLM-Belegextraktion (>98.5% Genauigkeit)'
+      }));
     }
   }
 

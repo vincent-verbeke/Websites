@@ -79,10 +79,13 @@ class LeadResponse(BaseModel):
 
 # Chatbot Session & Message Schemas
 class ChatMessagePayload(BaseModel):
-    session_token: str
-    message: str
+    session_token: str = Field(min_length=1, max_length=128)
+    message: str = Field(min_length=1, max_length=4000)
     sender: str = "visitor"
     extracted_context: Optional[Dict[str, Any]] = None
+    # Rolling conversation transcript [{role: user|assistant, content: str}]
+    # so the web CTA chat answers with full conversational context.
+    history: Optional[List[Dict[str, str]]] = None
 
 
 class ChatAgentResponse(BaseModel):

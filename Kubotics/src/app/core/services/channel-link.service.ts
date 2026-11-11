@@ -9,6 +9,7 @@ export type LeadTopic =
   | 'erp_planning'
   | 'llm_invoices'
   | 'chatbots_voice'
+  | 'ai_marketing'
   | 'roi_calculator'
   | 'general';
 
@@ -58,6 +59,11 @@ export class ChannelLinkService {
       de: 'Grüezi Kubotics Team, ich interessiere mich für autonome KI-Chatbots & Voice Bots (SIP, MS Teams, WhatsApp, Telegram).',
       en: 'Hello Kubotics team, I am interested in autonomous AI Chatbots & Voice Bots (SIP, MS Teams, WhatsApp, Telegram).',
       tgPayload: 'chatbots_voice'
+    },
+    ai_marketing: {
+      de: 'Grüezi Kubotics Team, ich interessiere mich für Ihre vollautomatisierte KI-Marketing- & Sales-Automation.',
+      en: 'Hello Kubotics team, I am interested in your fully automated AI-driven marketing & sales engine.',
+      tgPayload: 'ai_marketing'
     },
     roi_calculator: {
       de: 'Grüezi Kubotics Team, ich habe Ihren ROI-Rechner genutzt und möchte eine detaillierte Machbarkeit prüfen.',

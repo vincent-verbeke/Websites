@@ -33,6 +33,7 @@ export class I18nService {
         CHIP_INVOICE: 'Rechnungs- & Beleg-LLM',
         CHIP_ARMS: 'Fabrik-Roboterarme',
         CHIP_LOGISTICS: 'Palettierung & Logistik',
+        CHIP_MARKETING: 'KI-Marketing & Sales',
         CTA_ANALYZE: 'POTENZIAL PRÜFEN',
         CTA_PRIMARY: 'AUTOMATIONSBEDARF BESCHREIBEN',
         CTA_SECONDARY: 'ROBOTER & TECH',
@@ -68,6 +69,8 @@ export class I18nService {
         CAT4_DESC: 'Automatisierte Verarbeitung ausgehender und eingehender Belege. Multimodale KI-Modelle erfassen selbst schlechte Scans, Knicke, Faxe und handschriftliche Vermerke direkt in Ihr ERP/Buchhaltungssystem.',
         CAT5_TITLE: 'Autonome KI-Chatbots & Voice Bots',
         CAT5_DESC: 'Omnichannel Voice- & Chat-Agenten mit tiefer CRM- und ERP-Integration: Telefonie & SIP/VoIP, Microsoft Teams, WhatsApp for Business, Telegram und Web-Chat. Ultraschnelle Sprachverarbeitung (~100ms) mit autonomer Kalenderbuchung.',
+        CAT6_TITLE: 'Vollautomatisiertes KI-Marketing & Sales',
+        CAT6_DESC: 'Die komplette agentengestützte Go-to-Market-Engine: KI-Recherche idealer Zielkunden, personalisiertes Multi-Channel-Outreach (Google, LinkedIn, E-Mail, WhatsApp, Telegram), autonome Lead-Qualifizierung und Terminbuchung — mit harten Spend-Caps und Ihrer Freigabe vor jeder Ausgabe.',
         CUSTOM_CTA: 'INDIVIDUELLE ANFRAGE'
       },
       ROI: {
@@ -157,6 +160,7 @@ export class I18nService {
         CHIP_INVOICE: 'Invoice & Document LLM',
         CHIP_ARMS: 'Factory Robotic Arms',
         CHIP_LOGISTICS: 'Palletizing & Logistics',
+        CHIP_MARKETING: 'AI Marketing & Sales',
         CTA_ANALYZE: 'ANALYZE POTENTIAL',
         CTA_PRIMARY: 'DESCRIBE AUTOMATION NEED',
         CTA_SECONDARY: 'ROBOTICS & TECH',
@@ -192,6 +196,8 @@ export class I18nService {
         CAT4_DESC: 'Automated outgoing and incoming invoice processing. Multimodal LLMs understand low-quality scans, wrinkled paper, receipts, and multilingual documents directly into accounting systems.',
         CAT5_TITLE: 'Autonomous Voice & Messaging Chatbots',
         CAT5_DESC: 'Enterprise conversational AI across voice and messaging: SIP/VoIP telephony, Microsoft Teams, WhatsApp for Business, Telegram, and Web Chat. Sub-100ms voice latency with native CRM/ERP and calendar synchronization.',
+        CAT6_TITLE: 'Fully Automated AI-Driven Marketing & Sales',
+        CAT6_DESC: 'The complete agentic go-to-market engine: AI research of ideal customer profiles, personalized multi-channel outreach (Google, LinkedIn, email, WhatsApp, Telegram), autonomous lead qualification and meeting booking — behind hard spend caps and your approval before every franc.',
         CUSTOM_CTA: 'CUSTOM REQUEST'
       },
       ROI: {

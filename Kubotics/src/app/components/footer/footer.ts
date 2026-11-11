@@ -21,6 +21,7 @@ import { LegalModalType } from '../legal-modal/legal-modal';
             <h4>{{ i18n.lang() === 'de-CH' ? 'Lösungen' : 'Solutions' }}</h4>
             <a routerLink="/automation/cnc-machine-tending">CNC Maschinenbeschickung</a>
             <a routerLink="/automation/invoice-processing">Rechnungsprüfung LLM</a>
+            <a routerLink="/marketing/ai-marketing-sales">KI-Marketing &amp; Sales (NEU)</a>
             <a routerLink="/robotics/unitree-h2-test-day">Unitree H2 Testtag</a>
             <a routerLink="/automation/discovery">Automation Discovery</a>
             <a routerLink="/" fragment="roi-calculator">{{ i18n.t('NAV.ROI') }}</a>

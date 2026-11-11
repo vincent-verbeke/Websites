@@ -14,6 +14,10 @@ export const serverRoutes: ServerRoute[] = [
     renderMode: RenderMode.Prerender,
   },
   {
+    path: 'marketing/ai-marketing-sales',
+    renderMode: RenderMode.Prerender,
+  },
+  {
     path: 'robotics/unitree-h2-test-day',
     renderMode: RenderMode.Prerender,
   },

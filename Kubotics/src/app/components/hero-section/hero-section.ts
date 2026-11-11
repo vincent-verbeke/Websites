@@ -63,6 +63,9 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
             <button type="button" class="problem-chip" (click)="selectPreset('Palettierung & Intralogistik')">
               📦 {{ i18n.t('HERO.CHIP_LOGISTICS') }}
             </button>
+            <button type="button" class="problem-chip marketing-chip" (click)="selectPreset('Vollautomatisierte KI-Marketing- & Sales-Automation')">
+              🚀 {{ i18n.t('HERO.CHIP_MARKETING') }}
+            </button>
           </div>
         </div>
 
@@ -296,6 +299,19 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       border-color: #0071e3;
       color: #fff;
       transform: translateY(-1px);
+    }
+
+    /* New product (2026-11-11): Fully automated AI-driven marketing & sales */
+    .marketing-chip {
+      border-color: rgba(48, 209, 88, 0.5);
+      color: #30d158;
+      background: rgba(48, 209, 88, 0.08);
+    }
+
+    .marketing-chip:hover {
+      background: rgba(48, 209, 88, 0.18);
+      border-color: #30d158;
+      color: #fff;
     }
 
     .cta-group {

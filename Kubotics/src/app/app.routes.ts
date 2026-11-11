@@ -14,6 +14,10 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/invoice-processing/invoice-processing').then(m => m.InvoiceProcessingPageComponent)
   },
   {
+    path: 'marketing/ai-marketing-sales',
+    loadComponent: () => import('./pages/ai-marketing/ai-marketing').then(m => m.AiMarketingLandingPageComponent)
+  },
+  {
     path: 'robotics/unitree-h2-test-day',
     loadComponent: () => import('./pages/unitree-h2-test-day/unitree-h2-test-day').then(m => m.UnitreeH2LandingPageComponent)
   },

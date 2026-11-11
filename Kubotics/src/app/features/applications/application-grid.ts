@@ -1,10 +1,12 @@
 import { Component, inject } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { I18nService } from '../../core/services/i18n';
 import { ChannelLinkService } from '../../core/services/channel-link.service';
 
 @Component({
   selector: 'app-application-grid',
   standalone: true,
+  imports: [RouterLink],
   template: `
     <section id="solutions" class="applications">
       <div class="container">
@@ -20,6 +22,31 @@ import { ChannelLinkService } from '../../core/services/channel-link.service';
         </div>
 
         <div class="app-grid">
+          <!-- Solution 0 (NEW, prominent): Fully Automated AI-Driven Marketing & Sales -->
+          <div class="app-item glass h-card highlight-card new-product-card">
+            <div class="app-info">
+              <div class="new-badge">NEU · FLAGSHIP</div>
+              <div class="card-icon"><span class="material-icons">campaign</span></div>
+              <h3>
+                <a routerLink="/marketing/ai-marketing-sales" class="card-title-link">{{ i18n.t('SOLUTIONS.CAT6_TITLE') }}</a>
+              </h3>
+              <p>{{ i18n.t('SOLUTIONS.CAT6_DESC') }}</p>
+              <div class="channel-pill-list">
+                <span class="channel-chip">Google Search</span>
+                <span class="channel-chip">LinkedIn</span>
+                <span class="channel-chip">E-Mail</span>
+                <span class="channel-chip">WhatsApp</span>
+                <span class="channel-chip">Telegram</span>
+              </div>
+              <div class="card-channels">
+                <a routerLink="/marketing/ai-marketing-sales" class="link-landing">🔎 Setup &amp; Vorteile ansehen</a>
+                <a [href]="channelLinks.getWhatsAppLink('ai_marketing')" target="_blank" rel="noopener noreferrer" class="link-wa">💬 WhatsApp</a>
+                <a [href]="channelLinks.getTelegramLink('ai_marketing')" target="_blank" rel="noopener noreferrer" class="link-tg">🎙️ Telegram</a>
+              </div>
+            </div>
+            <div class="app-tag tag-new">🚀 FULLY AUTOMATED AI-DRIVEN</div>
+          </div>
+
           <!-- Solution 1: Humanoid Robotics -->
           <div class="app-item glass h-card">
             <div class="app-info">
@@ -239,6 +266,67 @@ import { ChannelLinkService } from '../../core/services/channel-link.service';
       color: #888;
       cursor: pointer;
       font-size: 0.8rem;
+    }
+
+    /* New flagship product card (2026-11-11) */
+    .new-product-card {
+      border: 1px solid rgba(48, 209, 88, 0.45);
+      background:
+        radial-gradient(circle at 90% 0%, rgba(48, 209, 88, 0.14) 0%, transparent 55%),
+        rgba(255, 255, 255, 0.05);
+      box-shadow: 0 0 44px rgba(48, 209, 88, 0.12);
+    }
+
+    .new-product-card:hover {
+      border-color: #30d158;
+      box-shadow: 0 0 60px rgba(48, 209, 88, 0.22);
+    }
+
+    .new-badge {
+      display: inline-block;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.62rem;
+      letter-spacing: 0.14em;
+      color: #05130a;
+      background: #30d158;
+      border-radius: 100px;
+      padding: 4px 12px;
+      margin-bottom: 18px;
+      font-weight: 700;
+    }
+
+    .card-title-link {
+      color: inherit;
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+
+    .card-title-link:hover { color: #30d158; }
+
+    .link-landing {
+      display: inline-flex;
+      align-items: center;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      font-family: 'Space Mono', monospace;
+      background: rgba(48, 209, 88, 0.12);
+      color: #30d158;
+      border: 1px solid rgba(48, 209, 88, 0.35);
+    }
+
+    .link-landing:hover {
+      background: rgba(48, 209, 88, 0.25);
+      border-color: #30d158;
+      transform: translateY(-1px);
+    }
+
+    .tag-new {
+      border-color: rgba(48, 209, 88, 0.6);
+      color: #30d158;
     }
   `
 })
