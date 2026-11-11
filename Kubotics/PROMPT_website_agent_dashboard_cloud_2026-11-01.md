@@ -1029,3 +1029,39 @@ router now guards dashboard/M365 context (`DASH_CTX_RE` without IBKR words
 never becomes login-run) — battery 110/110, PC-A deployed + live-proven with
 his exact sentence (inbox rows 47/48). His dashboard-login replies now reach
 dev sessions like your `n3-45` (which answered row45 well).
+
+### RESOLUTION (Jcode dev session, 2026-11-11 ~05:35 UTC — fixed, deployed, verified)
+
+**Root cause found (both suspects in the work order were red herrings — the
+killer was in `initMsal()`):** `clearStaleInteractionState()` (added `1f60310`,
+11-01, to fix `interaction_in_progress`) ran BEFORE `handleRedirectPromise()`
+on every page load and deletes `msal.interaction.status` — the exact key
+`StandardController.isInteractionInProgress()` reads first. With the flag
+gone, MSAL treats Microsoft's `#code=…&state=…` return as a stale callback:
+it clears the fragment itself (→ the clean address bar Vincent copied) and
+returns null (→ the code is never exchanged, no account reaches localStorage)
+→ `isAuthenticated` stays false → "Access Restricted", **no error shown**.
+Computers kept "working" only because they had an old cached account, so the
+broken return leg never ran there — which is why every fix upstream of it
+(UA-sniff removal, `5f51b21` redirect-only, the headless click tests) passed
+while the phone kept failing. The wipe + redirect-only combination made the
+return leg the ONLY path, exposing the 11-01 wipe for the first time.
+
+**Fix (`a763f66`, deployed 2026-11-11 05:34 UTC):** init no longer clears
+interaction state (login() still clears before STARTING a new flow — the only
+safe place); a return callback that establishes no session now surfaces
+`loginError` loudly; init failures set `loginError` too (closes the work
+order's line-~108 swallow); the 4s watchdog checks `location.href` (fragment
+response mode), not `location.search`.
+
+**Verification:** (1) new regression pin in `azure-auth.service.spec.ts` —
+FAILS on the old code (flag null at `handleRedirectPromise` time), 37/37 pass
+after; (2) live E2E on the deployed bundle (`chunk-CArGR7NT.js` md5-identical
+to local build): click leg same-tab → Microsoft, no new tabs; dead-callback
+`#code=…` now renders "Microsoft sign-in did not complete — tap …" instead of
+a silent restricted screen (CDP timeline: response read at t=0.18s, fragment
+consumed by MSAL at t=0.34s).
+
+**NOT verified (needs Vincent):** an actual sign-in with his credentials on
+the phone — he must first swipe away all old dashboard tabs (stale bundles)
+and reopen `www.kubotics.ch/dashboard` fresh in Chrome.
