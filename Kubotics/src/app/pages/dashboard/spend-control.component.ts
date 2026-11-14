@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, OnInit, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { DashboardConfigService } from '../../core/services/dashboard-config.service';
 
 interface SpendCaps { total_chf: number; search_chf: number; window: string }
 interface SpendUsed { total_chf: number; search_chf: number }
@@ -159,7 +160,12 @@ export class SpendControlComponent implements OnInit, OnDestroy {
   readonly error = signal('');
   readonly loading = signal(false);
   private timer: any = null;
-  private readonly API = 'https://api.kubotics.ch/api/v1/spend';
+  private readonly cfg = inject(DashboardConfigService);
+
+  /** Spend API follows the runtime mode (cloud | h2-local, plan §2.2). */
+  private get API(): string {
+    return `${this.cfg.apiBase()}/spend`;
+  }
 
   constructor(private readonly http: HttpClient) {}
 

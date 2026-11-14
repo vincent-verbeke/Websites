@@ -2,6 +2,7 @@ import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { AzureAuthService } from '../../core/services/azure-auth.service';
+import { DashboardConfigService } from '../../core/services/dashboard-config.service';
 
 // Legacy / Edge Feature Components
 import { ChatComponent } from './legacy/features/chat/chat.component';
@@ -145,7 +146,7 @@ interface TabItem {
       <!-- NAVIGATION TABS -->
       <nav class="dashboard-tabs" aria-label="Dashboard navigation">
         <div class="tabs-scroll">
-          @for (tab of tabs; track tab.id) {
+          @for (tab of visibleTabs(); track tab.id) {
             <button
               class="tab-btn"
               [class.active]="activeTab() === tab.id"
@@ -185,7 +186,8 @@ interface TabItem {
           <!-- 1. OVERVIEW / CLOUD ORCHESTRATION -->
           @if (activeTab() === 'overview') {
             <div class="overview-view">
-              <!-- KPI SECTION (CLICKABLE CARDS) -->
+              <!-- KPI SECTION (CLICKABLE CARDS) — cloud only (h2-local = local status) -->
+              @if (!cfg.isLocal()) {
               <section class="kpi-grid">
                 <div class="kpi-card interactive" [class.selected]="selectedView() === 'spend'" (click)="toggleView('spend')">
                   <div class="kpi-header-row">
@@ -232,15 +234,16 @@ interface TabItem {
                   <div class="kpi-sub">Requires triage</div>
                 </div>
               </section>
+              }
 
               <!-- DRILL-DOWN PANEL: GTM LEADS -->
-              @if (selectedView() === 'spend') {
+              @if (!cfg.isLocal() && selectedView() === 'spend') {
                 <div class="detail-panel">
                   <app-spend-control></app-spend-control>
                 </div>
               }
 
-              @if (selectedView() === 'leads') {
+              @if (!cfg.isLocal() && selectedView() === 'leads') {
                 <section class="drilldown-section">
                   <div class="section-header">
                     <div>
@@ -296,7 +299,7 @@ interface TabItem {
               }
 
               <!-- DRILL-DOWN PANEL: CONVERSATIONS -->
-              @if (selectedView() === 'conversations') {
+              @if (!cfg.isLocal() && selectedView() === 'conversations') {
                 <section class="drilldown-section">
                   <div class="section-header">
                     <div>
@@ -403,7 +406,8 @@ interface TabItem {
                 </div>
               </section>
 
-              <!-- NEEDLE TASK PIPELINE MONITOR -->
+              <!-- NEEDLE TASK PIPELINE MONITOR — cloud only -->
+              @if (!cfg.isLocal()) {
               <section class="tasks-section">
                 <div class="section-header">
                   <h3>Needle Task Scheduler & Work Queue</h3>
@@ -448,6 +452,7 @@ interface TabItem {
                   </table>
                 </div>
               </section>
+              }
             </div>
           }
 
@@ -995,9 +1000,9 @@ interface TabItem {
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   auth = inject(AzureAuthService);
+  readonly cfg = inject(DashboardConfigService);
   private http = inject(HttpClient);
 
-  private readonly API_BASE = 'https://api.kubotics.ch/api/v1';
   private pollInterval: any = null;
 
   activeTab = signal<TabId>('overview');
@@ -1022,6 +1027,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     { id: 'software', label: 'Software Updates', icon: 'system_update' },
   ];
 
+  /** Rendered tab list — filtered by the runtime mode (cloud = all 16,
+   * h2-local = the 14 local tabs; see DashboardConfigService). */
+  visibleTabs = signal<TabItem[]>(this.tabs);
+
   kpis = signal<DashboardKPIs | null>(null);
   summaryStale = signal<boolean>(false);
   summaryTime = signal<string>('');
@@ -1034,6 +1043,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   tasks = signal<any[]>([]);
 
   ngOnInit() {
+    // Runtime mode (cloud | h2-local) — fail-soft: a missing mode file keeps
+    // today's cloud behavior untouched (H2_LIGHT_DASHBOARD_PLAN §2).
+    this.cfg.load().subscribe(() => this.applyModeConfig());
     this.loadAllData();
     // Poll every 10 seconds for live operations
     this.pollInterval = setInterval(() => {
@@ -1043,11 +1055,28 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }, 10000);
   }
 
+  private applyModeConfig() {
+    const allowed = this.cfg.allowedTabIds();
+    this.visibleTabs.set(this.tabs.filter((t) => allowed.includes(t.id)));
+    if (!allowed.includes(this.activeTab())) {
+      // deep-link/legacy state pointing at a tab this mode does not show
+      this.activeTab.set(((allowed[0] as TabId) ?? 'overview'));
+      this.selectedView.set('none');
+    }
+  }
+
   ngOnDestroy() {
     if (this.pollInterval) clearInterval(this.pollInterval);
   }
 
   setTab(tabId: TabId) {
+    // Mode allowlist: h2-local can never open investments/sessions even if
+    // something calls setTab directly (defence in depth, plan §2.3).
+    if (!this.cfg.allowedTabIds().includes(tabId)) {
+      this.activeTab.set('overview');
+      this.selectedView.set('none');
+      return;
+    }
     this.activeTab.set(tabId);
     if (tabId === 'overview') {
       this.loadAllData();
@@ -1079,7 +1108,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private fetchSummary() {
-    this.http.get<any>(`${this.API_BASE}/dashboard/summary`).subscribe({
+    this.http.get<any>(`${this.cfg.apiBase()}/dashboard/summary`).subscribe({
       next: (res) => {
         this.kpis.set(res.kpis);
         this.summaryStale.set(res.is_stale);
@@ -1090,7 +1119,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   fetchLeads() {
-    this.http.get<{ leads: LeadItem[] }>(`${this.API_BASE}/dashboard/leads`).subscribe({
+    this.http.get<{ leads: LeadItem[] }>(`${this.cfg.apiBase()}/dashboard/leads`).subscribe({
       next: (res) => this.leads.set(res.leads || []),
       error: () => this.leads.set([])
     });
@@ -1098,7 +1127,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   deleteLead(leadId: string) {
     if (!confirm('Are you sure you want to delete this lead?')) return;
-    this.http.delete(`${this.API_BASE}/dashboard/leads/${leadId}`).subscribe({
+    this.http.delete(`${this.cfg.apiBase()}/dashboard/leads/${leadId}`).subscribe({
       next: () => {
         this.fetchLeads();
         this.fetchSummary();
@@ -1108,7 +1137,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   fetchConversations() {
-    this.http.get<{ conversations: ConversationItem[] }>(`${this.API_BASE}/dashboard/conversations`).subscribe({
+    this.http.get<{ conversations: ConversationItem[] }>(`${this.cfg.apiBase()}/dashboard/conversations`).subscribe({
       next: (res) => this.conversations.set(res.conversations || []),
       error: () => this.conversations.set([])
     });
@@ -1116,7 +1145,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   deleteConversation(conversationId: string) {
     if (!confirm('Are you sure you want to delete this conversation?')) return;
-    this.http.delete(`${this.API_BASE}/dashboard/conversations/${conversationId}`).subscribe({
+    this.http.delete(`${this.cfg.apiBase()}/dashboard/conversations/${conversationId}`).subscribe({
       next: () => {
         this.fetchConversations();
         this.fetchSummary();
@@ -1126,14 +1155,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private fetchDeviceTelemetry(dataset: string, targetSignal: any) {
-    this.http.get<DeviceState>(`${this.API_BASE}/dashboard/device/${dataset}`).subscribe({
+    this.http.get<DeviceState>(`${this.cfg.apiBase()}/dashboard/device/${dataset}`).subscribe({
       next: (res) => targetSignal.set(res),
       error: () => targetSignal.set({ dataset, source: 'network', is_stale: true, is_offline: true })
     });
   }
 
   private fetchTasks() {
-    this.http.get<{ tasks: any[] }>(`${this.API_BASE}/dashboard/tasks?limit=15`).subscribe({
+    this.http.get<{ tasks: any[] }>(`${this.cfg.apiBase()}/dashboard/tasks?limit=15`).subscribe({
       next: (res) => this.tasks.set(res.tasks || []),
       error: () => this.tasks.set([])
     });

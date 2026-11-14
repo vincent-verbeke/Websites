@@ -1,5 +1,15 @@
 # Light H2 dashboard — implementation plan (2026-11-14)
 
+> **STATUS 2026-11-14: IMPLEMENTED (code landed, default = cloud = zero
+> behavior change).** Shipped with this batch: `DashboardConfigService`
+> (`src/app/core/services/dashboard-config.service.ts`), mode file
+> `public/dashboard-mode.json` (served at `/dashboard-mode.json`, currently
+> `{"mode":"cloud"}`), tab allowlist + `setTab` allowlist guard + cloud-view
+> gating in `dashboard.ts`, `spend-control` API base through the config,
+> 4 unit tests (`dashboard-config.service.spec.ts`). Verified: `ng build`
+> green, `npm test` 41/41 green. Remaining = the robot-side cutover in §5
+> (needs the H2 powered on) and Vincent's decisions in §6.
+
 Scope per Vincent: *"a light version of the dashboard that we can implement
 on the H2 (auth remains the same), it is about a local integration, we don't
 need the investments part etc, but only the local features such as controls so
@@ -45,31 +55,37 @@ pattern the light build should follow.
 
 **Runtime mode file, not a fork** — one code path, no double maintenance:
 
-1. Add `assets/dashboard-mode.json`:
+1. **Shipped:** `public/dashboard-mode.json`, served at the host ROOT as
+   `/dashboard-mode.json`:
    ```json
    { "mode": "cloud", "apiBase": "https://api.kubotics.ch/api/v1" }
    ```
-   The H2 copy ships `{"mode": "h2-local", "apiBase": "http://localhost:8001/api/v1"}` (edge/robot web host — confirm the exact local port when the
-   H2 is up; `h2-web-host.service` + `edge_app` port 8001 are the candidates).
-2. Introduce an injectable `DashboardConfig` service (providedIn root) that
-   fetches the JSON once at bootstrap and exposes `mode()`, `apiBase()`,
-   `isLocal()` signals. Replace every hardcoded `API_BASE` with it
-   (`dashboard.ts`, `spend-control.component.ts`, legacy `core/api.ts`).
-3. **Tab allowlist per mode** (single source, in that service):
+   The H2 copy ships `{"mode":"h2-local","apiBase":"http://localhost:<port>/api/v1"}`
+   (edge/robot web host — confirm the exact local port when the H2 is up;
+   `h2-web-host.service` + `edge_app` port 8001 are the candidates). Missing/
+   unreadable file = cloud defaults (fail-soft, tested).
+2. **Shipped:** injectable `DashboardConfigService` (signals `mode()`,
+   `apiBase()`, `isLocal()`, `allowedTabIds()`), fetched once per load.
+   `dashboard.ts` and `spend-control.component.ts` read `apiBase()` instead
+   of the hardcoded URL (legacy `legacy/core/api.ts` was already **relative
+   `/api/...`** — correct for the robot, untouched).
+3. **Shipped:** tab allowlist per mode (single source, in the service):
    ```ts
-   CLOUD_TABS = all 16
-   H2_TABS    = ['twin','services','system','management','lidar','motion',
-                 'vision','voice','chat','ha','training','ollama','software']
+   CLOUD_TAB_IDS   = all 16
+   H2_LOCAL_TAB_IDS = ['overview','twin','services','system','management',
+                       'lidar','motion','vision','voice','chat','ha',
+                       'training','ollama','software']   // 14 — drops
+   // investments + sessions (both cloud-only)
    ```
-   Tabs are rendered from `tabs.filter(t => allowed().includes(t.id))`;
-   unknown tab ids in the URL redirect to the first allowed tab (so a stale
-   `/dashboard?tab=investments` link on the H2 cannot show an empty shell).
-4. `overview` on H2 mode: either hide it, or (preferred, small change) render
-   a **local status overview** = device online/offline, thermals headline,
-   active services — reusing the existing `robot_h2_state` telemetry fetch
-   instead of the cloud KPI/leads/spend signals.
+   Tabs render from `visibleTabs()`; `setTab()` re-checks the allowlist
+   (defence in depth) and a disallowed active tab redirects to `overview`
+   with the drill-down views reset.
+4. **Shipped:** `overview` in h2-local mode = local status page — the cloud
+   blocks (KPI cards, spend/leads/conversations drill-downs, Needle task
+   queue) are gated by `@if (!cfg.isLocal())`; the device telemetry strip
+   stays.
 5. Views `selectedView ∈ {'leads','conversations','spend'}` are cloud-only:
-   never settable in H2 mode (`spend-control` behind `!isLocal()`).
+   never settable in h2-local (template gate + `setTab` guard).
 
 Why runtime mode instead of a second Angular build config: the robot and the
 cloud run the same `main-*.js`; a `h2Local` `fileReplacements` build would
@@ -97,12 +113,12 @@ Operational notes to verify when the H2 is on:
 
 | # | Task | Files | Size |
 |---|---|---|---|
-| 1 | `DashboardConfig` service + `assets/dashboard-mode.json` (default cloud) | new `core/services/dashboard-config.ts`, `src/assets/` | S |
-| 2 | Replace hardcoded `API_BASE` (dashboard, spend-control, legacy api) | 3 files | S |
-| 3 | Tab allowlist filter + deep-link guard | `dashboard.ts` (~40 lines) | S |
-| 4 | Local overview variant (drop leads/conversations/spend views when `isLocal()`) | `dashboard.ts` template + `spend-control` gate | M |
-| 5 | Config docs: how to drop the H2 file in place + port confirmation | `H2_LIGHT_DASHBOARD_PLAN.md` §5 | S |
-| 6 | Tests: mode file parse, tab filter, guard for unknown tab, `npm run build` green | new spec + CI | S |
+| 1 | `DashboardConfig` service + `public/dashboard-mode.json` (default cloud) | new `core/services/dashboard-config.service.ts`, `public/` | ✅ done |
+| 2 | Replace hardcoded `API_BASE` (dashboard, spend-control; legacy was relative already) | 2 files | ✅ done |
+| 3 | Tab allowlist filter + `setTab` guard | `dashboard.ts` | ✅ done |
+| 4 | Local overview variant (cloud blocks gated by `!isLocal()`) | `dashboard.ts` template | ✅ done |
+| 5 | Config docs + cutover steps | this file | ✅ done |
+| 6 | Tests: 404 fallback, h2 tab filter, trailing-slash trim, idempotent load | `dashboard-config.service.spec.ts` | ✅ done (41/41 suite green) |
 
 Total: ~half a day, all verifiable **without the robot** (mode.json swapped
 locally + `ng serve`). Robot-side validation when the H2 is on: sign-in round
