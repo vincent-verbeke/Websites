@@ -593,6 +593,8 @@ def test_dry_run_creates_nothing_saves_nothing_sends_nothing(env):
     assert env.db.snapshots[ip.STATE_DATASET].payload == before, \
         "dry run must never save state"
     assert any("dry-run — NOT saved" in n for n in res["notes"])
+    # state_after is the FULL would-be state (stamps computed, row not written)
+    assert res["state_after"]["_meta"]["gate_checked"] == FROZEN_STAMP
     # ...but it still reports the would-be create
     assert res["instructions"][0]["status"] == "dry_run"
     assert "would create: BUY 8.57 @ 100 CHF" in res["instructions"][0]["detail"]
@@ -658,6 +660,82 @@ def _empty_state_row():
     from app.models.tasks import DeviceSnapshotCache
     return DeviceSnapshotCache(dataset=ip.STATE_DATASET, source="test",
                                payload={}, updated_at=datetime.now(UTC))
+
+
+# --------------------------------------------------------------------------- #
+# State mirror — dashboard ibkr_investments feed row (dev state_push parity)   #
+# --------------------------------------------------------------------------- #
+def _seed_feed(env, payload: dict) -> None:
+    from app.models.tasks import DeviceSnapshotCache
+    env.db.add(DeviceSnapshotCache(dataset=ib.DATASET, source="backend-ibkr-mcp",
+                                   payload=copy.deepcopy(payload),
+                                   updated_at=datetime.now(UTC)))
+    run(env.db.commit())
+
+
+def test_mirror_preserves_feed_keys_replaces_only_state_and_ts(env):
+    seed(env, base_state(VAGX={"status": "wait", "invested_chf": 0.0}))
+    _seed_feed(env, {"cash_chf": 1234.5, "equity_chf": 9999.0,
+                     "positions": [{"symbol": "IWDC", "position": 18.46}],
+                     "orders_active": [{"id": 7}],
+                     "mcp": {"ok": True, "ts": "2026-11-14T10:00:00Z"},
+                     "auth": {"authenticated": True},
+                     "source": "backend-ibkr-mcp",
+                     "ts": "2026-11-14T10:00:00Z",
+                     "state": {"stale": "old-doc"}})
+
+    run(ip.run_daily_plan(dry_run=False, send_whatsapp=False))
+
+    row = env.db.snapshots[ib.DATASET]
+    p = row.payload
+    # every non-state key survives untouched (GET-merge-POST parity)
+    assert p["cash_chf"] == 1234.5 and p["equity_chf"] == 9999.0
+    assert p["positions"] == [{"symbol": "IWDC", "position": 18.46}]
+    assert p["orders_active"] == [{"id": 7}]
+    assert p["mcp"] == {"ok": True, "ts": "2026-11-14T10:00:00Z"}
+    assert p["auth"] == {"authenticated": True}
+    assert p["source"] == "backend-ibkr-mcp"
+    assert row.source == "backend-ibkr-mcp", "source COLUMN untouched too"
+    # only state + ts replaced
+    assert p["state"] == env.db.snapshots[ip.STATE_DATASET].payload, \
+        "feed state block = the freshly saved plan state doc"
+    assert p["ts"] != "2026-11-14T10:00:00Z" and p["ts"].endswith("Z")
+
+
+def test_mirror_creates_feed_row_when_absent(env):
+    seed(env, base_state(VAGX={"status": "wait", "invested_chf": 0.0}))
+    run(ip.run_daily_plan(dry_run=False, send_whatsapp=False))
+    row = env.db.snapshots[ib.DATASET]
+    assert set(row.payload) == {"state", "ts"}
+    assert row.payload["state"] == env.db.snapshots[ip.STATE_DATASET].payload
+    assert row.source == ip.SOURCE
+
+
+def test_dry_run_never_mirrors(env):
+    _seed_feed(env, {"cash_chf": 42.0, "ts": "2026-11-14T10:00:00Z",
+                     "state": {"stale": 1}})
+    seed(env, base_state(VAGX={"status": "wait", "invested_chf": 0.0}))
+    before = copy.deepcopy(env.db.snapshots[ib.DATASET].payload)
+    res = run(ip.run_daily_plan(dry_run=True, send_whatsapp=False))
+    assert env.db.snapshots[ib.DATASET].payload == before
+    assert not any("mirror" in n for n in res["notes"]), \
+        "dry run must not even attempt the mirror"
+
+
+def test_mirror_failure_is_fail_soft(env, monkeypatch):
+    seed(env, base_state(VAGX={"status": "wait", "invested_chf": 0.0}))
+
+    async def boom(_db):
+        raise RuntimeError("feed row read failed")
+
+    monkeypatch.setattr(ib, "_load_snapshot", boom)
+    res = run(ip.run_daily_plan(dry_run=False, send_whatsapp=False))
+    assert any("state mirror failed" in n for n in res["notes"])
+    # primary state row saved, run completed, instruction created
+    assert env.db.snapshots[ip.STATE_DATASET].payload["_meta"]["gate_checked"] \
+        == FROZEN_STAMP
+    assert res["state_after"]["VAGX"]["status"] == "ordered"
+    assert len(env.mcp.creates) == 1
 
 
 # --------------------------------------------------------------------------- #

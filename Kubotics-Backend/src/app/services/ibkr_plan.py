@@ -496,6 +496,41 @@ async def save_marker(db, marker: dict) -> datetime:
     return await _upsert(db, MARKER_DATASET, marker)
 
 
+async def mirror_state_to_feed(db, state: dict) -> bool:
+    """Carry the state doc to the dashboard's feed row (dev state_push parity).
+
+    GET-merge-POST semantics of
+    ``ros2_reusable_stack/scripts/ibkr/state_push.py``: read the
+    ``ibkr_investments`` row through the Phase-1 poller's own seam
+    (``ibkr_mcp._load_snapshot`` / ``ibkr_mcp.DATASET`` — same dataset, so
+    the two writers stay convergent), overlay ONLY ``state`` + ``ts``
+    (UTC ``%Y-%m-%dT%H:%M:%SZ``, the dev pusher's format) and keep every
+    other key — cash/positions/orders/instructions/mcp/auth/source —
+    untouched; the row's ``source`` column is also left as-is on update.
+
+    Fail-soft by the state_push contract: returns False and logs — NEVER
+    raises, NEVER fails the run (the primary state row is already saved).
+    """
+    try:
+        row = await ibkr_mcp._load_snapshot(db)
+        now = datetime.now(UTC)
+        payload = (dict(row.payload)
+                   if row is not None and isinstance(row.payload, dict) else {})
+        payload["state"] = copy.deepcopy(state)
+        payload["ts"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if row is None:
+            db.add(DeviceSnapshotCache(dataset=ibkr_mcp.DATASET, source=SOURCE,
+                                       payload=payload, updated_at=now))
+        else:
+            row.payload = payload
+            row.updated_at = now
+        await db.commit()
+        return True
+    except Exception as e:  # noqa: BLE001 — mirror must never fail the run
+        logger.warning("[ibkr-plan] state mirror failed (%s)", type(e).__name__)
+        return False
+
+
 # --- WhatsApp (daily_invest's exact wording, one message per run) -----------
 def build_whatsapp_text(instr_msgs: list, fill_msgs: list, skipped: list) -> str:
     """daily's two wa_send payloads composed into ONE message (the scheduler
@@ -795,19 +830,27 @@ async def _run(*, dry_run: bool, send_whatsapp: bool) -> tuple[dict, bool]:
         elif not any(n.startswith("whatsapp send failed") for n in notes):
             notes.append("whatsapp send failed")
 
-    # --- 7) persist (daily's exact save semantics; never in dry_run) --------
+    # --- 7) save semantics (daily's persist block) ---------------------------
+    # Stamps + recompute run in BOTH modes so state_after is always the state
+    # a real run would persist; only the ROW WRITE is gated on dry_run.
+    state.setdefault("_meta", {})["gate_checked"] = stamp
+    # invested TOTAL recomputed from the sleeves every persist (daily's
+    # drift fix: the dashboard reads _meta.invested_chf directly).
+    state["_meta"]["invested_chf"] = round(
+        sum(float(v.get("invested_chf") or 0)
+            for k, v in state.items()
+            if isinstance(v, dict) and k != "_meta"), 2)
+    if stale:
+        state["_meta"]["gate_stale"] = ",".join(stale)
     if not dry_run:
-        state.setdefault("_meta", {})["gate_checked"] = stamp
-        # invested TOTAL recomputed from the sleeves every persist (daily's
-        # drift fix: the dashboard reads _meta.invested_chf directly).
-        state["_meta"]["invested_chf"] = round(
-            sum(float(v.get("invested_chf") or 0)
-                for k, v in state.items()
-                if isinstance(v, dict) and k != "_meta"), 2)
-        if stale:
-            state["_meta"]["gate_stale"] = ",".join(stale)
         async with AsyncSessionLocal() as db:
             await save_state(db, state)
+            # dashboard carrier (dev state_push parity): the Investments tab
+            # reads state/ts from the ibkr_investments feed row — mirror it
+            # while the dev-PC pusher is retired. Fail-soft: never fails the run.
+            if not await mirror_state_to_feed(db, state):
+                notes.append("state mirror failed (ibkr_investments feed row) — "
+                             "dashboard state may lag this run")
         notes.append(f"[state] updated (gate_checked {stamp})")
     else:
         notes.append("[state] dry-run — NOT saved")

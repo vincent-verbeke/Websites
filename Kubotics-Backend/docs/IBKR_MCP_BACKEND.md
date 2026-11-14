@@ -515,7 +515,17 @@ caller — `assert_allowed_tool` runs before any create call and `call_tool`
 re-asserts (NEVER submit/cancel/modify); state saved only when not dry-run
 (`gate_checked`/`last_order_push`/`last_fill_push` = Europe/Zurich
 `%Y-%m-%d %H:%M`, `invested_chf` recomputed from the sleeves, `gate_stale`
-joined); WhatsApp only when requested and never in dry-run.
+joined); **after every successful save the state doc is mirrored into the
+dashboard's `ibkr_investments` feed row** (`mirror_state_to_feed`) with the
+GET-merge-POST semantics of the dev `state_push`: only `state` + `ts` (UTC
+`%Y-%m-%dT%H:%M:%SZ`) are overlaid, every other key (cash/positions/orders/
+instructions/mcp/auth/source) and the `source` column stay untouched so the
+Phase-1 poller and this writer remain convergent — reuse of
+`ibkr_mcp._load_snapshot`/`ibkr_mcp.DATASET`; the mirror is fail-soft (on
+failure: one `state mirror failed` note + a WARN log, the run still
+succeeds) and NEVER runs in dry-run. This keeps the Investments tab's
+sleeves/gates live once the dev-PC pusher is retired; WhatsApp only when
+requested and never in dry-run.
 
 **Scheduler (`plan_loop`):** Europe/Zurich, Mon–Fri, first attempt 09:05,
 deadline 16:30 (a late wake inside the window still runs), 60 s tick.
