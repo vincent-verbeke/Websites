@@ -14,6 +14,10 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/invoice-processing/invoice-processing').then(m => m.InvoiceProcessingPageComponent)
   },
   {
+    path: 'automation/it-business-process-automation',
+    loadComponent: () => import('./pages/it-business-process-automation/it-business-process-automation').then(m => m.ItBusinessProcessAutomationPageComponent)
+  },
+  {
     path: 'marketing/ai-marketing-sales',
     loadComponent: () => import('./pages/ai-marketing/ai-marketing').then(m => m.AiMarketingLandingPageComponent)
   },
