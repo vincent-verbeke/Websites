@@ -91,7 +91,8 @@ phone/browser                     backend (api.kubotics.ch)              IBKR
   Vincent to run `/auth/start` again and be quick (same advice as the dev-PC
   `ibkr_mcp_reauth.py`).
 * `GET /api/v1/ibkr/auth/status` (public, no secrets): `{configured,
-  authorized, fresh, last_refresh_at, redirect_uri}`.
+  redirect_configured, authorized, fresh, last_refresh_at, redirect_uri}` —
+  `configured` = feed gate, `redirect_configured` = auth gate (§10).
 
 ### OAuth parameters (ported 1:1 from the reference scripts)
 
@@ -117,8 +118,8 @@ or the deploy workflow's env injection — repo is private):
 
 | Variable | Required to go live | Default | Meaning |
 |---|---|---|---|
-| `IBKR_MCP_ENABLED` | yes | `false` | Master switch. `false` ⇒ no poller, all mutating endpoints 503. |
-| `IBKR_MCP_REDIRECT_URI` | yes | `""` (empty) | Public callback, e.g. `https://api.kubotics.ch/api/v1/ibkr/auth/callback`. Empty ⇒ treated as not configured (inert). **Must be registered at IBKR for the client id below.** |
+| `IBKR_MCP_ENABLED` | yes | `false` | Master switch **and the feed gate** (§10): `false` ⇒ no poller, all control/instruction endpoints 503. `true` alone is enough for the feed + instruction endpoints — **no redirect URI required for the feed** (§10). |
+| `IBKR_MCP_REDIRECT_URI` | only for online re-auth | `""` (empty) | Public callback, e.g. `https://api.kubotics.ch/api/v1/ibkr/auth/callback`. Required by `/auth/start`, `/auth/callback` and DCR only (the auth gate, §10). Empty ⇒ those endpoints answer 503 "not configured" while the feed keeps running. **Must be registered at IBKR for the client id below.** |
 | `IBKR_MCP_CLIENT_ID` | no | `ba3ab3ee-3468-442b-8183-113e7d777dae` | OAuth public client. |
 | `IBKR_MCP_SCOPE` | no | proven scope string (see §2) | Do not change without re-testing consent. |
 | `IBKR_MCP_POLL_INTERVAL_S` | no | `60` | Seconds between read-only bursts. |
@@ -139,10 +140,14 @@ the authorize request with `invalid_redirect_uri` and re-auth cannot complete.
 
 ## 4. Background poller
 
-* Started in the `main.py` lifespan **only** when `is_configured()`
-  (`IBKR_MCP_ENABLED` **and** `IBKR_MCP_REDIRECT_URI` set) —
+* Started in the `main.py` lifespan **only** when `feed_enabled()`
+  (`IBKR_MCP_ENABLED` — the redirect URI is NOT required since Phase C, §10) —
   `services/ibkr_mcp.py::maybe_start_poller()` returns `None` otherwise, so
   with defaults nothing registers and nothing polls.
+* **No-token robustness (§10):** enabled but no token row (or no refresh
+  token) in the DB ⇒ the cycle is skipped quietly — one INFO line per cycle,
+  no exception, no log spam, never touches the network. Enabling the flag
+  before importing tokens is harmless.
 * Loop shape identical to `trading_watch.watch_loop()`: 5 s boot delay, then
   every `IBKR_MCP_POLL_INTERVAL_S`:
   1. burst due? (at most one per 60 s, feed parity),
@@ -202,13 +207,19 @@ last. The dev-PC `ibkr-push.timer` keeps working untouched.
 1. **Single refresher.** Only `services/ibkr_mcp.py::refresh()` may hit the
    refresh grant, always serialized + re-reading after the lock + freshness
    reuse (§1). Never add a second refresh path.
-2. **Read-only tools only.** `READ_ONLY_TOOLS` is an explicit allowlist
-   (`get_account_summary`, `get_account_balances`, `get_account_positions`,
-   `get_account_orders`, `get_order_instructions`). Any other name — in
-   particular anything order-creating (`place_*`, `submit_*`, `cancel_*`,
-   `create_*`, `delete_*`, `transfer_*`, `buy`/`sell`, …) — is rejected by
-   `assert_read_tool()` **before any network call** (C3: no order path exists
-   in this backend module).
+2. **Read-only tools + the instruction trio only.** Every MCP tool call runs
+   `assert_allowed_tool()` (Phase C, §10): (a) `INSTRUCTION_TOOLS`
+   (`create_order_instruction`, `delete_order_instruction`,
+   `get_order_instructions` — create/delete REQUIRE
+   `flow_type=REVIEW_AND_APPROVE` at the call site), then (b)
+   `READ_ONLY_TOOLS` (`get_account_summary`, `get_account_balances`,
+   `get_account_positions`, `get_account_orders`, `get_order_instructions`,
+   `get_price_snapshot`). Anything else — `submit_*`, `cancel_*`, `modify_*`,
+   `place_*`, `preview_order`, `answer_order_question`, `get_order_rules`,
+   `get_order_status` (AUTONOMOUS-restricted), unknown names — is rejected
+   **before any network call** (C3: no live-order path exists in this backend
+   module). `assert_read_tool()` keeps its original strict read-only semantics
+   for the pure-read paths (feed/burst callers).
 3. **No token logging.** Statuses, counts and HTTP codes only. Tests assert
    that token values never appear in HTTP responses.
 4. **Default off.** `IBKR_MCP_ENABLED=false` ⇒ no poller task, no state rows,
@@ -250,11 +261,13 @@ registration endpoint.
 
 | Method | Path | Auth | Disallowed/notes |
 |---|---|---|---|
-| GET | `/api/v1/ibkr/auth/status` | public | always 200; `configured:false` when off |
-| POST | `/api/v1/ibkr/auth/start` | admin | 503 when not configured |
+| GET | `/api/v1/ibkr/auth/status` | public | always 200; `configured:false` when off; `redirect_configured` added by Phase C (§10) |
+| POST | `/api/v1/ibkr/auth/start` | admin | 503 when **auth gate** not ready (enabled + redirect URI) |
 | GET | `/api/v1/ibkr/auth/callback` | public | 503 off, 400 bad/expired/used state, 502 exchange failure, 200 HTML "Connected" |
-| POST | `/api/v1/ibkr/mcp/refresh` | admin | 503 off, 502 refresh failure; status only |
+| POST | `/api/v1/ibkr/mcp/refresh` | admin | 503 when **feed gate** off (enabled only, §10), 502 refresh failure; status only |
 | POST | `/api/v1/ibkr/auth/register` | admin | 503 always unless `IBKR_MCP_DCR_ENABLED=true` |
+| POST/GET/DELETE | `/api/v1/ibkr/instructions[/{id}]` | admin | Phase C (§10) — staged REVIEW_AND_APPROVE instructions |
+| POST | `/api/v1/ibkr/mcp/call` | admin | Phase C (§10) — allowlisted generic READ proxy |
 
 Admin = `Authorization: Bearer <NEEDLE_TOKEN or API_SECRET_KEY>` or
 `X-Needle-Token: <same>`.
@@ -281,4 +294,179 @@ Admin = `Authorization: Bearer <NEEDLE_TOKEN or API_SECRET_KEY>` or
   `None`), admin 401s, start→authorize_url, callback happy path (form fields,
   persisted tokens, no token material in the response), bad state, TTL, single
   use, exchange failure 502, refresh status-only, DCR disabled
+* Phase C (§10): config split (feed without redirect → poller allowed +
+  `/auth/start` 503, `redirect_configured` field), poller skip-when-no-token
+  (one INFO line, burst never called), instruction create happy path +
+  dedupe skip (pending + within-batch, terminal rows don't skip) + batch cap
+  422 + validation 422s + AUTONOMOUS 422, delete happy/not-found-404/502,
+  `mcp/call` read allowed (incl. `get_price_snapshot`) + write names rejected
+  400 with **zero** MCP layer invocations, `import_tokens` row parity,
+  admin 401s, disabled 503s, no token material in any Phase C response
 * no test makes a network call; no test touches a real database
+
+---
+
+## 10. Phase C — cloud-owned MCP flow (2026-11-14)
+
+Vincent 2026-11-14: *"ONLY C and ASAP … Cloud needs to run without the dev pc,
+else we have much too much dependency on the dev pc."* Phase C makes the
+backend the **single MCP holder** for the ENTIRE flow: reads (the feed) **and**
+order processing (staged review instructions). Deliberately out of scope here:
+moving the planner itself off the dev PC (a later brief, Phase 2).
+
+All new code keeps the hard rules of §6: default-off, admin-gated, no token
+values logged or returned, no live-order tool ever reachable, no network in
+tests.
+
+### 10.1 Feed gate split (callback no longer required for the feed)
+
+| Gate | Definition | Gates |
+|---|---|---|
+| **feed** | `feed_enabled()` = `IBKR_MCP_ENABLED` | `maybe_start_poller()`, `POST /mcp/refresh`, `POST|GET|DELETE /instructions`, `POST /mcp/call` |
+| **auth** | `auth_ready()` = `IBKR_MCP_ENABLED` **and** `IBKR_MCP_REDIRECT_URI` | `POST /auth/start`, `GET /auth/callback`, `POST /auth/register` |
+
+* `IBKR_MCP_ENABLED=true` with **NO redirect URI** is now a first-class
+  deployment: the feed polls, the instruction endpoints work, and tokens can
+  be imported by script (§10.5). The auth endpoints keep their exact 503
+  HTML/JSON shapes ("not configured").
+* `GET /auth/status`: `configured` now reports the **feed** gate; the new
+  `redirect_configured` field reports the auth gate; `authorized` / `fresh` /
+  `last_refresh_at` / `redirect_uri` are unchanged.
+* **Poller robustness:** feed enabled but no token row (or no refresh token)
+  in the DB ⇒ the cycle is skipped quietly — at most one INFO line per cycle
+  (no secrets), never raises, never spams, never touches the network.
+  Enabling before importing tokens is harmless.
+
+### 10.2 Instruction endpoints (REVIEW_AND_APPROVE only)
+
+All admin-gated (`Bearer` / `X-Needle-Token`), all feed-gated (503 "feed not
+enabled" when `IBKR_MCP_ENABLED` is off), all 502 when the MCP call layer
+(refresh/initialize) fails.
+
+**`POST /api/v1/ibkr/instructions`** — stage a batch of order instructions
+(never submits anything):
+
+```json
+{
+  "instructions": [
+    {"side": "BUY", "quantity": 2.5, "conid": 265598,
+     "limit_price": 450.5, "tif": "DAY", "exchange": "SMART",
+     "currency": "USD", "flow_type": "REVIEW_AND_APPROVE"}
+  ],
+  "dedupe": true,
+  "source": "daily_invest"
+}
+```
+
+* Entry fields: `side` (`BUY`/`SELL`, required), `quantity` (>0, required),
+  `conid` (>0) **or** non-empty `symbol`, `limit_price` (>0, optional),
+  `tif` (default `"DAY"`), `exchange`, `currency` (optional), `flow_type`
+  (optional — anything other than `REVIEW_AND_APPROVE` ⇒ **422**, AUTONOMOUS
+  can never pass).
+* **1–20 entries per call** (422 beyond); any validation failure ⇒ 422 before
+  the MCP layer is touched.
+* MCP args use the proven `daily_invest.py` shape:
+  `{"contract_id_ex": "<conid as string>", "side", "quantity",
+  "time_in_force", "flow_type": "REVIEW_AND_APPROVE" (ALWAYS forced),
+  "order_type": "LIMIT" + "limit_price" only when priced, "symbol" when the
+  entry was given a ticker}`.
+* `dedupe: true` (default) first reads `get_order_instructions` and skips an
+  entry whose `(conid-or-symbol, side)` already has a **non-terminal pending**
+  instruction — the daily_invest skip semantics (statuses outside
+  filled/cancelled/canceled/deleted/rejected/inactive count as pending),
+  including duplicates within the same batch. A failed dedupe read aborts the
+  batch with 502 rather than risking duplicates.
+* Response: `200 {"results": [{"index": 0, "status": "created",
+  "instruction_id": "…"}, {"index": 1, "status": "skipped_duplicate",
+  "detail": "…"}, {"index": 2, "status": "error", "detail": "…"}]}` — per-entry
+  tool failures stay in-band (batch was processed ⇒ 200).
+* The handler asserts `assert_allowed_tool("create_order_instruction",
+  REVIEW_AND_APPROVE)` **before any network call**, and `call_tool` re-asserts
+  per call: `submit_order` / `cancel_order` / `modify_order` are unreachable.
+
+**`GET /api/v1/ibkr/instructions`** — admin, `200 {"instructions": […]} `: the
+pending (non-terminal) review queue, exactly the mapping the feed embeds as
+`instructions_pending`.
+
+**`DELETE /api/v1/ibkr/instructions/{instruction_id}`** — admin, calls
+`delete_order_instruction` with `{"instruction_id": …, "flow_type":
+"REVIEW_AND_APPROVE"}`; `404 {"detail": "instruction not found: …"}` when MCP
+reports not found (both the `isError`-text and result-dict shapes), 502 when
+the MCP call layer fails, 200 `{"ok": true, "instruction_id": …}` on success.
+
+### 10.3 `POST /api/v1/ibkr/mcp/call` — generic READ proxy
+
+Lets the dev-PC callers (`daily_invest`, `ibkr_watch_static` via
+`ibkr_mcp_feed._cloud_call_tools`, default route; `IBKR_MCP_LOCAL=1` remains
+the local escape hatch for tests/auth emergencies) read through the cloud
+instead of holding their own tokens.
+
+```json
+{"name": "get_price_snapshot",
+ "args": {"contract_id": 265598, "market_data_names": ["last", "bid_ask"]}}
+```
+
+* `200 {"name": "<tool>", "result": <parsed MCP JSON>}`.
+* **Allowlist only** — the §10.4 resolution runs BEFORE any network call:
+  `READ_ONLY_TOOLS` (incl. `get_price_snapshot`) + `INSTRUCTION_TOOLS` pass;
+  `submit_order`, `cancel_order`, `modify_order`, `place_*`, `preview_order`,
+  `answer_order_question`, `get_order_rules`, `get_order_status` and unknown
+  names ⇒ **400 pre-network**.
+* **Money rules hold on this path:** for `create_order_instruction` (and
+  `delete_order_instruction`) a missing `flow_type` is **defaulted to
+  `REVIEW_AND_APPROVE`**; any other explicit flow (AUTONOMOUS) ⇒ **422**
+  pre-network. The proxy can never become a submit bypass.
+* 503 feed off, 502 MCP-layer failure (refresh/init), never any token in the
+  response.
+
+### 10.4 Allowlist resolution (`assert_allowed_tool`, every tool-call helper)
+
+1. **(a)** name in `INSTRUCTION_TOOLS` (`create_order_instruction`,
+   `delete_order_instruction`, `get_order_instructions`) → allowed;
+   create/delete additionally REQUIRE `flow_type=REVIEW_AND_APPROVE`
+   enforced at the call site (missing/other flow ⇒ `ValueError` pre-network),
+2. **(b)** name in `READ_ONLY_TOOLS` → allowed,
+3. **(c)** any `_ORDER_TOOL_HINTS` match (place/submit/cancel/replace/delete/
+   create/buy/sell/transfer/close/write) → rejected,
+4. **(d)** unknown → rejected.
+
+`get_order_rules` / `get_order_status` (flow-restricted AUTONOMOUS) fall
+through to (d) and stay rejected — not needed. `assert_read_tool()` itself is
+unchanged for existing pure-read callers (feed/burst).
+
+### 10.5 Token import (no new attack surface)
+
+`services/ibkr_mcp.py::import_tokens(access_token, refresh_token, expires_in,
+scope, token_type="Bearer") -> dict` upserts the singleton row **exactly like
+`save_tokens`** (atomic single commit; `expires_at = now + expires_in`;
+`last_refresh_at = now`; values never logged). Used by tests and by Vincent's
+import script — deliberately **NOT** exposed as an HTTP endpoint.
+
+### 10.6 Cutover order (the 2026-11-13 race rule)
+
+IBKR refresh tokens are single-use; the 2026-11-13 revocation happened when
+three processes refreshed the **same** token family concurrently. The import
+(§10.5) puts the SAME family into the backend DB, so from that moment **exactly
+one refresher may exist**: the backend's serialized `refresh()`. Therefore:
+
+1. **Deploy with `IBKR_MCP_ENABLED=false`** (default) → zero behavior change.
+2. **Locals OFF first:** stop every local process that could still refresh the
+   token file (`systemctl disable --now ibkr-push.timer`, stop `ibkr-watch`
+   bursts, keep `IBKR_MCP_LOCAL` unset so `ibkr_mcp_feed` routes to the cloud
+   proxy). No local helper may hold the imported family.
+3. **Import tokens** into `crm.ibkr_mcp_tokens` (§10.5) while the feed flag is
+   still off.
+4. **Then enable:** `IBKR_MCP_ENABLED=true` — **no redirect URI required for
+   the feed** — and restart. Watch the one-INFO-per-cycle skip disappear once
+   the row exists.
+5. **Verify:** `GET /auth/status` → `configured: true, authorized: true`;
+   `source: "backend-ibkr-mcp"` in `/api/v1/investments`;
+   `GET /api/v1/ibkr/instructions` returns the queue; a `POST /mcp/call` read
+   (e.g. `get_account_positions`) answers 200.
+6. **Re-auth path (later, optional):** set `IBKR_MCP_REDIRECT_URI` and use
+   `POST /auth/start` from any phone (§2) — only needed if the family ever
+   dies again.
+
+Rule of thumb: **locals OFF first, cloud enable second** — never both
+refreshing the same family (2026-11-13), and never a second backend refresher
+(§6.1).

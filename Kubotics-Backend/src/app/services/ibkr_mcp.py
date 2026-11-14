@@ -18,9 +18,12 @@ needs to be done online ... it is critical that this now works stable"):
     BURST_EVERY_S, cache the result, merge into the payload, never raise.
 
 Stability constraints (docs/IBKR_MCP_BACKEND.md — hard rules):
-  * READ-ONLY tools only: an explicit allowlist; any order-creating or write
-    tool name is rejected before any network call (C3: never orders, never
-    writes). The tools/call path CANNOT be pointed at a non-allowlisted tool.
+  * READ-ONLY tools + the staged-review instruction trio only: an explicit
+    allowlist resolved by assert_allowed_tool() (Phase C §10). create/delete
+    order instructions REQUIRE flow_type=REVIEW_AND_APPROVE at the call site;
+    every other order/write tool name (submit/cancel/modify/place/preview/…)
+    is rejected before any network call (C3: never live orders, never
+    AUTONOMOUS). The tools/call path CANNOT be pointed elsewhere.
   * Single serialized refresher + freshness reuse (no refresh-token races).
   * Token values are NEVER logged and NEVER returned by any endpoint.
   * ``merged()`` NEVER raises: on refresh/burst failure it falls back to the
@@ -64,7 +67,7 @@ STATE_TTL_S = 600  # pending phone re-auth (PKCE state) TTL, ~10 min, single use
 DATASET = "ibkr_investments"  # DeviceSnapshotCache row shared with the dev-PC pusher
 SOURCE = "backend-ibkr-mcp"
 
-# Hard allowlist: the ONLY tools this module may ever call (C3 read-only).
+# Hard allowlist: the ONLY tools this module may ever call for pure reads (C3).
 READ_ONLY_TOOLS = frozenset(
     {
         "get_account_summary",
@@ -72,8 +75,27 @@ READ_ONLY_TOOLS = frozenset(
         "get_account_positions",
         "get_account_orders",
         "get_order_instructions",
+        # dev-PC parity: daily_invest / ibkr_watch_static read live quotes
+        # through the cloud proxy (pure market-data read, no order semantics).
+        "get_price_snapshot",
     }
 )
+# Phase C (docs/IBKR_MCP_BACKEND.md §10): the staged-review instruction trio is
+# the ONLY non-read exception — REVIEW_AND_APPROVE order *instructions* staged
+# for Vincent to review & submit in IBKR. create/delete additionally REQUIRE
+# flow_type=REVIEW_AND_APPROVE at every call site (see assert_allowed_tool).
+INSTRUCTION_TOOLS = frozenset(
+    {
+        "create_order_instruction",
+        "delete_order_instruction",
+        "get_order_instructions",
+    }
+)
+# The two flow-restricted members: never callable without this exact flow.
+INSTRUCTION_WRITE_TOOLS = frozenset(
+    {"create_order_instruction", "delete_order_instruction"}
+)
+REVIEW_AND_APPROVE = "REVIEW_AND_APPROVE"
 # Defense in depth: reject order/write-looking names even before the allowlist.
 _ORDER_TOOL_HINTS = (
     "place",
@@ -119,9 +141,20 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def is_configured() -> bool:
-    """True only when the feature is explicitly enabled AND a public callback
-    URI is set — anything else keeps today's inert behavior (stability rule)."""
+def feed_enabled() -> bool:
+    """True when the feature flag is on — gates the feed (poller), the
+    refresh endpoint and the read/instruction endpoints.
+
+    The feed deliberately does NOT require a redirect URI: the cloud can own
+    the MCP flow (reads + staged review instructions) with tokens imported
+    into the DB, no OAuth callback configured (Phase C, §10).
+    """
+    return bool(settings.IBKR_MCP_ENABLED)
+
+
+def auth_ready() -> bool:
+    """feed_enabled AND a public callback URI — gates the online OAuth flow
+    (POST /auth/start, GET /auth/callback, DCR)."""
     return bool(settings.IBKR_MCP_ENABLED and settings.IBKR_MCP_REDIRECT_URI)
 
 
@@ -217,6 +250,33 @@ def _remaining_s(tokens: dict) -> float:
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
     return (expires_at - _now()).total_seconds()
+
+
+async def import_tokens(
+    access_token: str,
+    refresh_token: str,
+    expires_in: int,
+    scope: str | None,
+    token_type: str = "Bearer",
+) -> dict:
+    """Upsert the singleton token row exactly like save_tokens (Phase C §10).
+
+    Operational token import for Vincent's script/tests — NOT exposed as an
+    HTTP endpoint (no new attack surface). Atomic single-row commit:
+    ``expires_at = now + expires_in``, ``last_refresh_at = now``. Never logs
+    any token value; the returned dict stays in-process like load_tokens().
+    """
+    async with AsyncSessionLocal() as db:
+        return await save_tokens(
+            db,
+            {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "expires_in": expires_in,
+                "scope": scope,
+                "token_type": token_type,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -446,8 +506,13 @@ async def exchange_code(db, code: str, verifier: str) -> dict | None:
 
 
 async def auth_status(db) -> dict:
-    """GET /ibkr/auth/status payload — status only, never token values."""
-    configured = is_configured()
+    """GET /ibkr/auth/status payload — status only, never token values.
+
+    ``configured`` reports the FEED gate (IBKR_MCP_ENABLED alone);
+    ``redirect_configured`` reports auth_ready (feed + redirect URI), so a
+    feed-only deployment still surfaces token health.
+    """
+    configured = feed_enabled()
     tokens = await load_tokens(db) if configured else None
     fresh = bool(tokens and tokens.get("access_token") and _remaining_s(tokens) > FRESH_MARGIN_S)
     refreshable = bool(tokens and tokens.get("refresh_token"))
@@ -456,6 +521,7 @@ async def auth_status(db) -> dict:
         last = last.replace(tzinfo=UTC)
     return {
         "configured": configured,
+        "redirect_configured": auth_ready(),
         "authorized": bool(tokens and tokens.get("access_token") and (fresh or refreshable)),
         "fresh": fresh,
         "last_refresh_at": last.isoformat() if last else None,
@@ -547,6 +613,7 @@ def assert_read_tool(name: str) -> None:
     """C3 hard gate: only the explicit read allowlist may ever be called.
 
     Any order-creating / write tool name is rejected BEFORE any network call.
+    Unchanged semantics for pure-read paths (feed/burst callers).
     """
     lowered = (name or "").strip().lower()
     if not lowered or any(hint in lowered for hint in _ORDER_TOOL_HINTS):
@@ -555,15 +622,47 @@ def assert_read_tool(name: str) -> None:
         raise ValueError(f"tool not in read-only allowlist: {name!r}")
 
 
+def assert_allowed_tool(name: str, flow_type: str | None = None) -> None:
+    """Full tool gate for every MCP tool-call helper (Phase C §10).
+
+    Resolution order, always BEFORE any network call:
+      (a) ``INSTRUCTION_TOOLS`` -> allowed; ``create_order_instruction`` and
+          ``delete_order_instruction`` additionally REQUIRE
+          flow_type=REVIEW_AND_APPROVE (AUTONOMOUS never passes),
+      (b) ``READ_ONLY_TOOLS`` -> allowed,
+      (c) any ``_ORDER_TOOL_HINTS`` match -> rejected (submit_order,
+          cancel_order, place_*, ...),
+      (d) unknown name -> rejected.
+
+    ``get_order_rules``/``get_order_status`` (AUTONOMOUS-restricted) fall
+    through to (d) and stay rejected — they are not needed.
+    """
+    if name in INSTRUCTION_TOOLS:
+        if name in INSTRUCTION_WRITE_TOOLS and flow_type != REVIEW_AND_APPROVE:
+            raise ValueError(
+                f"instruction tool requires flow_type={REVIEW_AND_APPROVE!r}: {name!r}"
+            )
+        return
+    assert_read_tool(name)  # (b)+(c)+(d) for pure reads
+
+
 async def call_tool(name: str, args: dict | None, tok: str, sid: str | None) -> dict:
-    """tools/call for an allowlisted read tool -> parsed JSON result."""
-    assert_read_tool(name)
+    """tools/call for an allowlisted tool -> parsed JSON result.
+
+    The full resolution gate (assert_allowed_tool) runs first — for the
+    instruction write tools the flow_type is read from ``args``, so a
+    create/delete call without REVIEW_AND_APPROVE is rejected pre-network.
+    """
+    flow = args.get("flow_type") if isinstance(args, dict) else None
+    assert_allowed_tool(name, flow)
     _st, res, _ = await rpc("tools/call", {"name": name, "arguments": args or {}},
                             tok=tok, sid=sid, rid=7)
     out = (res.get("result") or res.get("error") or {})
-    if out.get("isError"):
-        raise RuntimeError(f"{name} isError")
     txt = " ".join((c.get("text") or "") for c in (out.get("content") or []))
+    if out.get("isError"):
+        # text first: callers (delete 404 mapping) need the MCP error detail.
+        # Truncated, and it never carries token material (server tool error).
+        raise RuntimeError(f"{name} isError: {txt[:300]}")
     return json.loads(txt)
 
 
@@ -613,6 +712,84 @@ def _map_pending_instructions(rows) -> list:
         for r in rows
         if str(r.get("status") or "").lower() not in _terminal_instruction
     ]
+
+
+def pending_instruction_keys(raw: dict) -> set[tuple[str, str]]:
+    """(key, side) keys of NON-terminal pending instructions (Phase C §10).
+
+    Dedupe source for POST /api/v1/ibkr/instructions — mirrors the
+    daily_invest skip semantics (``mcp_review_place``): statuses outside
+    ``_terminal_instruction`` are "instruction already pending" and must not
+    be duplicated. Matches on conid (``contract_id_ex``/``contract_id``/
+    ``underlying_contract_id``, like daily_invest) and on symbol when the
+    entry was created by ticker.
+    """
+    keys: set[tuple[str, str]] = set()
+    for r in raw.get("instructions") or []:
+        if str(r.get("status") or "").lower() in _terminal_instruction:
+            continue
+        side = str(_pick(r, "side", "action") or "").upper()
+        conid = _pick(r, "contract_id_ex", "contract_id", "underlying_contract_id")
+        if conid is not None and str(conid):
+            keys.add((str(conid), side))
+        sym = _pick(r, "contract_description", "symbol", "ticker")
+        if sym:
+            keys.add((str(sym).upper(), side))
+    return keys
+
+
+def entry_instruction_key(conid, symbol, side: str) -> tuple[str, str]:
+    """Same-shape dedupe key for a request entry: (conid or SYMBOL, SIDE).
+
+    Entries without a conid match on the upper-cased symbol — the same row
+    fields ``pending_instruction_keys`` emits.
+    """
+    if conid is not None and str(conid):
+        return str(conid), str(side or "").upper()
+    return str(symbol or "").strip().upper(), str(side or "").upper()
+
+
+def instruction_id_of(result) -> str | None:
+    """Instruction id out of a create/delete tool result (daily_invest shape:
+    ``res["id"]`` or ``res["instruction"]["id"]``). Never raises."""
+    if not isinstance(result, dict):
+        return None
+    iid = result.get("id") or (result.get("instruction") or {}).get("id") \
+        or result.get("instruction_id")
+    return str(iid) if iid not in (None, "") else None
+
+
+def looks_not_found(detail: str) -> bool:
+    """True when MCP tool output reports 'instruction/order not found'."""
+    text = (detail or "").lower()
+    return (
+        "not found" in text
+        or "not_found" in text
+        or "does not exist" in text
+        or "unknown instruction" in text
+        or "no instruction" in text
+    )
+
+
+def result_not_found(result) -> bool:
+    """True when a returned tool result (dict) carries a not-found error."""
+    if not isinstance(result, dict):
+        return False
+    for key in ("error", "detail", "message"):
+        if looks_not_found(str(result.get(key) or "")):
+            return True
+    return False
+
+
+def pending_instructions(raw) -> list:
+    """Public view of a get_order_instructions result -> pending review rows.
+
+    Same mapping the feed embeds as ``instructions_pending`` (GET
+    /api/v1/ibkr/instructions returns exactly this list).
+    """
+    if not isinstance(raw, dict):
+        return []
+    return _map_pending_instructions(raw.get("instructions") or [])
 
 
 def _map_order(r: dict) -> dict:
@@ -756,10 +933,21 @@ async def run_once() -> dict:
 
     Only writes when the backend actually contributed data — if the MCP side
     is down, the dev-PC pusher's row stays untouched (coexistence rule).
+
+    Phase C (§10): feed_enabled but no token row yet => the cycle is skipped
+    quietly (one INFO line, no secrets, never raises) — enabling
+    IBKR_MCP_ENABLED before importing tokens is harmless.
     """
     if not _burst_due():
         return {"skipped": "burst not due"}
     async with AsyncSessionLocal() as db:
+        tokens = await load_tokens(db)
+        if not tokens or not tokens.get("refresh_token"):
+            logger.info(
+                "[ibkr-mcp] no token row yet — skipping poll cycle "
+                "(import tokens or complete re-auth)"
+            )
+            return {"skipped": "no token row"}
         row = await _load_snapshot(db)
         existing = row.payload if row is not None and isinstance(row.payload, dict) else {}
         payload, contributed = await _merged(existing)
@@ -794,11 +982,12 @@ async def poll_loop(interval_s: int | None = None) -> None:
 
 
 def maybe_start_poller() -> asyncio.Task | None:
-    """main.py lifespan hook: the poller task when fully configured, else None.
+    """main.py lifespan hook: the poller task when the feed is enabled.
 
-    Disabled/unconfigured => None => NOTHING starts and NOTHING was ever
-    contacted — today's stable behavior stays untouched (default-off rule).
+    Gate = feed_enabled() only (Phase C §10): a redirect URI is NOT required
+    for the feed — tokens may be imported directly. Disabled => None =>
+    NOTHING starts and NOTHING was ever contacted (default-off rule).
     """
-    if not is_configured():
+    if not feed_enabled():
         return None
     return asyncio.create_task(poll_loop())
