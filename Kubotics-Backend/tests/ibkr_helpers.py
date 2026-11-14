@@ -46,7 +46,8 @@ class FakeDb:
     def __init__(self):
         self.token_row: IbkrMcpToken | None = None
         self.states: dict[str, IbkrMcpAuthState] = {}
-        self.snapshot: DeviceSnapshotCache | None = None
+        self.snapshot: DeviceSnapshotCache | None = None  # legacy single-row view
+        self.snapshots: dict[str, DeviceSnapshotCache] = {}  # keyed by dataset
         self.commits = 0
         self._pending = []
 
@@ -62,6 +63,7 @@ class FakeDb:
                 self.states[obj.state] = obj
             elif isinstance(obj, DeviceSnapshotCache):
                 self.snapshot = obj
+                self.snapshots[obj.dataset] = obj
         self._pending.clear()
 
     async def commit(self):
@@ -71,10 +73,12 @@ class FakeDb:
     async def delete(self, obj):
         if isinstance(obj, IbkrMcpAuthState):
             self.states.pop(obj.state, None)
+        elif isinstance(obj, DeviceSnapshotCache):
+            self.snapshots.pop(obj.dataset, None)
+            if obj is self.snapshot:
+                self.snapshot = None
         elif obj is self.token_row:
             self.token_row = None
-        elif obj is self.snapshot:
-            self.snapshot = None
 
     # -- queries --------------------------------------------------------------
     async def execute(self, stmt):
@@ -92,7 +96,18 @@ class FakeDb:
                 row = self.states.get(wanted)
                 rows = [row] if row is not None else []
         elif entity is DeviceSnapshotCache:
-            rows = [self.snapshot] if self.snapshot is not None else []
+            # dataset-filtered select: exact-row lookup by the where value
+            # (ibkr_plan_state / ibkr_plan_marker / ibkr_investments rows can
+            # coexist); fall back to the legacy single snapshot view.
+            wanted = getattr(where.right, "value", None) if where is not None else None
+            if wanted is not None:
+                row = self.snapshots.get(wanted)
+                if row is None and self.snapshot is not None \
+                        and self.snapshot.dataset == wanted:
+                    row = self.snapshot
+                rows = [row] if row is not None else []
+            else:
+                rows = [self.snapshot] if self.snapshot is not None else []
         else:
             raise TypeError(f"unexpected entity in fake session: {entity!r}")
         return _Result(rows)

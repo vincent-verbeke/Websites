@@ -268,6 +268,9 @@ registration endpoint.
 | POST | `/api/v1/ibkr/auth/register` | admin | 503 always unless `IBKR_MCP_DCR_ENABLED=true` |
 | POST/GET/DELETE | `/api/v1/ibkr/instructions[/{id}]` | admin | Phase C (§10) — staged REVIEW_AND_APPROVE instructions |
 | POST | `/api/v1/ibkr/mcp/call` | admin | Phase C (§10) — allowlisted generic READ proxy |
+| POST | `/api/v1/ibkr/plan/state/import` | admin | Phase 2a (§10.7) — seed the plan state row from the dev state JSON (NOT feed-gated; 422 on empty body) |
+| GET | `/api/v1/ibkr/plan/state` | admin | Phase 2a (§10.7) — `{found, state, updated_at, source}`, fail-soft 200 |
+| POST | `/api/v1/ibkr/plan/dry-run` | admin | Phase 2a (§10.7) — ALWAYS dry `run_daily_plan` (never creates/saves/sends); 503 when the feed gate is off |
 
 Admin = `Authorization: Bearer <NEEDLE_TOKEN or API_SECRET_KEY>` or
 `X-Needle-Token: <same>`.
@@ -470,3 +473,138 @@ one refresher may exist**: the backend's serialized `refresh()`. Therefore:
 Rule of thumb: **locals OFF first, cloud enable second** — never both
 refreshing the same family (2026-11-13), and never a second backend refresher
 (§6.1).
+
+### 10.7 Phase 2a — cloud plan runner (flag off)
+
+Vincent 2026-11-14 (Phase 2a of "ONLY C"): the DAILY IBKR PLAN RUNNER moves
+off the dev PC into the backend, behind a new **default-OFF** flag. Until the
+flag is flipped, nothing runs, nothing polls and today's behavior is
+untouched (the dev-PC `daily_invest.py` stays the sole emitter).
+
+| Piece | Where |
+|---|---|
+| plan engine + runner + scheduler | `src/app/services/ibkr_plan.py` |
+| 50/50 spread rule | `src/app/services/ibkr_spread.py` (byte-identical copy of `ros2_reusable_stack/scripts/ibkr/ibkr_spread.py`) |
+| flag | `IBKR_PLAN_DAILY_ENABLED: bool = False` (`config.py`, next to the `IBKR_MCP_*` block) |
+| endpoints | `src/app/api/v1/ibkr_plan.py` (router mounted in `main.py`) |
+| scheduler registration | `main.py` lifespan via `ibkr_plan.maybe_start_plan_loop()` — `None` unless the flag is on |
+| tests | `tests/test_ibkr_plan.py` (71 tests; no network, no real DB) |
+
+**Runner semantics (port of `daily_invest.py`, byte-for-byte where it is a
+money path):** state from the `device_snapshot_cache` row
+`ibkr_plan_state` (absent ⇒ clear error note, **state is never invented**);
+Yahoo gates per sleeve (same URL/params/headers/timeout as
+`investments._yahoo_series`, fail-soft per sleeve → `{"error": ...}` → the
+dev stale path: old gate kept, verdict `N/A`, `_meta.gate_stale` joined);
+FULL verdict logic (+0.5/−0.5/−4.0 thresholds, `range_pos` over 30d, BUY iff
+increasing|sideways, 30d-low warning in `rows[].reason`, and the analyst
+`gate.note` — the "stabilization gate" note — preserved across refreshes with
+the exact dev key set `{trend,last7d_pct,range_pos,note}`); MCP reads through
+the in-process Phase-1 path (`open_session` + `call_tool`:
+`get_account_orders` / `get_order_instructions` / `get_account_positions`);
+dedupe against pending instructions via `pending_instruction_keys`; **fills
+reconcile FIRST** (every conid sleeve, even with an empty plan — the
+`test_position_reconcile.py` contract, instruction never created when a fill
+covers the sleeve); one `get_price_snapshot` per candidate for
+`limit_from` (50/50 spread, capped AT the ask, qty floored on the LIMIT);
+`create_order_instruction` args identical to daily
+(`contract_id_ex` str, `side`, `quantity`, `order_type: LIMIT`,
+`limit_price` round-4dp, `time_in_force: DAY`) with `flow_type` defaulted to
+`REVIEW_AND_APPROVE` by the call layer exactly like §10.3 does for the dev
+caller — `assert_allowed_tool` runs before any create call and `call_tool`
+re-asserts (NEVER submit/cancel/modify); state saved only when not dry-run
+(`gate_checked`/`last_order_push`/`last_fill_push` = Europe/Zurich
+`%Y-%m-%d %H:%M`, `invested_chf` recomputed from the sleeves, `gate_stale`
+joined); WhatsApp only when requested and never in dry-run.
+
+**Scheduler (`plan_loop`):** Europe/Zurich, Mon–Fri, first attempt 09:05,
+deadline 16:30 (a late wake inside the window still runs), 60 s tick.
+Same-day dedupe = a `device_snapshot_cache` row `ibkr_plan_marker` with
+payload `{"date": "YYYY-MM-DD", "ok": bool, "ran_at": ..., "error"?: ...}` —
+a row, not a tiny table: same upsert mechanism as the state row, no
+migration, the unique `dataset` column guarantees one marker. One WhatsApp
+per successful run (daily's exact wording composed into one message).
+Failures (crash, missing state, MCP read failure) log and **stop for the
+day** — the marker is written after every attempt, so no retry loop.
+A successful scheduler run needs `IBKR_MCP_ENABLED` too (MCP reads); with
+the feed off the attempt fails soft once and stops for the day.
+
+**Endpoints** (admin = `Authorization: Bearer <NEEDLE_TOKEN or
+API_SECRET_KEY>` or `X-Needle-Token: <same>`):
+
+| Method | Path | Gates | Notes |
+|---|---|---|---|
+| POST | `/api/v1/ibkr/plan/state/import` | admin (NOT feed-gated — seed while flags are off) | body = the full dev state JSON, stored EXACTLY |
+| GET | `/api/v1/ibkr/plan/state` | admin | verification read, fail-soft 200 |
+| POST | `/api/v1/ibkr/plan/dry-run` | admin + feed (503 when `IBKR_MCP_ENABLED` off) | ALWAYS dry: never creates, never saves, never sends |
+
+`POST /api/v1/ibkr/plan/state/import` — request is the raw
+`investments_state.json` document (NOT wrapped):
+
+```json
+{"_meta": {"capital": 10000, "invested_chf": 5427.77, "gate_checked": "2026-11-14 21:39"},
+ "SWDA": {"status": "wait", "invested_chf": 0, "buy": null,
+          "gate": {"trend": "increasing", "last7d_pct": 1.37, "range_pos": 30,
+                   "note": "stabilization gate: 3 closes w/o new 7d low, > 5d avg"}},
+ "...": "8 sleeve keys + _meta, structure preserved verbatim"}
+```
+
+* `200 {"ok": true, "dataset": "ibkr_plan_state", "updated_at": "<ISO-8601
+  UTC>", "keys": ["_meta", "..."], "sleeve_count": 8}` — upsert (repeat
+  imports never create a second row).
+* `422 {"detail": "empty state — ..."}` for `{}`; `401` without the admin
+  token.
+
+`GET /api/v1/ibkr/plan/state` — `200 {"found": true, "state": {<the exact
+stored document>}, "updated_at": "<ISO-8601 UTC>", "source":
+"backend-ibkr-plan"}`; absent/empty row → `200 {"found": false, "state":
+null, "updated_at": null, "source": null}` (fail-soft, never 404).
+
+`POST /api/v1/ibkr/plan/dry-run` — no body. `200` with the exact
+`run_daily_plan(dry_run=True, send_whatsapp=False)` result:
+
+```json
+{"date": "2026-11-17",
+ "rows": [{"key": "SWDA", "status": "wait", "trend": "sideways", "7d": 0.0,
+           "30d": 50, "verdict": "BUY", "price": 145.3, "action": "buy",
+           "reason": "gate BUY"}, "... 8 rows, PORTFOLIO order"],
+ "entries": [{"key": "SWDA", "ticker": "SWDA.SW", "status": "wait",
+              "verdict": "BUY", "trend": "sideways", "price": 145.3,
+              "target_chf": 2857.0, "invested_chf": 0.0,
+              "remaining_chf": 2857.0}],
+ "state_after": {"...": "the full state a real run WOULD persist (in memory only)"},
+ "notes": ["[plan] 1 sleeve(s) to order: ...", "...  * lines from daily ..."],
+ "instructions": [{"index": 0, "status": "dry_run",
+                   "detail": "would create: BUY 19.67 @ 145.3 CHF (...)"}],
+ "whatsapp": false}
+```
+
+* `rows` mirror the dev `daily_invest --check` table columns exactly
+  (missing values render `"-"` like the printed table) plus
+  `action` ∈ `buy|wait|skip|error` and `reason` (carries the `AT 30d LOW`
+  warning); `instructions[].status` ∈ `created|skipped|dry_run|error`
+  (`created` carries `instruction_id`); `state_after` is `null` with a
+  `plan state missing: ...` note when the row was never imported.
+* `503 {"detail": "IBKR MCP feed not enabled (set IBKR_MCP_ENABLED=true)"}`
+  when the feed is off; `401` without the admin token.
+* The response is the parity instrument to diff against the dev-PC
+  `daily_invest --check` output — it contains no token material (MCP layer)
+  and no secrets.
+
+**Cutover steps (Phase 2a → live):**
+
+1. Deploy with `IBKR_PLAN_DAILY_ENABLED=false` (default) — zero change.
+2. `POST /api/v1/ibkr/plan/state/import` with the current dev
+   `investments_state.json`; verify with `GET /api/v1/ibkr/plan/state`.
+3. `POST /api/v1/ibkr/plan/dry-run` (feed on) and diff `rows` against
+   `daily_invest --check` on the dev PC (same state copy).
+4. Stop the dev-PC emitters (needle3 09:05 emitter, `ibkr-watch.timer` —
+   per docs/IBKR_PLANNER_CLOUD_PORT_PLAN.md cutover list).
+5. Flip `IBKR_PLAN_DAILY_ENABLED=true` + restart → the 09:05 Europe/Zurich
+   run originates in the cloud; one WhatsApp per day; instructions land in
+   the IBKR review queue; the `ibkr_plan_marker` row proves one run/day.
+6. Verify: marker payload `ok:true`, `GET /plan/state` shows fresh
+   `gate_checked`, the review queue shows the staged instructions.
+
+§6 hard rules hold unchanged: default off, admin-gated, instruction tools
+only, no token values logged or returned, no network in tests.

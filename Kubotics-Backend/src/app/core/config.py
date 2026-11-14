@@ -125,6 +125,13 @@ class Settings(BaseSettings):
     IBKR_MCP_DCR_ENABLED: bool = False
     # Empty => {ISSUER}/oauth2/api/v1/clients (UNVERIFIED — docs/IBKR_MCP_BACKEND.md).
     IBKR_MCP_DCR_URL: str = ""
+    # Phase 2a (docs/IBKR_MCP_BACKEND.md §10.7): daily IBKR plan runner in the
+    # backend (gates → plan → reconcile → REVIEW_AND_APPROVE instructions →
+    # state → WhatsApp, Mon-Fri 09:05-16:30 Europe/Zurich). Default OFF: no
+    # task is registered and nothing runs (the dev-PC runner stays the sole
+    # emitter until this is flipped). A successful run also needs the feed
+    # flag above (MCP reads).
+    IBKR_PLAN_DAILY_ENABLED: bool = False
 
     # --- Kubot mail agent (docs/KUBOT_MAIL_AGENT_PLAN.md §6) -------------
     # Master switch: False everywhere until Phase B (Liz test) is deployed.

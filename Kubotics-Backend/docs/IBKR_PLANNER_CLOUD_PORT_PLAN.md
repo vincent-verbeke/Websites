@@ -1,4 +1,53 @@
-# IBKR planner → cloud port (Phase 2 of the C cutover) — plan, not yet approved
+# IBKR planner → cloud port (Phase 2 of the C cutover) — Phase 2a LANDED (flag off)
+
+## Status (2026-11-14, Phase 2a)
+
+**Landed in the backend (behind `IBKR_PLAN_DAILY_ENABLED=false`, default off —
+nothing runs until Vincent flips it):**
+
+| Piece | Status |
+|---|---|
+| Trend gates (Yahoo, full verdict logic incl. stabilization note) | ✅ `src/app/services/ibkr_plan.py` (`fetch_quote`/`compute_plan`) |
+| 50/50 spread rule | ✅ `src/app/services/ibkr_spread.py` (byte-identical copy of the dev module) |
+| Sizing / floor-qty / ACTIVE + pending guards | ✅ `ibkr_plan._run` (same guard messages as `daily_invest`) |
+| Plan state (`investments_state.json`) | ✅ `device_snapshot_cache` row `ibkr_plan_state` (import endpoint stores the dev JSON verbatim) |
+| Fills reconcile BEFORE instructions | ✅ ported from `test_position_reconcile.py` expectations |
+| Instruction create (REVIEW_AND_APPROVE) | ✅ in-process Phase-1 `call_tool`, daily's exact args + flow default |
+| WhatsApp report per run | ✅ `whatsapp_service.send_text_message`, daily's exact wording, one message/run, +41797481975 |
+| Schedule (09:05 emitter) | ✅ `ibkr_plan.plan_loop` — Mon-Fri 09:05-16:30 Europe/Zurich, marker row `ibkr_plan_marker` dedupe (**not yet registered: flag off**) |
+| Parity instrument | ✅ `POST /api/v1/ibkr/plan/dry-run` (always dry) vs dev `daily_invest --check` |
+
+**Still on the dev PC (Phase 2b — NOT part of this change):**
+
+* **Static watcher jobs** (`ibkr_watch_static`): inbox CONID → SMALL
+  instruction, CORC re-place, fill bookkeeping — `ibkr-watch.timer` stays.
+* **needle3 emitter** (PC-A 09:05 SSH hop) + the dashboard `POST
+  /api/investments/run` spawn of `daily_invest.py` — stays until the cloud
+  runner is validated.
+* Dev `investments_state.json` remains authoritative until cutover step 2
+  below; after it, the cloud row is authoritative and the dev pusher writes
+  are retired.
+
+**Exact cutover steps Vincent runs (also in docs/IBKR_MCP_BACKEND.md §10.7):**
+
+1. Deploy unchanged — `IBKR_PLAN_DAILY_ENABLED` defaults false, zero behavior
+   change.
+2. Seed state: `POST /api/v1/ibkr/plan/state/import` with the current
+   `~/.jcode/scratch/investments_state.json`; verify
+   `GET /api/v1/ibkr/plan/state` (`found:true`, `sleeve_count:8`).
+3. Parity: `POST /api/v1/ibkr/plan/dry-run` (needs `IBKR_MCP_ENABLED=true`)
+   and diff `rows` against `daily_invest.py --check` on the dev PC — same
+   sleeves/status/trend/7d/30d/verdict/price expected.
+4. Stop dev-PC emitters: needle3 09:05 emitter (`ibkr_daily_enabled=false`)
+   and `ibkr-watch.timer` (Phase 2b scope for the watch jobs — at minimum the
+   daily emitter must be off before enabling the cloud loop).
+5. Flip `IBKR_PLAN_DAILY_ENABLED=true` + restart the backend → the 09:05
+   Europe/Zurich run originates in the cloud.
+6. Verify next Mon-Fri morning: `ibkr_plan_marker` payload `{date, ok:true}`,
+   one WhatsApp to +41797481975, instructions in the IBKR review queue,
+   fresh `gate_checked` in `GET /api/v1/ibkr/plan/state`.
+
+---
 
 Context: Vincent 2026-11-14 — *"ONLY C … Cloud needs to run without the dev pc."*
 Phase 1 (done tonight) moves every **MCP interaction** into the Kubotics
