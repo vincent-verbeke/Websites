@@ -566,11 +566,8 @@ export class ReadinessAssessmentComponent {
     }
   ];
 
-  // State of user answers (preset with standard processes and digital systems checked by default)
-  answers = signal<Record<string, boolean>>({
-    standard_processes: true,
-    digital_systems: true
-  });
+  // State of user answers: starts clean at 0% so user dynamically calculates score on click
+  answers = signal<Record<string, boolean>>({});
 
   score = computed(() => {
     const ans = this.answers();

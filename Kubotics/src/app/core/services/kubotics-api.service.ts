@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, tap } from 'rxjs';
 
 export interface InboundLeadPayload {
   first_name?: string;
@@ -75,7 +75,26 @@ export class KuboticsApiService {
   private readonly baseUrl = 'https://api.kubotics.ch/api/v1';
 
   submitLead(payload: InboundLeadPayload): Observable<LeadApiResponse> {
-    return this.http.post<LeadApiResponse>(`${this.baseUrl}/leads`, payload);
+    return this.http.post<LeadApiResponse>(`${this.baseUrl}/leads`, payload).pipe(
+      tap(() => {
+        if (typeof window !== 'undefined' && (window as any).gtag) {
+          try {
+            (window as any).gtag('event', 'qualify_lead', {
+              'event_category': 'Lead Generation',
+              'event_label': payload.primary_interest || 'Inbound Lead',
+              'value': 100.0,
+              'currency': 'CHF'
+            });
+            (window as any).gtag('event', 'ads_conversion_SUBMIT_LEAD_FORM_1', {
+              'value': 100.0,
+              'currency': 'CHF'
+            });
+          } catch (e) {
+            console.warn('[KuboticsApi] Tracking dispatch warning:', e);
+          }
+        }
+      })
+    );
   }
 
   scheduleMeeting(payload: MeetingSchedulePayload): Observable<MeetingScheduleResponse> {

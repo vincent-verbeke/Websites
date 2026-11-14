@@ -152,6 +152,43 @@ import { LeadAgentService } from '../lead-agent/lead-agent.service';
               <span class="projected-label">{{ i18n.t('ROI.ANNUAL_IMPACT') }}</span>
               <div class="big-savings-number">CHF {{ annualSavings().toLocaleString() }}</div>
               <div class="savings-subtext">{{ i18n.t('ROI.SAVINGS_SUB') }}</div>
+              
+              <!-- Transparent Calculation Methodology Toggle -->
+              <button type="button" class="methodology-toggle" (click)="toggleMethodology()">
+                <span class="material-icons info-icon">info</span>
+                <span>{{ showMethodology() ? 'Kalkulationsbasis verbergen' : 'Kalkulationsbasis & Formel anzeigen' }}</span>
+                <span class="material-icons arrow">{{ showMethodology() ? 'expand_less' : 'expand_more' }}</span>
+              </button>
+
+              @if (showMethodology()) {
+                <div class="methodology-box animate-fade-in">
+                  @if (mode() === 'invoices') {
+                    <div class="methodology-item">
+                      <strong>Manueller Aufwand:</strong> {{ monthlyInvoices() }} Belege × CHF {{ costPerDoc() }} × 12 Monate = <span>CHF {{ (monthlyInvoices() * costPerDoc() * 12).toLocaleString() }} / Jahr</span>
+                    </div>
+                    <div class="methodology-item">
+                      <strong>Automatisierte Kosten:</strong> {{ monthlyInvoices() }} Belege × CHF 0.45 (Vision-LLM API) × 12 + CHF 4'800 (Audit & Cloud Infra) = <span>CHF {{ (monthlyInvoices() * 0.45 * 12 + 4800).toLocaleString() }} / Jahr</span>
+                    </div>
+                    <div class="methodology-item net-benefit">
+                      <strong>Netto-Jahresersparnis:</strong> CHF {{ (monthlyInvoices() * costPerDoc() * 12).toLocaleString() }} - CHF {{ (monthlyInvoices() * 0.45 * 12 + 4800).toLocaleString() }} = <b>CHF {{ annualSavings().toLocaleString() }}</b>
+                    </div>
+                  } @else if (mode() === 'factory') {
+                    <div class="methodology-item">
+                      <strong>Jahres-Arbeitsstunden:</strong> {{ shiftHours() }} Std./Tag × 240 Arbeitstage = <span>{{ shiftHours() * 240 }} Std.</span>
+                    </div>
+                    <div class="methodology-item">
+                      <strong>Brutto-Lohnkostenbasis:</strong> {{ shiftHours() * 240 }} Std. × CHF {{ hourlyRate() }}/Std. = <span>CHF {{ (shiftHours() * 240 * hourlyRate()).toLocaleString() }}</span>
+                    </div>
+                    <div class="methodology-item net-benefit">
+                      <strong>Netto-Effizienzgewinn (65%):</strong> <b>CHF {{ annualSavings().toLocaleString() }}</b> (konservative Entlastung durch Autonomie)
+                    </div>
+                  } @else {
+                    <div class="methodology-item">
+                      <strong>Entwicklungsbeschleunigung:</strong> {{ teamSize() }} Entwickler × CHF 45'000 (eingesparte externe Beratungs- & Integrationszeit) = <b>CHF {{ annualSavings().toLocaleString() }}</b>
+                    </div>
+                  }
+                </div>
+              }
             </div>
 
             <div class="metrics-grid">
@@ -436,11 +473,70 @@ import { LeadAgentService } from '../lead-agent/lead-agent.service';
       text-align: center;
       margin-top: 16px;
     }
+
+    .methodology-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #94a3b8;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .methodology-toggle:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #f1f5f9;
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+
+    .info-icon, .arrow {
+      font-size: 14px;
+    }
+
+    .methodology-box {
+      margin-top: 12px;
+      padding: 12px 16px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 8px;
+      text-align: left;
+      font-size: 0.75rem;
+      color: #cbd5e1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .methodology-item span {
+      color: #94a3b8;
+    }
+
+    .methodology-item.net-benefit {
+      padding-top: 6px;
+      border-top: 1px dashed rgba(255, 255, 255, 0.1);
+      color: #38bdf8;
+    }
+
+    .methodology-item.net-benefit b {
+      color: #10b981;
+    }
   `
 })
 export class RoiCalculatorComponent {
   i18n = inject(I18nService);
   agent = inject(LeadAgentService);
+
+  showMethodology = signal(false);
+
+  toggleMethodology() {
+    this.showMethodology.update(v => !v);
+  }
 
   mode = signal<'invoices' | 'factory' | 'humanoid'>('invoices');
 

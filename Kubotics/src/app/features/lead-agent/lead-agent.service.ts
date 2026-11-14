@@ -572,6 +572,25 @@ export class LeadAgentService {
         company: data.company
       }));
 
+      // Trigger GA4 & Google Ads Conversion for Qualified Scheduled Meeting
+      if (typeof window !== 'undefined' && (window as any).gtag) {
+        try {
+          (window as any).gtag('event', 'schedule_appointment', {
+            'event_category': 'Engagement',
+            'event_label': data.topic || 'Discovery Call',
+            'value': 250.0,
+            'currency': 'CHF'
+          });
+          (window as any).gtag('event', 'ads_conversion_MEETING_SCHEDULED', {
+            'value': 250.0,
+            'currency': 'CHF'
+          });
+          console.info('[LeadAgentService] Conversion event schedule_appointment dispatched to GA4/Google Ads.');
+        } catch (trackErr) {
+          console.warn('[LeadAgentService] Conversion tracking dispatch ignored:', trackErr);
+        }
+      }
+
       return {
         success: true,
         message: 'Ihr Termin wurde erfolgreich in Vincents M365 Kalender gebucht. Die Einladung mit Microsoft Teams Link wurde an Ihre E-Mail gesendet.',

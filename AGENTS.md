@@ -22,6 +22,27 @@
 ## Workflows
 - Always check `.agent/workflows` for specific project steps.
 
+## Caveman skill (installed 2026-11-14, global)
+
+The caveman skill pack is installed globally with the `-g` option
+(`npx -y skills add JuliusBrussee/caveman --skill '*' -g`, linked into
+`~/.jcode/skills/` so Jcode loads it — `skill_manage list` shows all 22:
+`/caveman`, `/ultracave`, `/megacave`, `/caveman-review`, `/caveman-commit`,
+`/caveman-explore`, `/cavecrew`, `/surgical-patch`, `/safe-refactor`,
+`/lean-build`, `/migration`, `/verify-and-stop`, `/investigate-first`, …).
+
+**Scope rule (Vincent 2026-11-14):**
+
+- USE caveman **for frontend and backend development only** — writing,
+  editing, reviewing and committing code in `Kubotics/` (Angular frontend)
+  and `Kubotics-Backend/` (FastAPI backend).
+- DO **NOT** use it by default when **reasoning or thinking is required**:
+  architecture decisions, root-cause/incident analysis, trading or marketing
+  reviews, planning, risk and budget assessment. Normal mode stays the
+  default there — say "stop caveman" if a session started in caveman mode.
+- Caveman changes the *reply style* (compression), never the engineering
+  bar: tests, verification steps and safety gates are unchanged.
+
 ## CI / GitHub Actions
 - **Only `.github/workflows/` at the REPO ROOT executes.** Workflow files in
   subdirectories (e.g. `Kubotics-Backend/.github/workflows/deploy.yml`) are

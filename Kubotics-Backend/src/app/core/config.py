@@ -103,6 +103,29 @@ class Settings(BaseSettings):
     SPEND_SEARCH_CAP_CHF: float = 70.0        # google search sub-cap
     SPEND_APPROVAL_PHRASE: str = "APPROVE-SPEND"  # typed by Vincent in the UI
 
+    # --- IBKR MCP connector (docs/IBKR_MCP_BACKEND.md; Vincent 2026-11-14) ---
+    # Master switch: default False => no poller starts and every /api/v1/ibkr/*
+    # endpoint answers 503 "not configured" — today's stable behavior untouched.
+    IBKR_MCP_ENABLED: bool = False
+    # Public HTTPS callback the phone browser returns to AFTER IBKR consent.
+    # Must be registered as a redirect URI for IBKR_MCP_CLIENT_ID at IBKR.
+    # Empty => treated as "not configured" (same inert behavior as disabled).
+    IBKR_MCP_REDIRECT_URI: str = ""
+    # Public OAuth client registered 2026-11-08 (proven by the dev-PC helpers).
+    IBKR_MCP_CLIENT_ID: str = "ba3ab3ee-3468-442b-8183-113e7d777dae"
+    # Scope of the proven login/reauth flows — kept 1:1 (read-only enforcement
+    # happens at the tool allowlist level in services/ibkr_mcp.py, never here).
+    IBKR_MCP_SCOPE: str = (
+        "openid profile email account-ids mcp.read mcp.write mcp.orders.submit"
+    )
+    # Backend poll cadence: one read-only burst per interval (dev-PC feed used 60s).
+    IBKR_MCP_POLL_INTERVAL_S: int = 60
+    # RFC 7591 dynamic client registration — OFF by default: the proven flow
+    # reuses client ba3ab3ee (re-running DCR orphans clients, see docs).
+    IBKR_MCP_DCR_ENABLED: bool = False
+    # Empty => {ISSUER}/oauth2/api/v1/clients (UNVERIFIED — docs/IBKR_MCP_BACKEND.md).
+    IBKR_MCP_DCR_URL: str = ""
+
     # --- Kubot mail agent (docs/KUBOT_MAIL_AGENT_PLAN.md §6) -------------
     # Master switch: False everywhere until Phase B (Liz test) is deployed.
     MAIL_AGENT_ENABLED: bool = False

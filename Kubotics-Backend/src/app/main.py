@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.channel_adapters import router as channel_adapters_router
 from app.api.v1.cloud_dashboard import router as cloud_dashboard_router
 from app.api.v1.endpoints import router as api_v1_router
+from app.api.v1.ibkr_mcp import router as ibkr_mcp_router
 from app.api.v1.mail_agent import router as mail_agent_router
 from app.api.v1.marketing_guard import router as marketing_guard_router
 from app.api.v1.needle import router as needle_router
@@ -15,6 +16,7 @@ from app.api.v1.trading_watch import router as trading_watch_router
 from app.api.whatsapp import router as whatsapp_router
 from app.core.config import settings
 from app.db.session import Base, engine
+from app.services import ibkr_mcp as ibkr_mcp_service
 from app.services import mail_agent as mail_agent_service
 from app.services import trading_watch as trading_watch_service
 
@@ -76,7 +78,18 @@ async def lifespan(app: FastAPI):
                     settings.MAIL_AGENT_POLL_INTERVAL_S,
                     settings.MAIL_AGENT_MODE,
                     mail_agent_service.resolve_upn())
+    # IBKR MCP account feed (docs/IBKR_MCP_BACKEND.md, Vincent 2026-11-14) —
+    # default OFF: maybe_start_poller() returns None unless IBKR_MCP_ENABLED
+    # AND IBKR_MCP_REDIRECT_URI are set, so today's behavior stays untouched.
+    ib = ibkr_mcp_service.maybe_start_poller()
+    if ib is not None:
+        logger.info("[ibkr-mcp] background poller started (interval=%ss)",
+                    settings.IBKR_MCP_POLL_INTERVAL_S)
     yield
+    if ib is not None:
+        ib.cancel()
+        with suppress(asyncio.CancelledError):
+            await ib
     if ma is not None:
         ma.cancel()
         with suppress(asyncio.CancelledError):
@@ -132,6 +145,10 @@ app.include_router(needle_router, prefix=f"{settings.API_V1_STR}/needle")
 
 # Kubot mail agent admin (/api/v1/mail/status, /senders, /messages, /poll)
 app.include_router(mail_agent_router, prefix=settings.API_V1_STR)
+
+# IBKR MCP auth + control (/api/v1/ibkr/auth/*, /api/v1/ibkr/mcp/refresh) —
+# inert (503 "not configured") unless IBKR_MCP_ENABLED + IBKR_MCP_REDIRECT_URI.
+app.include_router(ibkr_mcp_router, prefix=settings.API_V1_STR)
 
 # WhatsApp Webhook Routers (Mounted both at root and /api/whatsapp for full backwards-compatibility)
 app.include_router(whatsapp_router, prefix="/api/whatsapp")
