@@ -2,44 +2,76 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>https://kubotics.ch/</loc>
-    <lastmod>2026-10-24</lastmod>
+    <loc>https://www.kubotics.ch/</loc>
+    <lastmod>2026-11-14</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
-    <xhtml:link rel="alternate" hreflang="de-CH" href="https://kubotics.ch/?lang=de-CH"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://kubotics.ch/?lang=en"/>
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://kubotics.ch/"/>
+    <xhtml:link rel="alternate" hreflang="de-CH" href="https://www.kubotics.ch/?lang=de-CH"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.kubotics.ch/?lang=en"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://www.kubotics.ch/"/>
   </url>
   <url>
-    <loc>https://kubotics.ch/#technology</loc>
-    <lastmod>2026-10-24</lastmod>
+    <loc>https://www.kubotics.ch/automation/cnc-machine-tending</loc>
+    <lastmod>2026-11-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="de-CH" href="https://www.kubotics.ch/automation/cnc-machine-tending"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.kubotics.ch/automation/cnc-machine-tending?lang=en"/>
+  </url>
+  <url>
+    <loc>https://www.kubotics.ch/automation/invoice-processing</loc>
+    <lastmod>2026-11-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="de-CH" href="https://www.kubotics.ch/automation/invoice-processing"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.kubotics.ch/automation/invoice-processing?lang=en"/>
+  </url>
+  <url>
+    <loc>https://www.kubotics.ch/automation/discovery</loc>
+    <lastmod>2026-11-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="de-CH" href="https://www.kubotics.ch/automation/discovery"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.kubotics.ch/automation/discovery?lang=en"/>
+  </url>
+  <url>
+    <loc>https://www.kubotics.ch/robotics/unitree-h2-test-day</loc>
+    <lastmod>2026-11-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="de-CH" href="https://www.kubotics.ch/robotics/unitree-h2-test-day"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.kubotics.ch/robotics/unitree-h2-test-day?lang=en"/>
+  </url>
+  <url>
+    <loc>https://www.kubotics.ch/marketing/ai-marketing-sales</loc>
+    <lastmod>2026-11-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="de-CH" href="https://www.kubotics.ch/marketing/ai-marketing-sales"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.kubotics.ch/marketing/ai-marketing-sales?lang=en"/>
+  </url>
+  <url>
+    <loc>https://www.kubotics.ch/#technology</loc>
+    <lastmod>2026-11-14</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://kubotics.ch/#solutions</loc>
-    <lastmod>2026-10-24</lastmod>
+    <loc>https://www.kubotics.ch/#solutions</loc>
+    <lastmod>2026-11-14</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://kubotics.ch/#company</loc>
-    <lastmod>2026-10-24</lastmod>
+    <loc>https://www.kubotics.ch/#company</loc>
+    <lastmod>2026-11-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://kubotics.ch/#contact</loc>
-    <lastmod>2026-10-24</lastmod>
+    <loc>https://www.kubotics.ch/#contact</loc>
+    <lastmod>2026-11-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://kubotics.ch/marketing/ai-marketing-sales</loc>
-    <lastmod>2026-11-11</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-    <xhtml:link rel="alternate" hreflang="de-CH" href="https://kubotics.ch/marketing/ai-marketing-sales"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://kubotics.ch/marketing/ai-marketing-sales"/>
   </url>
 </urlset>
