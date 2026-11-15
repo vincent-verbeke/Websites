@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { I18nService } from '../../core/services/i18n';
 import { EmailService, EmailData } from '../../core/services/email.service';
 import { ChannelLinkService, LeadTopic } from '../../core/services/channel-link.service';
+import { AnalyticsService } from '../../core/services/analytics.service';
 
 @Component({
   selector: 'app-contact-section',
@@ -491,6 +492,7 @@ export class ContactSectionComponent {
   i18n = inject(I18nService);
   channelLinks = inject(ChannelLinkService);
   private emailService = inject(EmailService);
+  private analytics = inject(AnalyticsService);
 
   selectedTopic = signal<LeadTopic>('general');
   name = model('');
@@ -514,6 +516,11 @@ export class ContactSectionComponent {
 
     this.emailService.sendEmail(emailData).subscribe({
       next: () => {
+        this.analytics.track('generate_lead', {
+          event_category: 'Lead Generation',
+          value: 1.0,
+          currency: 'CHF'
+        });
         // Trigger GA4 conversion event
         if ((window as any).gtag) {
           (window as any).gtag('event', 'qualify_lead', {

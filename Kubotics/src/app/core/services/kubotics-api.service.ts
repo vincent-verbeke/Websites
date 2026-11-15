@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap } from 'rxjs';
+import { AnalyticsService } from './analytics.service';
 
 export interface InboundLeadPayload {
   first_name?: string;
@@ -72,11 +73,18 @@ export interface WebChatResponse {
 })
 export class KuboticsApiService {
   private http = inject(HttpClient);
+  private analytics = inject(AnalyticsService);
   private readonly baseUrl = 'https://api.kubotics.ch/api/v1';
 
   submitLead(payload: InboundLeadPayload): Observable<LeadApiResponse> {
     return this.http.post<LeadApiResponse>(`${this.baseUrl}/leads`, payload).pipe(
       tap(() => {
+        this.analytics.track('generate_lead', {
+          event_category: 'Lead Generation',
+          event_label: payload.primary_interest || 'Inbound Lead',
+          value: 100.0,
+          currency: 'CHF'
+        });
         if (typeof window !== 'undefined' && (window as any).gtag) {
           try {
             (window as any).gtag('event', 'qualify_lead', {

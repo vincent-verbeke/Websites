@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { SeoService } from '../../core/services/seo';
 import { KuboticsApiService, InboundLeadPayload } from '../../core/services/kubotics-api.service';
+import { AnalyticsService, AnalyticsEventName, AnalyticsParams } from '../../core/services/analytics.service';
 
 @Component({
   selector: 'app-it-business-process-automation-page',
@@ -879,6 +880,7 @@ import { KuboticsApiService, InboundLeadPayload } from '../../core/services/kubo
 export class ItBusinessProcessAutomationPageComponent implements OnInit {
   private readonly seo = inject(SeoService);
   private readonly api = inject(KuboticsApiService);
+  private readonly analytics = inject(AnalyticsService);
 
   // Interactive ROI Estimator Signals
   readonly employees = signal(5);
@@ -920,14 +922,9 @@ export class ItBusinessProcessAutomationPageComponent implements OnInit {
     });
   }
 
-  private trackGtag(eventName: string, params: Record<string, unknown>): void {
-    if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
-      try {
-        (window as any).gtag('event', eventName, params);
-      } catch {
-        // ignore analytics errors
-      }
-    }
+  private trackGtag(eventName: AnalyticsEventName, params: AnalyticsParams): void {
+    this.analytics.track(eventName, params);
+    this.analytics.gtagForward(eventName, params);
   }
 
   onCtaClick(event: Event, ctaId: string, ctaLocation: string, targetId: string): void {

@@ -6,6 +6,7 @@ import {
   ChatTurn,
   WebChatResponse
 } from '../../core/services/kubotics-api.service';
+import { AnalyticsService } from '../../core/services/analytics.service';
 
 export interface ChatMessage {
   id: string;
@@ -51,6 +52,7 @@ export const BOOKING_PAGE_URL = 'https://bookings.cloud.microsoft/book/KuboticsG
 export class LeadAgentService {
   private platformId = inject(PLATFORM_ID);
   private api = inject(KuboticsApiService);
+  private analytics = inject(AnalyticsService);
   
   isOpen = signal<boolean>(false);
   isExpandedModal = signal<boolean>(false);
@@ -573,6 +575,12 @@ export class LeadAgentService {
       }));
 
       // Trigger GA4 & Google Ads Conversion for Qualified Scheduled Meeting
+      this.analytics.track('schedule_appointment', {
+        event_category: 'Engagement',
+        event_label: data.topic || 'Discovery Call',
+        value: 250.0,
+        currency: 'CHF'
+      });
       if (typeof window !== 'undefined' && (window as any).gtag) {
         try {
           (window as any).gtag('event', 'schedule_appointment', {
