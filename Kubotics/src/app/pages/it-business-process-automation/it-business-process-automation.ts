@@ -4,7 +4,6 @@ import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { SeoService } from '../../core/services/seo';
 import { KuboticsApiService, InboundLeadPayload } from '../../core/services/kubotics-api.service';
-import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
 
 @Component({
   selector: 'app-it-business-process-automation-page',
@@ -19,22 +18,25 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
           <div class="hero-content">
             <div class="eyebrow">
               <span class="material-icons">hub</span>
-              IT- &amp; Geschäftsprozess-Automatisierung für Schweizer KMU
+              IT- &amp; GESCHÄFTSPROZESS-AUTOMATISIERUNG FÜR SCHWEIZER KMU
             </div>
             <h1>Weniger manuelle Arbeit.<br><span class="accent">Mehr automatisierte Geschäftsprozesse.</span></h1>
             <p class="hero-sub">
               Wir verbinden Ihre bestehenden IT-Systeme, eliminieren repetitive Dateneingaben zwischen E-Mail, Excel und ERP und setzen KI gezielt dort ein, wo sie messbaren Nutzen bringt.
             </p>
             <div class="hero-actions">
-              <a href="#analyse-formular" (click)="scrollToForm($event)" class="btn btn-primary btn-lg">
+              <a href="#analyse-formular" (click)="onCtaClick($event, 'hero_primary_cta', 'hero', 'analyse-formular')" class="btn btn-primary btn-lg">
                 <span class="material-icons">assignment</span>
                 Kostenlose Automatisierungsanalyse anfordern
               </a>
-              <a href="#beispiele" (click)="scrollToExamples($event)" class="btn btn-outline btn-lg">
+              <a href="#beispiele" (click)="onCtaClick($event, 'hero_secondary_cta', 'hero', 'beispiele')" class="btn btn-outline btn-lg">
                 <span class="material-icons">arrow_downward</span>
                 Beispiele für Automatisierungen entdecken
               </a>
             </div>
+            <p class="cta-clarification">
+              Wir prüfen einen konkreten Geschäftsprozess, identifizieren Automatisierungspotenzial und geben Ihnen eine erste Einschätzung zu Machbarkeit, Aufwand und wirtschaftlichem Nutzen.
+            </p>
             <div class="hero-trust">
               <span><i class="material-icons">check_circle</i> Integration in bestehende IT (ERP, CRM, M365)</span>
               <span><i class="material-icons">check_circle</i> Kontrollierte Automatisierung mit Human-in-the-Loop</span>
@@ -45,7 +47,7 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
           <div class="hero-visual">
             <div class="workflow-card">
               <div class="wf-header">
-                <span class="wf-badge">System-Integration</span>
+                <span class="wf-badge">SYSTEM-INTEGRATION</span>
                 <span class="wf-status">Ohne Medienbruch</span>
               </div>
               <div class="wf-flow">
@@ -79,10 +81,10 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       </section>
 
       <!-- 2. THE PROBLEMS WE SOLVE -->
-      <section class="section bg-light">
+      <section class="section section-alt">
         <div class="container">
           <div class="section-header">
-            <span class="section-tag">Ausgangslage in KMU</span>
+            <span class="section-tag">AUSGANGSLAGE IN KMU</span>
             <h2>Welche Engpässe wir in Schweizer KMU lösen</h2>
             <p>Viele Unternehmen nutzen bereits moderne Software – dennoch verbringen Teams jede Woche Stunden mit manuellen Zwischenschritten.</p>
           </div>
@@ -121,11 +123,11 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
         </div>
       </section>
 
-      <!-- 3. WHAT WE AUTOMATE (5 CAPABILITIES) -->
+      <!-- 3. WHAT WE AUTOMATE (5 CAPABILITIES + LEGACY MODERNIZATION) -->
       <section class="section">
         <div class="container">
           <div class="section-header">
-            <span class="section-tag">Leistungsspektrum</span>
+            <span class="section-tag">LEISTUNGSSPEKTRUM</span>
             <h2>Was wir konkret automatisieren</h2>
             <p>Wir entwickeln keine isolierten Spielereien, sondern belastbare Abläufe, die in Ihre bestehende IT-Landschaft passen.</p>
           </div>
@@ -155,18 +157,18 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
             </div>
             <div class="card capability-card">
               <span class="material-icons card-icon">code</span>
-              <h3>Individuelle IT-Automatisierung</h3>
-              <p>Massgeschneiderte Schnittstellen, Skripte und Hintergrunddienste, wenn Standard-Tools an ihre Grenzen stossen.</p>
+              <h3>Individuelle IT-Automatisierung &amp; Legacy-Modernisierung</h3>
+              <p>Massgeschneiderte Schnittstellen, Skripte und Hintergrunddienste, wenn Standard-Tools an ihre Grenzen stossen. Wir modernisieren bestehende Anwendungen und ersetzen veraltete Legacy-Systeme durch schlanke, massgeschneiderte Softwarelösungen – unterstützt durch moderne AI-driven Development-Methoden.</p>
             </div>
           </div>
         </div>
       </section>
 
       <!-- 4. HOW IT WORKS (4 STEPS) -->
-      <section class="section bg-light">
+      <section class="section section-alt">
         <div class="container">
           <div class="section-header">
-            <span class="section-tag">Vorgehen</span>
+            <span class="section-tag">VORGEHEN</span>
             <h2>In 4 klaren Schritten zur funktionierenden Automatisierung</h2>
             <p>Pragmatisch, transparent und ohne monatelange Beratungsprojekte.</p>
           </div>
@@ -199,28 +201,28 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       <section id="beispiele" class="section">
         <div class="container">
           <div class="section-header">
-            <span class="section-tag">Illustrativ</span>
+            <span class="section-tag">ILLUSTRATIV</span>
             <h2>Konkrete Automatisierungsbeispiele aus der Praxis</h2>
             <p>Typische Einsatzszenarien, wie wir sie für Schweizer KMU umsetzen (illustrative Prozessbeispiele, keine fiktiven Kundenreferenzen):</p>
           </div>
           <div class="cards-grid cols-2">
             <div class="example-card">
-              <div class="example-tag">Finanzen &amp; Administration</div>
+              <div class="example-tag">FINANZEN &amp; ADMINISTRATION</div>
               <h3>Kreditorenrechnung: Vom PDF-Eingang bis zur ERP-Buchung</h3>
               <p>Eingehende Rechnungen per E-Mail werden automatisch ausgelesen, mit Bestellnummern abgeglichen, bei Abweichungen zur Freigabe an die zuständige Person geleitet und anschliessend strukturiert ins ERP übergeben.</p>
             </div>
             <div class="example-card">
-              <div class="example-tag">Vertrieb &amp; Auftragsabwicklung</div>
+              <div class="example-tag">VERTRIEB &amp; AUFTRAGSABWICKLUNG</div>
               <h3>Kundenanfragen &amp; Offerten automatisch vorqualifizieren</h3>
               <p>Webformular- und E-Mail-Anfragen werden automatisch kategorisiert, im CRM als strukturierter Vorgang angelegt und mit den passenden Stammdaten für den Innendienst vorbereitet.</p>
             </div>
             <div class="example-card">
-              <div class="example-tag">Einkauf &amp; Logistik</div>
+              <div class="example-tag">EINKAUF &amp; LOGISTIK</div>
               <h3>Auftragsbestätigungen &amp; Liefertermine abgleichen</h3>
               <p>Lieferanten-Bestätigungen per PDF werden automatisch mit offenen Bestellungen verglichen. Preis- oder Terminabweichungen lösen gezielt eine Meldung an den Einkauf aus.</p>
             </div>
             <div class="example-card">
-              <div class="example-tag">IT &amp; Interne Services</div>
+              <div class="example-tag">IT &amp; INTERNE SERVICES</div>
               <h3>Mitarbeitenden-Onboarding über M365, Tickets &amp; ERP</h3>
               <p>Ein einziger strukturierter Antrag erstellt Benutzerkonten, weist Berechtigungen zu, informiert die IT und legt die erforderlichen Aufgaben in den Fachabteilungen an.</p>
             </div>
@@ -229,10 +231,10 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       </section>
 
       <!-- 6. BUSINESS VALUE / INTERACTIVE ROI ESTIMATOR -->
-      <section class="section bg-light">
+      <section class="section section-alt">
         <div class="container">
           <div class="section-header">
-            <span class="section-tag">Wirtschaftlichkeit</span>
+            <span class="section-tag">WIRTSCHAFTLICHKEIT</span>
             <h2>Was kostet ein manueller Prozess Ihr Unternehmen pro Jahr?</h2>
             <p>Schätzen Sie das Einsparpotenzial eines konkreten Prozesses auf Basis Ihrer eigenen Zahlen.</p>
           </div>
@@ -241,19 +243,19 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
             <div class="roi-inputs">
               <div class="input-group">
                 <label for="roi-employees">Beteiligte Mitarbeitende: <strong>{{ employees() }}</strong></label>
-                <input id="roi-employees" type="range" min="1" max="50" [ngModel]="employees()" (ngModelChange)="employees.set($event)" />
+                <input id="roi-employees" type="range" min="1" max="50" [ngModel]="employees()" (ngModelChange)="onRoiChange('employees', $event)" />
               </div>
               <div class="input-group">
                 <label for="roi-hours">Manuelle Stunden pro Woche (pro Person): <strong>{{ hoursPerWeek() }} Std.</strong></label>
-                <input id="roi-hours" type="range" min="1" max="30" [ngModel]="hoursPerWeek()" (ngModelChange)="hoursPerWeek.set($event)" />
+                <input id="roi-hours" type="range" min="1" max="30" [ngModel]="hoursPerWeek()" (ngModelChange)="onRoiChange('hours_per_week', $event)" />
               </div>
               <div class="input-group">
                 <label for="roi-cost">Vollkosten pro Stunde (CHF): <strong>CHF {{ hourlyCost() }}</strong></label>
-                <input id="roi-cost" type="range" min="50" max="180" step="5" [ngModel]="hourlyCost()" (ngModelChange)="hourlyCost.set($event)" />
+                <input id="roi-cost" type="range" min="50" max="180" step="5" [ngModel]="hourlyCost()" (ngModelChange)="onRoiChange('hourly_cost', $event)" />
               </div>
               <div class="input-group">
                 <label for="roi-pct">Realistisch automatisierbarer Anteil: <strong>{{ automatablePct() }}%</strong></label>
-                <input id="roi-pct" type="range" min="20" max="90" step="5" [ngModel]="automatablePct()" (ngModelChange)="automatablePct.set($event)" />
+                <input id="roi-pct" type="range" min="20" max="90" step="5" [ngModel]="automatablePct()" (ngModelChange)="onRoiChange('automatable_pct', $event)" />
               </div>
             </div>
 
@@ -278,33 +280,33 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
         </div>
       </section>
 
-      <!-- 7. WHY KUBOTICS -->
+      <!-- 7. CREDIBILITY & WHY KUBOTICS -->
       <section class="section">
         <div class="container">
           <div class="section-header">
-            <span class="section-tag">Warum Kubotics</span>
+            <span class="section-tag">VERTRAUEN &amp; UMSETZUNG</span>
             <h2>Warum Unternehmen mit uns zusammenarbeiten</h2>
           </div>
           <div class="cards-grid cols-4">
             <div class="why-card">
-              <span class="material-icons">business_center</span>
-              <h3>Prozess vor Technologie</h3>
-              <p>Wir starten beim Geschäftsprozess und Ihren Zielen – nicht bei einem bestimmten Tool oder KI-Hype.</p>
+              <span class="material-icons">location_on</span>
+              <h3>Schweizer Umsetzungspartner</h3>
+              <p>KuroLIV GmbH mit Sitz in der Schweiz – direkte Ansprechpartner, kurze Wege und realistische Einschätzungen.</p>
+            </div>
+            <div class="why-card">
+              <span class="material-icons">build</span>
+              <h3>Direkte technische Umsetzung</h3>
+              <p>Nicht nur Konzepte auf Folien: Wir entwickeln, integrieren und betreiben die Lösung direkt mit Ihnen.</p>
             </div>
             <div class="why-card">
               <span class="material-icons">integration_instructions</span>
-              <h3>Integration in Bestehendes</h3>
+              <h3>Integration in bestehende IT</h3>
               <p>Ihre vorhandenen Systeme bleiben das Rückgrat. Wir verbinden, was bereits da ist.</p>
             </div>
             <div class="why-card">
               <span class="material-icons">verified_user</span>
-              <h3>Kontrolle &amp; Nachvollziehbarkeit</h3>
-              <p>Klare Regeln, Logging und Freigabeschritte durch Menschen bei kritischen Entscheidungen.</p>
-            </div>
-            <div class="why-card">
-              <span class="material-icons">location_on</span>
-              <h3>Schweizer Partner</h3>
-              <p>Direkter Ansprechpartner in der Schweiz (KuroLIV GmbH), kurze Wege und realistische Einschätzungen.</p>
+              <h3>Kontrollierte Automatisierung</h3>
+              <p>Nachvollziehbares Logging, klare Regeln und menschliche Freigabeschritte bei kritischen Entscheidungen.</p>
             </div>
           </div>
         </div>
@@ -314,7 +316,7 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       <section id="analyse-formular" class="section cta-section">
         <div class="container cta-grid">
           <div class="cta-info">
-            <span class="section-tag light">Unverbindliche Ersteinschätzung</span>
+            <span class="section-tag">UNVERBINDLICHE ERSTEINSCHÄTZUNG</span>
             <h2>Welcher Geschäftsprozess kostet Ihr Unternehmen unnötig Zeit?</h2>
             <p>
               Schildern Sie uns kurz Ihren Ablauf oder Ihr aktuelles Nadelöhr. Wir melden uns persönlich bei Ihnen und prüfen gemeinsam, ob und wie sich der Prozess sinnvoll automatisieren lässt.
@@ -331,11 +333,13 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
               <div class="form-success">
                 <span class="material-icons success-icon">check_circle</span>
                 <h3>Vielen Dank für Ihre Anfrage</h3>
-                <p>Wir haben Ihre Angaben erhalten und melden uns zeitnah für eine erste Einschätzung bei Ihnen.</p>
+                <p>
+                  Wir haben Ihre Angaben erfolgreich erhalten. Unser Team prüft Ihre Prozessbeschreibung und meldet sich <strong>innerhalb von 1 Arbeitstag persönlich per E-Mail oder Telefon</strong> bei Ihnen, um das weitere Vorgehen zu besprechen.
+                </p>
                 <button type="button" class="btn btn-outline" (click)="resetForm()">Weitere Anfrage senden</button>
               </div>
             } @else {
-              <form (ngSubmit)="onSubmit()" #leadForm="ngForm" class="lead-form">
+              <form (ngSubmit)="onSubmit()" #leadForm="ngForm" class="lead-form" (focusin)="onFormStart()">
                 <div class="form-row">
                   <div class="form-field">
                     <label for="name">Name *</label>
@@ -388,9 +392,9 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
   `,
   styles: [`
     .bpa-page {
-      color: var(--text-main, #0f172a);
-      background: var(--bg-main, #ffffff);
-      font-family: var(--font-body, 'Inter', sans-serif);
+      color: var(--color-primary, #ffffff);
+      background: radial-gradient(circle at 50% 10%, rgba(0, 113, 227, 0.12) 0%, rgba(2, 2, 4, 1) 70%);
+      font-family: var(--font-main, 'Outfit', 'Inter', sans-serif);
     }
     .container {
       max-width: 1200px;
@@ -400,8 +404,10 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
     .section {
       padding: 72px 0;
     }
-    .bg-light {
-      background: #f8fafc;
+    .section-alt {
+      background: rgba(255, 255, 255, 0.02);
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     }
     .section-header {
       max-width: 760px;
@@ -410,29 +416,27 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
     }
     .section-tag {
       display: inline-block;
-      font-size: 0.78rem;
+      font-family: var(--font-mono, 'Space Mono', monospace);
+      font-size: 0.75rem;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      color: #0f766e;
-      background: #ccfbf1;
+      color: #60a5fa;
+      background: rgba(0, 113, 227, 0.15);
+      border: 1px solid rgba(0, 113, 227, 0.35);
       padding: 4px 12px;
       border-radius: 999px;
-      margin-bottom: 12px;
-    }
-    .section-tag.light {
-      background: rgba(255, 255, 255, 0.15);
-      color: #99f6e4;
+      margin-bottom: 14px;
     }
     .section-header h2 {
       font-size: clamp(1.6rem, 3vw, 2.2rem);
-      font-weight: 800;
+      font-weight: 700;
       margin: 0 0 12px;
-      color: #0f172a;
+      color: #ffffff;
     }
     .section-header p {
       font-size: 1.05rem;
-      color: #475569;
+      color: var(--color-secondary, #a1a1aa);
       margin: 0;
       line-height: 1.6;
     }
@@ -440,8 +444,7 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
     /* Hero */
     .hero-section {
       padding: 112px 0 72px;
-      background: linear-gradient(180deg, #f0fdfa 0%, #ffffff 100%);
-      border-bottom: 1px solid #e2e8f0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     }
     .hero-grid {
       display: grid;
@@ -453,9 +456,10 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: #0f766e;
+      font-family: var(--font-mono, 'Space Mono', monospace);
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #60a5fa;
       margin-bottom: 16px;
     }
     .eyebrow .material-icons {
@@ -466,15 +470,15 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       font-weight: 800;
       line-height: 1.15;
       margin: 0 0 20px;
-      color: #0f172a;
+      color: #ffffff;
     }
     h1 .accent {
-      color: #0f766e;
+      color: #0071e3;
     }
     .hero-sub {
       font-size: 1.125rem;
       line-height: 1.65;
-      color: #334155;
+      color: #d4d4d8;
       margin: 0 0 28px;
       max-width: 620px;
     }
@@ -482,7 +486,14 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       display: flex;
       flex-wrap: wrap;
       gap: 14px;
-      margin-bottom: 28px;
+      margin-bottom: 14px;
+    }
+    .cta-clarification {
+      font-size: 0.9rem;
+      line-height: 1.55;
+      color: #a1a1aa;
+      margin: 0 0 24px;
+      max-width: 600px;
     }
     .btn {
       display: inline-flex;
@@ -503,24 +514,24 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       font-size: 1rem;
     }
     .btn-primary {
-      background: #0f766e;
+      background: #0071e3;
       color: #ffffff;
     }
     .btn-primary:hover:not(:disabled) {
-      background: #0d9488;
+      background: #0077ed;
     }
     .btn-primary:disabled {
-      opacity: 0.6;
+      opacity: 0.55;
       cursor: not-allowed;
     }
     .btn-outline {
-      background: #ffffff;
-      color: #0f172a;
-      border-color: #cbd5e1;
+      background: rgba(255, 255, 255, 0.05);
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.16);
     }
     .btn-outline:hover {
-      border-color: #0f766e;
-      color: #0f766e;
+      border-color: #0071e3;
+      background: rgba(0, 113, 227, 0.12);
     }
     .btn-block {
       width: 100%;
@@ -530,7 +541,7 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       flex-wrap: wrap;
       gap: 16px;
       font-size: 0.88rem;
-      color: #475569;
+      color: #a1a1aa;
     }
     .hero-trust span {
       display: inline-flex;
@@ -539,16 +550,16 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
     }
     .hero-trust .material-icons {
       font-size: 17px;
-      color: #0f766e;
+      color: #30d158;
     }
 
     /* Workflow visual */
     .workflow-card {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
+      background: rgba(18, 18, 24, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 16px;
       padding: 24px;
-      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+      backdrop-filter: blur(16px);
     }
     .wf-header {
       display: flex;
@@ -557,16 +568,17 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       margin-bottom: 20px;
     }
     .wf-badge {
-      font-size: 0.78rem;
+      font-family: var(--font-mono, 'Space Mono', monospace);
+      font-size: 0.72rem;
       font-weight: 700;
-      color: #0f766e;
-      background: #ccfbf1;
+      color: #60a5fa;
+      background: rgba(0, 113, 227, 0.15);
       padding: 4px 10px;
       border-radius: 6px;
     }
     .wf-status {
       font-size: 0.78rem;
-      color: #64748b;
+      color: #a1a1aa;
     }
     .wf-flow {
       display: flex;
@@ -580,29 +592,29 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       align-items: center;
       gap: 14px;
       padding: 14px 16px;
-      border: 1px solid #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 12px;
-      background: #f8fafc;
+      background: rgba(255, 255, 255, 0.04);
     }
     .wf-node-highlight {
-      background: #f0fdfa;
-      border-color: #99f6e4;
+      background: rgba(0, 113, 227, 0.12);
+      border-color: rgba(0, 113, 227, 0.4);
     }
     .wf-node .material-icons {
-      color: #0f766e;
+      color: #60a5fa;
       font-size: 24px;
     }
     .wf-node strong {
       display: block;
       font-size: 0.95rem;
-      color: #0f172a;
+      color: #ffffff;
     }
     .wf-node small {
-      color: #64748b;
+      color: #a1a1aa;
       font-size: 0.82rem;
     }
     .wf-arrow .material-icons {
-      color: #94a3b8;
+      color: #71717a;
       font-size: 20px;
     }
 
@@ -616,26 +628,26 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
     .cols-4 { grid-template-columns: repeat(4, 1fr); }
 
     .card, .example-card, .why-card, .step-card {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
+      background: rgba(18, 18, 24, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 14px;
       padding: 24px;
     }
-    .card-icon {
+    .card-icon, .why-card .material-icons {
       font-size: 28px;
-      color: #0f766e;
+      color: #60a5fa;
       margin-bottom: 12px;
     }
     .card h3, .example-card h3, .why-card h3, .step-card h3 {
       font-size: 1.1rem;
       font-weight: 700;
       margin: 0 0 8px;
-      color: #0f172a;
+      color: #ffffff;
     }
     .card p, .example-card p, .why-card p, .step-card p {
       font-size: 0.94rem;
       line-height: 1.6;
-      color: #475569;
+      color: #a1a1aa;
       margin: 0;
     }
     .text-link {
@@ -645,7 +657,7 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       margin-top: 14px;
       font-size: 0.88rem;
       font-weight: 600;
-      color: #0f766e;
+      color: #60a5fa;
       text-decoration: none;
     }
     .text-link .material-icons {
@@ -657,25 +669,22 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       gap: 20px;
     }
     .step-num {
-      font-size: 1.6rem;
-      font-weight: 800;
-      color: #0f766e;
+      font-family: var(--font-mono, 'Space Mono', monospace);
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #0071e3;
       margin-bottom: 8px;
     }
     .example-tag {
       display: inline-block;
-      font-size: 0.75rem;
+      font-family: var(--font-mono, 'Space Mono', monospace);
+      font-size: 0.72rem;
       font-weight: 700;
-      color: #0f766e;
-      background: #f0fdfa;
+      color: #60a5fa;
+      background: rgba(0, 113, 227, 0.15);
       padding: 3px 10px;
       border-radius: 6px;
       margin-bottom: 10px;
-    }
-    .why-card .material-icons {
-      font-size: 28px;
-      color: #0f766e;
-      margin-bottom: 12px;
     }
 
     /* ROI Box */
@@ -683,8 +692,8 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 32px;
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
+      background: rgba(18, 18, 24, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 16px;
       padding: 32px;
     }
@@ -696,12 +705,12 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
     .input-group label {
       display: block;
       font-size: 0.92rem;
-      color: #334155;
+      color: #d4d4d8;
       margin-bottom: 8px;
     }
     .input-group input[type="range"] {
       width: 100%;
-      accent-color: #0f766e;
+      accent-color: #0071e3;
     }
     .roi-results {
       display: flex;
@@ -710,8 +719,8 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       justify-content: center;
     }
     .roi-metric {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 12px;
       padding: 16px 20px;
       display: flex;
@@ -719,32 +728,32 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       align-items: center;
     }
     .roi-metric.highlight {
-      background: #f0fdfa;
-      border-color: #99f6e4;
+      background: rgba(0, 113, 227, 0.15);
+      border-color: rgba(0, 113, 227, 0.45);
     }
     .metric-label {
       font-size: 0.9rem;
-      color: #475569;
+      color: #d4d4d8;
     }
     .metric-value {
       font-size: 1.35rem;
       font-weight: 800;
-      color: #0f172a;
+      color: #ffffff;
     }
     .roi-metric.highlight .metric-value {
-      color: #0f766e;
+      color: #60a5fa;
     }
     .roi-disclaimer {
       font-size: 0.8rem;
       line-height: 1.5;
-      color: #64748b;
+      color: #a1a1aa;
       margin: 4px 0 0;
     }
 
     /* CTA / Conversion Section */
     .cta-section {
-      background: #0f172a;
-      color: #ffffff;
+      background: rgba(255, 255, 255, 0.02);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
     }
     .cta-grid {
       display: grid;
@@ -754,14 +763,14 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
     }
     .cta-info h2 {
       font-size: clamp(1.6rem, 3vw, 2.2rem);
-      font-weight: 800;
+      font-weight: 700;
       margin: 0 0 16px;
       color: #ffffff;
     }
     .cta-info p {
       font-size: 1.02rem;
       line-height: 1.65;
-      color: #cbd5e1;
+      color: #d4d4d8;
       margin: 0 0 24px;
     }
     .cta-bullets {
@@ -776,16 +785,16 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       display: flex;
       align-items: center;
       gap: 10px;
-      color: #e2e8f0;
+      color: #e4e4e7;
       font-size: 0.95rem;
     }
     .cta-bullets .material-icons {
-      color: #2dd4bf;
+      color: #30d158;
       font-size: 18px;
     }
     .cta-form-card {
-      background: #ffffff;
-      color: #0f172a;
+      background: rgba(18, 18, 24, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.14);
       border-radius: 16px;
       padding: 32px;
     }
@@ -807,22 +816,26 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
     .form-field label {
       font-size: 0.85rem;
       font-weight: 600;
-      color: #334155;
+      color: #d4d4d8;
     }
     .form-field input, .form-field textarea {
       padding: 10px 12px;
-      border: 1px solid #cbd5e1;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.16);
       border-radius: 8px;
+      color: #ffffff;
       font-size: 0.95rem;
       font-family: inherit;
     }
     .form-field input:focus, .form-field textarea:focus {
       outline: none;
-      border-color: #0f766e;
+      border-color: #0071e3;
+      background: rgba(255, 255, 255, 0.08);
     }
     .form-error {
-      background: #fef2f2;
-      color: #b91c1c;
+      background: rgba(255, 69, 58, 0.15);
+      border: 1px solid rgba(255, 69, 58, 0.4);
+      color: #fca5a5;
       padding: 10px 14px;
       border-radius: 8px;
       font-size: 0.88rem;
@@ -831,9 +844,14 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
       text-align: center;
       padding: 24px 12px;
     }
+    .form-success p {
+      color: #d4d4d8;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
     .success-icon {
       font-size: 48px;
-      color: #0f766e;
+      color: #30d158;
       margin-bottom: 12px;
     }
 
@@ -861,7 +879,6 @@ import { LeadAgentService } from '../../features/lead-agent/lead-agent.service';
 export class ItBusinessProcessAutomationPageComponent implements OnInit {
   private readonly seo = inject(SeoService);
   private readonly api = inject(KuboticsApiService);
-  private readonly leadAgent = inject(LeadAgentService);
 
   // Interactive ROI Estimator Signals
   readonly employees = signal(5);
@@ -883,6 +900,8 @@ export class ItBusinessProcessAutomationPageComponent implements OnInit {
   readonly submitting = signal(false);
   readonly submitted = signal(false);
   readonly errorMsg = signal<string | null>(null);
+  private formStarted = false;
+  private roiInteracted = false;
 
   form = {
     name: '',
@@ -901,14 +920,48 @@ export class ItBusinessProcessAutomationPageComponent implements OnInit {
     });
   }
 
-  scrollToForm(event: Event): void {
-    event.preventDefault();
-    document.getElementById('analyse-formular')?.scrollIntoView({ behavior: 'smooth' });
+  private trackGtag(eventName: string, params: Record<string, unknown>): void {
+    if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
+      try {
+        (window as any).gtag('event', eventName, params);
+      } catch {
+        // ignore analytics errors
+      }
+    }
   }
 
-  scrollToExamples(event: Event): void {
+  onCtaClick(event: Event, ctaId: string, ctaLocation: string, targetId: string): void {
     event.preventDefault();
-    document.getElementById('beispiele')?.scrollIntoView({ behavior: 'smooth' });
+    this.trackGtag('cta_click', {
+      cta_id: ctaId,
+      cta_location: ctaLocation,
+      landing_page: '/automation/it-business-process-automation'
+    });
+    document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  onRoiChange(field: 'employees' | 'hours_per_week' | 'hourly_cost' | 'automatable_pct', value: number): void {
+    if (field === 'employees') this.employees.set(value);
+    if (field === 'hours_per_week') this.hoursPerWeek.set(value);
+    if (field === 'hourly_cost') this.hourlyCost.set(value);
+    if (field === 'automatable_pct') this.automatablePct.set(value);
+
+    if (!this.roiInteracted) {
+      this.roiInteracted = true;
+      this.trackGtag('roi_calculator_interaction', {
+        landing_page: '/automation/it-business-process-automation'
+      });
+    }
+  }
+
+  onFormStart(): void {
+    if (!this.formStarted) {
+      this.formStarted = true;
+      this.trackGtag('form_start', {
+        form_id: 'it_bpa_analysis_form',
+        landing_page: '/automation/it-business-process-automation'
+      });
+    }
   }
 
   onSubmit(): void {
@@ -936,20 +989,15 @@ export class ItBusinessProcessAutomationPageComponent implements OnInit {
     };
 
     this.api.submitLead(payload).subscribe({
-      next: () => {
+      next: (res) => {
         this.submitting.set(false);
         this.submitted.set(true);
-        if (typeof window !== 'undefined' && (window as any).gtag) {
-          try {
-            (window as any).gtag('event', 'generate_lead', {
-              event_category: 'Lead Generation',
-              event_label: 'IT & Business Process Automation',
-              landing_page: '/automation/it-business-process-automation'
-            });
-          } catch {
-            // ignore analytics errors
-          }
-        }
+        this.trackGtag('generate_lead', {
+          event_category: 'Lead Generation',
+          event_label: 'IT & Business Process Automation',
+          landing_page: '/automation/it-business-process-automation',
+          transaction_id: res?.contact_id || `lead_${Date.now()}`
+        });
       },
       error: () => {
         this.submitting.set(false);
@@ -967,6 +1015,7 @@ export class ItBusinessProcessAutomationPageComponent implements OnInit {
       industry: '',
       processDescription: ''
     };
+    this.formStarted = false;
     this.submitted.set(false);
     this.errorMsg.set(null);
   }
