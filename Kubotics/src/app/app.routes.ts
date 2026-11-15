@@ -34,6 +34,22 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/dashboard/dashboard').then(m => m.DashboardComponent)
   },
   {
+    path: 'datenschutz',
+    loadComponent: () => import('./pages/privacy-policy/privacy-policy').then(m => m.PrivacyPolicyPageComponent)
+  },
+  {
+    path: 'privacy-policy',
+    loadComponent: () => import('./pages/privacy-policy/privacy-policy').then(m => m.PrivacyPolicyPageComponent)
+  },
+  {
+    path: 'terms',
+    loadComponent: () => import('./pages/terms/terms').then(m => m.TermsPageComponent)
+  },
+  {
+    path: 'agb',
+    loadComponent: () => import('./pages/terms/terms').then(m => m.TermsPageComponent)
+  },
+  {
     path: '**',
     redirectTo: ''
   }

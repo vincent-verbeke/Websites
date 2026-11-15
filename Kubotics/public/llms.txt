@@ -17,3 +17,5 @@
 - Legal Entity: KuroLIV GmbH (Switzerland)
 - Website: https://www.kubotics.ch
 - Sitemap: https://www.kubotics.ch/sitemap.xml
+- Privacy Policy: https://www.kubotics.ch/datenschutz (also https://www.kubotics.ch/privacy-policy)
+- Terms of Service: https://www.kubotics.ch/terms
