@@ -38,7 +38,7 @@ Search Console once you grant access (§4).
 | Campaign metrics ingestion (B4) | ✅ `CampaignMetric` model + `POST /spend/records` + `GET /spend/status` |
 | Spend caps + approval gate (B5) | ✅ enforced in code: `SPEND_TOTAL_CAP_CHF = 100`, `SPEND_SEARCH_CAP_CHF = 70` (per calendar month), every spend record needs an APPROVED approval (`marketing_guard.py`) |
 | Analytics | ✅ GA4 `G-0H34P5Y9WX` in `index.html`, consent mode defaults, `qualify_lead` + `ads_conversion_SUBMIT_LEAD_FORM_1` events |
-| Conversion tracking for *qualified* events | 🟡 **in the working tree, not yet committed**: `schedule_appointment` + `ads_conversion_MEETING_SCHEDULED`, `qualify_lead` fired from `submitLead`, ROI methodology transparency, readiness score starting at 0 % (`ng run build` verified green today — commits land with this batch) |
+| Conversion tracking for *qualified* events | ✅ committed (`d4394d2` + landing `c132bef`): `schedule_appointment` + `ads_conversion_MEETING_SCHEDULED`, `qualify_lead` fired from `submitLead`, ROI methodology transparency, readiness score starting at 0 % (`ng run build` green) |
 | Needle daily evaluation | ✅ event/eval path exists; needs a real metrics feed → §3 keys |
 
 ## 3. What is MISSING before paid spend (ordered)
@@ -167,7 +167,7 @@ it lands, what it unlocks):**
 | 5 | **Meta / Instagram** | Business Manager user with *Ads admin* (or Marketing API token + ad-account id) + IG professional account linked | secrets path | the CHF 25 video test + spend ingestion |
 | 6 | **LinkedIn** | company-page admin session (page build = out of scope for me); Marketing API later | his side | organic page + later paid |
 | 7 | **OpenAI ads** | console/rep access | his side | 4th tracked source (`utm_source=openai_ads`) |
-| 8 | **Telegram bot** | confirm `TELEGRAM_BOT_TOKEN` (already in the task def) still valid + `/start`ed | already wired | follow-up channel 3 |
+| 8 | **Telegram bot** | ✅ verified 2026-11-15 — no action needed: token valid (`getWebhookInfo`: url set, pending 0, no errors), webhook live **with secret enforcement** (only Telegram may post), outbound send path wired for follow-up | already wired |
 | 9 | Email (M365) + WhatsApp Cloud | — | **already live** (mail agent + send health green) | follow-up channels 1–2 |
 
 **Lead follow-up automation (your requirement: email/WhatsApp/Telegram,
