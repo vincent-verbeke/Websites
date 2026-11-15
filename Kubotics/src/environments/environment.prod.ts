@@ -10,6 +10,7 @@
  */
 export const environment = {
   production: true,
-  /** GTM web container id, e.g. "GTM-XXXXXXX". Empty string = loader off. */
-  gtmId: '',
+  /** GTM web container id — CREATED 2026-11-15 (account Kubotics /
+   *  www.kubotics.ch, his kuroliv.ch session). Paste-worthy single slot. */
+  gtmId: 'GTM-WG9P5H9M',
 };
