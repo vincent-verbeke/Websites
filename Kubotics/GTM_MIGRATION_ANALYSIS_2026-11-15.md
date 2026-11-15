@@ -67,6 +67,19 @@ double count (spec §6). Needs GA4 Measurement Protocol secret (access list).
   `page_view` while the direct gtag still does (single page_view source);
   conversion tags fire ONLY from GTM; direct `ads_conversion_*` calls in
   `kubotics-api.service.ts`/`lead-agent.service.ts` kept until evidence.
+  **Runbook (2026-11-15, UI fight documented):** GTM workspace 3 → Add tag →
+  Google Analytics → *Add your Google Analytics stream* → measurement
+  `G-0H34P5Y9WX` → turn OFF "Send page view on page load" → trigger
+  Initialization/All Pages → Save → Submit/Publish → verify in ONE pass:
+  (a) site reload shows gtm.js + exactly one canonical page_view in dataLayer,
+  (b) GA4 **Realtime via Vincent's signed-in session** (analytics.google.com —
+  browser access needs NO grant; only the Data API needs row-2) shows page_view
+  arrivals WITHOUT duplicates; delete/revert the tag if anything doubles.
+  Note: the tag-chooser sheet renders DUPLICATE instances in this browser
+  bridge — always scope clicks to the VISIBLE `.gtm-sheet-wrapper`, and
+  Tag Assistant's Connect popup is blocked here (its window.open needs a real
+  user gesture; debug URL pattern `?gtm_debug=<ts>` captured but opener-less
+  tabs cannot handshake) → Phase 3 evidence runs in a real session.
 - **Phase 3 (evidence, spec §7):** GTM Preview + Tag Assistant + GA4
   DebugView + Ads diagnostics on the REAL flows (load, SPA route, CTA,
   form start, success, fail, duplicate, consent accept/reject, ROI, booking).
