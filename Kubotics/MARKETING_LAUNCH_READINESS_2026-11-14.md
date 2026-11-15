@@ -137,3 +137,54 @@ very long time") — refresh, in this order:
 5. Needle evaluates daily (spend, qualified enquiries, meetings, cost per
    lead) against the caps; reserve is released only on its recommendation
    with your approval.
+
+---
+
+## 7. Addendum 2026-11-15 (campaign prep, GTM, new channels, follow-up)
+
+**First campaign destination:** `/automation/it-business-process-automation`
+(live, 200) — another agent is improving the page; the GTM rollout targets
+this page first (see `GTM_MIGRATION_ANALYSIS_2026-11-15.md` — recommendation:
+client-side GTM now, server-side GTM deferred as over-dimensioned).
+
+**New channel — OpenAI ads (diverse lead tracking):** track from day 1 with
+`utm_source=openai_ads` (+ medium/campaign) through the existing backend
+attribution (no PII, lands on Contact like every other source). No
+self-serve campaign API assumed: access path = your OpenAI account/console
+(or their ads rep); add conversion integration when they expose one. Design
+so needle's daily evaluation can compare `google|meta|linkedin|openai`
+sources on equal footing.
+
+**Access & API keys — the complete one-time checklist (what you grant, where
+it lands, what it unlocks):**
+
+| # | Tool | You provide (one time) | Lands in | Unlocks |
+|---|---|---|---|---|
+| 1 | **Google Ads** | MCC invite (user, *Standard* access) OR API trio: developer token + OAuth refresh token + customer ID | GitHub secrets → injected by the prepare step of `deploy.yml` | campaign/keyword/negative management, conversion actions, daily spend pull for needle |
+| 2 | **GA4** | editor on property `G-0H34P5Y9WX` + enable Data API; (later) Measurement Protocol API secret | same secrets path | event verification, daily metrics ingestion, optional server-side mirror |
+| 3 | **GTM** | create containers (prod + dev) → send me the **GTM-CONTAINER-ID**s | frontend build config (one env, not hardcoded) | centralized tags per the migration spec |
+| 4 | **Search Console** | DNS TXT record for `www.kubotics.ch` (I give you the value) | Google side | SEO/keyword evidence, sitemap submission (fixed sitemap ready) |
+| 5 | **Meta / Instagram** | Business Manager user with *Ads admin* (or Marketing API token + ad-account id) + IG professional account linked | secrets path | the CHF 25 video test + spend ingestion |
+| 6 | **LinkedIn** | company-page admin session (page build = out of scope for me); Marketing API later | his side | organic page + later paid |
+| 7 | **OpenAI ads** | console/rep access | his side | 4th tracked source (`utm_source=openai_ads`) |
+| 8 | **Telegram bot** | confirm `TELEGRAM_BOT_TOKEN` (already in the task def) still valid + `/start`ed | already wired | follow-up channel 3 |
+| 9 | Email (M365) + WhatsApp Cloud | — | **already live** (mail agent + send health green) | follow-up channels 1–2 |
+
+**Lead follow-up automation (your requirement: email/WhatsApp/Telegram,
+zero manual work, LLM-drafted, the meeting with you = the only human
+contact):** being built now in the backend behind `LEAD_FOLLOWUP_ENABLED`
+(default off). Sequence: T+2h personalized email → T+24h WhatsApp **only
+inside Meta's 24 h window** (else Telegram if linked, else email) → T+72h
+final email whose ONLY next step is your booking link. Stops automatically
+on: any reply from the lead, meeting booked, consent revoked/opt-out, 3
+touches max, 25 sends/day, quiet hours 08–18 Zurich. Copy = LLM-drafted
+(professional Swiss B2B, first name/company/interest only — no free text, no
+PII to the model) with fixed-template fallback; full audit trail, admin
+status/stop endpoints; consent basis documented (inbound-lead form consent,
+FDPIC note). Doc: `Kubotics-Backend/docs/LEAD_FOLLOWUP_PLAN.md`. Enable only
+after my review + your GO.
+
+**Still open from yesterday:** budget GO (CHF 100/70 vs 150 split), claim
+substantiation (98.5 %, <3 mo payback, <6 mo ROI), customer proof/demo
+video, E2E UTM check on chat/booking paths, LinkedIn profile+page copy (your
+side), H2 power-on for the light-dashboard cutover.
