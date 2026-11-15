@@ -111,7 +111,8 @@ jobs:
               "ELEVENLABS_API_KEY": os.environ.get("ELEVENLABS_API_KEY"),
               "AZURE_CLIENT_CERT_KEY": os.environ.get("AZURE_CLIENT_CERT_KEY"),
               "AZURE_CLIENT_CERT_THUMBPRINT": os.environ.get("AZURE_CLIENT_CERT_THUMBPRINT"),
-              "TELEGRAM_BOT_TOKEN": os.environ.get("TELEGRAM_BOT_TOKEN"),
+              "TELEGRAM_BOT_TOKEN": env_vars.get("TELEGRAM_BOT_TOKEN")
+                  or os.environ.get("TELEGRAM_BOT_TOKEN"),  # repo literal WINS (WhatsApp precedent 2026-11-10); literal added 2026-11-15 (@Kubotics_bot)
               "WHATSAPP_VERIFY_TOKEN": os.environ.get("WHATSAPP_VERIFY_TOKEN"),
               # WhatsApp send credentials: the repo JSON literal WINS over the
               # GitHub secret (P0 2026-11-10). d6dfd56 (11-08) first wired the
