@@ -50,6 +50,9 @@ double count (spec §6). Needs GA4 Measurement Protocol secret (access list).
   `MARKETING_LAUNCH_READINESS_2026-11-14.md` §5/§6 addendum 2026-11-15), create the
   `generate_lead` conversion action in Google Ads (primary) and keep
   `qualified_lead`/`meeting` as secondary until verified (spec §4).
+  **Status 2026-11-15: PROD CONTAINER DONE** — `GTM-WG9P5H9M` (account
+  *Kubotics* / *www.kubotics.ch*) created + published + wired by Jcode in
+  Vincent's signed-in session; GA4/Ads grants + dev container still open.
 - **Phase 1 (frontend — coordinate with the landing-page agent):**
   `AnalyticsService` (typed `window.dataLayer.push` wrappers for page_view,
   cta_click, form_start, generate_lead, roi_calculator_interaction,
@@ -95,10 +98,10 @@ double count (spec §6). Needs GA4 Measurement Protocol secret (access list).
 
 | Spec deliverable | Owner | State |
 |---|---|---|
-| 1 Container ID + env config | Vincent creates container → me wiring | pending access |
-| 2 Analytics service + typed dataLayer | me (frontend, after landing-page agent lands to avoid collisions) | not started |
-| 3 Event definitions | me (list above; ids stable, no PII) | not started |
-| 4 Consent v2 migration | me (existing banner) | not started |
+| 1 Container ID + env config | DONE 2026-11-15 (Jcode in Vincent's session): container `GTM-WG9P5H9M` created + initial version published + env slot wired (`f9c3741`) + live-verified; dev container still open | **done** |
+| 2 Analytics service + typed dataLayer | me — **DONE 2026-11-15** (`AnalyticsService` + `GtmService` + env slot, `16fb4fe`/`f9c3741`, 50/50 vitest, live-verified); component call-site migration deferred to after landing-agent + Phase 3 evidence | **done (infra)** |
+| 3 Event definitions | me — **DONE**: the 8 spec names typed in `AnalyticsEventName` (page_view, cta_click, form_start, generate_lead, roi_calculator_interaction, roi_result_view, outbound_click, schedule_appointment), stable, no PII, event_id on conversions | **done** |
+| 4 Consent v2 migration | **NO CHANGE NEEDED**: index.html inline gtag consent default/update + cookie-consent component already ride the dataLayer (single system, §4); GTM picks the queue up on load | **done** |
 | 5 Tags/triggers configured | Vincent's GTM UI or my browser session w/ his access | pending access |
 | 6 direct gtag removed/justified | me after Phase 3 evidence | pending |
 | 7 Dedup strategy | defined in §3/§4 (partly already live: qualify_lead/meeting events exist) | partly live |
