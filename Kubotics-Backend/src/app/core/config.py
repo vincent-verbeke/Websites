@@ -170,6 +170,27 @@ class Settings(BaseSettings):
     MAIL_AGENT_ALERT_WINDOW_END: str = "22:00"
     MAIL_AGENT_ALERT_TZ: str = "Europe/Zurich"
 
+    # --- Lead follow-up state machine (docs/LEAD_FOLLOWUP_PLAN.md; Vincent
+    #     2026-11-15) -------------------------------------------------------
+    # Master switch: default False => maybe_start_followup_loop() returns None
+    # => NO background task registers and NOTHING is ever drafted or sent
+    # (same default-off contract as IBKR_MCP_* / IBKR_PLAN_DAILY_ENABLED /
+    # MAIL_AGENT_*). The admin endpoints stay reachable and report
+    # enabled=false so the wiring can be verified BEFORE the flag is flipped.
+    LEAD_FOLLOWUP_ENABLED: bool = False
+    # Hard sequence caps: <= 3 touches per lead (email -> whatsapp/telegram ->
+    # email + booking link) and <= 25 sends per Europe/Zurich calendar day,
+    # counted from `lead_followup_log` rows with status='ok'.
+    LEAD_FOLLOWUP_MAX_TOUCHES: int = 3
+    LEAD_FOLLOWUP_MAX_PER_DAY: int = 25
+    # Quiet hours (Europe/Zurich, hour granularity): NO outbound follow-up
+    # sends outside [QUIET_START, QUIET_END); due work waits for the window.
+    LEAD_FOLLOWUP_QUIET_START: int = 8
+    LEAD_FOLLOWUP_QUIET_END: int = 18
+    # Deliberately NO LEAD_FOLLOWUP_EMAIL_FROM flag: outbound mail is sent from
+    # the M365 organizer mailbox (M365_ORGANIZER_EMAIL -> m365_service's
+    # organizer_email), so a duplicate from-address setting would only drift.
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

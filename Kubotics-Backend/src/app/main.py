@@ -10,6 +10,7 @@ from app.api.v1.cloud_dashboard import router as cloud_dashboard_router
 from app.api.v1.endpoints import router as api_v1_router
 from app.api.v1.ibkr_mcp import router as ibkr_mcp_router
 from app.api.v1.ibkr_plan import router as ibkr_plan_router
+from app.api.v1.lead_followup import router as lead_followup_router
 from app.api.v1.mail_agent import router as mail_agent_router
 from app.api.v1.marketing_guard import router as marketing_guard_router
 from app.api.v1.needle import router as needle_router
@@ -19,6 +20,7 @@ from app.core.config import settings
 from app.db.session import Base, engine
 from app.services import ibkr_mcp as ibkr_mcp_service
 from app.services import ibkr_plan as ibkr_plan_service
+from app.services import lead_followup as lead_followup_service
 from app.services import mail_agent as mail_agent_service
 from app.services import trading_watch as trading_watch_service
 
@@ -94,7 +96,23 @@ async def lifespan(app: FastAPI):
     if ip is not None:
         logger.info("[ibkr-plan] daily plan loop started (Mon-Fri 09:05-16:30 "
                     "Europe/Zurich)")
+    # Lead follow-up state machine (docs/LEAD_FOLLOWUP_PLAN.md) — default OFF:
+    # maybe_start_followup_loop() returns None unless LEAD_FOLLOWUP_ENABLED is
+    # set, so today's behavior stays untouched (nothing drafted, nothing sent).
+    lf = lead_followup_service.maybe_start_followup_loop()
+    if lf is not None:
+        logger.info("[lead-followup] background loop started (interval=%ss, "
+                    "quiet=%s-%s, caps=%s/day x %s touches)",
+                    lead_followup_service.CYCLE_TICK_S,
+                    settings.LEAD_FOLLOWUP_QUIET_START,
+                    settings.LEAD_FOLLOWUP_QUIET_END,
+                    settings.LEAD_FOLLOWUP_MAX_PER_DAY,
+                    settings.LEAD_FOLLOWUP_MAX_TOUCHES)
     yield
+    if lf is not None:
+        lf.cancel()
+        with suppress(asyncio.CancelledError):
+            await lf
     if ip is not None:
         ip.cancel()
         with suppress(asyncio.CancelledError):
@@ -167,6 +185,10 @@ app.include_router(ibkr_mcp_router, prefix=settings.API_V1_STR)
 # /api/v1/ibkr/plan/state[/import] (admin) + /api/v1/ibkr/plan/dry-run (admin,
 # feed-gated). The scheduler itself is gated by IBKR_PLAN_DAILY_ENABLED (off).
 app.include_router(ibkr_plan_router, prefix=settings.API_V1_STR)
+
+# Lead follow-up admin (/api/v1/leads/followup/status + /{contact_id}/stop) —
+# the SCHEDULER itself is gated by LEAD_FOLLOWUP_ENABLED (off by default).
+app.include_router(lead_followup_router, prefix=settings.API_V1_STR)
 
 # WhatsApp Webhook Routers (Mounted both at root and /api/whatsapp for full backwards-compatibility)
 app.include_router(whatsapp_router, prefix="/api/whatsapp")

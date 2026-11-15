@@ -6,6 +6,7 @@ models so ``Base.metadata.create_all`` (local DEBUG lifespan in app.main)
 always creates ``needle_inbox`` too.
 """
 from app.models.ibkr import IbkrMcpAuthState, IbkrMcpToken
+from app.models.lead_followup import LeadFollowup, LeadFollowupLog
 from app.models.mail_agent import MailMessage, MailWatchSender
 from app.models.needle import NeedleInbox
 from app.models.tasks import AgentOutput, DeviceSnapshotCache, InboundEvent, ScheduledTask
@@ -16,6 +17,8 @@ __all__ = [
     "IbkrMcpAuthState",
     "IbkrMcpToken",
     "InboundEvent",
+    "LeadFollowup",
+    "LeadFollowupLog",
     "MailMessage",
     "MailWatchSender",
     "NeedleInbox",
