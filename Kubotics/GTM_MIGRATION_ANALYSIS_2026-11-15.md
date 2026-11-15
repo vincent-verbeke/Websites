@@ -80,6 +80,20 @@ double count (spec §6). Needs GA4 Measurement Protocol secret (access list).
   Tag Assistant's Connect popup is blocked here (its window.open needs a real
   user gesture; debug URL pattern `?gtm_debug=<ts>` captured but opener-less
   tabs cannot handshake) → Phase 3 evidence runs in a real session.
+  **✅ STEP 1 EXECUTED + RECEIVED 2026-11-15 13:21 (container v3+v4 live):**
+  Google Analytics tag `G-0H34P5Y9WX` created on Initialization-All-Pages with
+  `send_page_view=false`; GTM's auto-added "Manage automatic event detection"
+  turned OFF (all 6: history-change page views, scroll, outbound, forms,
+  video, file downloads — defaults were ON); "Allow user-provided data
+  capabilities" (auto email/phone/address detection) turned OFF (privacy,
+  data minimization). Declined the account-link prompt. **GA4 Realtime
+  receipt (property Kubotics 530208306 via signed-in session):** 2 page loads
+  → Views=2, Event count = `page_view`×2 and NOTHING else (100%) — exactly
+  one page_view per load, no auto events, no duplicates → one-source rule
+  HOLDS in production. In-page: gtm.js loads, gtm.start×1, canonical
+  page_view×1, GA4 direct gtag untouched. NEXT: conversion/Ads tags (his Ads
+  account 226213290 WAS visible in the picker — verify its state), event
+  triggers when components migrate, DebugView deep pass.
 - **Phase 3 (evidence, spec §7):** GTM Preview + Tag Assistant + GA4
   DebugView + Ads diagnostics on the REAL flows (load, SPA route, CTA,
   form start, success, fail, duplicate, consent accept/reject, ROI, booking).
