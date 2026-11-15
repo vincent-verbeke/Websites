@@ -215,7 +215,7 @@ side), H2 power-on for the light-dashboard cutover.
   15:52 in the agent window) → then code → refresh token → GitHub secrets →
   live GA4/Ads API calls. Playground-default fallback refresh token (7-day)
   already minted and stored (scratch, 600) in case you skip the passkey.
-- **Google Ads API enable page = Google-side, control-proven**: 10 failures
+- **Google Ads API enable page = Google-side, control-proven**: 10+ failures
   with fresh Request IDs on `apis/library/adwords.googleapis.com` (2
   projects), while `analyticsadmin.googleapis.com`'s page loads perfectly on
   the same project/session ⇒ only that product page errors. Console
@@ -223,6 +223,28 @@ side), H2 power-on for the light-dashboard cutover.
   standalone APIs Explorer retired, Try-this-API button unclickable under
   automation, Cloud Shell/press blocked by page Trusted Types).
   **→ your30s fallback: open that URL in your browser and click Enable API.**
+  **RESOLVED 18:19 by Jcode** — root cause: the deep-link uses the *retired*
+  service id; 2026 id = **`googleads.googleapis.com`**. Enabled via gcloud CLI
+  (`gcloud services enable`, after SDK-OAuth through your browser) = listed
+  Enabled. All end-to-end proofs below.
+
+**API chain — FINAL (18:34, all live-tested):**
+- refresh token: own client `679sjv3…`, production app, **no expiry**,
+  scopes `adwords` + `analytics.readonly` (file `~/.jcode/scratch/…tokens.json`, 600).
+- **GA4 Data API** `runReport` on `530208306` → 7 days of real site data.
+- **Google Ads API v23** `listAccessibleCustomers` → **200**
+  `customers/2144538978, customers/6182255649, customers/9591591842`
+  (version map: ≤v21 retired-404, v22 invalid-arg, **v23 = current**).
+- GitHub env **Kubotics Prod** secrets: `GOOGLE_ADS_REFRESH_TOKEN/_CLIENT_ID/
+  _CLIENT_SECRET/_LOGIN_CUSTOMER_ID` (959-159-1842), `GA4_PROPERTY_ID`
+  (530208306) — 5× stored+verified.
+- **Developer tokens = sunset 2026-09-09** (header optional/ignored); access
+  level rides on the cloud project; Ads-API Center page = deprecated.
+- **Your one click left**: *Apply for access → Explorer* on
+  `console.cloud.google.com/google/ads-apis/overview?project=kubotics-pipeline`
+  (currently **Test** = production-account calls blocked with
+  `CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION`; Explorer = 2,880 prod ops/day,
+  auto-review possible; watch for the free-trial-billing rejection issue).
 
 **GTM:** container v5 live (GA4 tag + 7 dormant `EVT …` triggers). Phase 2c
 (attach the 7 GA4 event tags, publish v6) is fully scripted but **parked as
