@@ -1,16 +1,19 @@
 import logging
+import os
+
 import httpx
-from fastapi import APIRouter, Depends, Request, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
 from app.db.session import get_db
 from app.schemas.channel_dto import (
-    NormalizedChannelMessage,
     NormalizedAgentResponse,
-    TelegramWebhookUpdate,
+    NormalizedChannelMessage,
     TeamsActivityPayload,
+    TelegramWebhookUpdate,
 )
 from app.services.agent_core import agent_core
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -31,11 +34,30 @@ async def process_normalized_message(
 # 2. TELEGRAM CHANNEL ADAPTER (POC 1)
 # -----------------------------------------------------------------------------
 @router.post("/channels/telegram/webhook")
-async def telegram_webhook(update: TelegramWebhookUpdate, db: AsyncSession = Depends(get_db)):
+async def telegram_webhook(
+    update: TelegramWebhookUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),  # noqa: B008 — FastAPI idiom
+):
     """
     Receives Telegram webhooks, adapts to NormalizedChannelMessage,
     invokes Agent Core, and posts reply back to Telegram API.
     """
+    # Webhook hardening (2026-11-15): when TELEGRAM_WEBHOOK_SECRET is set
+    # (task-def literal; paired with Telegram's secret_token — setWebhook
+    # already carries it), ONLY Telegram may post: the
+    # X-Telegram-Bot-Api-Secret-Token header must match, else 403 BEFORE any
+    # processing. Env unset = skip (default-off; local dev unaffected).
+    _secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+    if _secret:
+        _got = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if _got != _secret:
+            logger.warning("[Telegram Adapter] rejected webhook without valid secret")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="invalid webhook secret",
+            )
+
     msg_data = update.message or {}
     text = msg_data.get("text", "")
     chat = msg_data.get("chat", {})
