@@ -190,3 +190,56 @@ after my review + your GO.
 substantiation (98.5 %, <3 mo payback, <6 mo ROI), customer proof/demo
 video, E2E UTM check on chat/booking paths, LinkedIn profile+page copy (your
 side), H2 power-on for the light-dashboard cutover.
+
+### 7b. Addendum 2026-11-15 afternoon — Ads/GA4 API chain + GTM state (Jcode)
+
+**Done (evidence-backed):**
+- **MCC live**: `KuroLIV Manager` **959-159-1842** (created in your session,
+  reCAPTCHA yours). **Link request sent 15:09:13Z** to `618-225-5649`
+  (KuroLIV GmbH) — first attempt died at Google's "Confirm it's you" (you
+  verified), second landed: **two Google Ads emails at 16:09** in Outlook
+  (invitation + pending request). MCC-side tables (Level: All, notifications)
+  = empty ⇒ consistent with *sent, not yet accepted*.
+  **→ your click: ACCEPT REQUEST in the 16:09 mail** (Outlook refused every
+  automated activation of that link; the 618-account "Managers" tab was
+  blocked by a stuck Ads loader overlay).
+- **OAuth app `kubotics-pipeline` pushed to production**: branding saved
+  (home `https://www.kubotics.ch/`, privacy `/datenschutz`, authorized domain
+  `kubotics.ch`, support/dev contact = you) + "Push to production?" confirmed
+  ⇒ testing-mode 403 and 7-day-token trap are gone; remaining for wide use =
+  Google app verification (review later).
+- **Consent flow built and re-driven**: desktop OAuth client
+  `124391172420-…n03`, scopes `adwords` + `analytics.readonly`
+  (`analytics.admin` = invalid_scope for OAuth — dropped), redirect
+  `http://localhost:8080`. **Blocked only on your passkey** (prompt re-opened
+  15:52 in the agent window) → then code → refresh token → GitHub secrets →
+  live GA4/Ads API calls. Playground-default fallback refresh token (7-day)
+  already minted and stored (scratch, 600) in case you skip the passkey.
+- **Google Ads API enable page = Google-side, control-proven**: 10 failures
+  with fresh Request IDs on `apis/library/adwords.googleapis.com` (2
+  projects), while `analyticsadmin.googleapis.com`'s page loads perfectly on
+  the same project/session ⇒ only that product page errors. Console
+  workarounds tested dead (2026 console removed service-usage routes,
+  standalone APIs Explorer retired, Try-this-API button unclickable under
+  automation, Cloud Shell/press blocked by page Trusted Types).
+  **→ your30s fallback: open that URL in your browser and click Enable API.**
+
+**GTM:** container v5 live (GA4 tag + 7 dormant `EVT …` triggers). Phase 2c
+(attach the 7 GA4 event tags, publish v6) is fully scripted but **parked as
+`g2c`** — my browser helper regressed mid-session (Chrome restarted and
+dropped the debug channel; the fallback helper binary needs GLIBC 2.39 vs
+this host's 2.35), so screenshots/JS-eval/some clicks are degraded. Workspace
+left clean (0 changes). Fix paths: `jcode update`, or your OK to relaunch
+Chrome with `--remote-debugging-port` (disturbs open tabs), or a rebuilt
+helper.
+
+**Spend frame locked (your 14:46 numbers):** **CHF 100 TOTAL per 7-day test**
+across Google/Meta/OpenAI/Claude (25 each), LinkedIn organic 0; evaluate →
+improve → repeat until the process is optimized; success = lead conversions →
+opportunities → sales (solo + LLM tooling). My earlier 400/280 monthly
+proposal is **withdrawn**; per-cycle cap GO = yours once platform billing
+entries are in (Meta/OpenAI/Claude need your logins; rows 5/7/7a).
+
+**Also noted:** your LinkedIn developer app `266745874` (Kubotics page) is
+ready for the LinkedIn lane (Marketing API token later); GitHub Actions run
+`43213051882` (runtime state refresh) = green.
