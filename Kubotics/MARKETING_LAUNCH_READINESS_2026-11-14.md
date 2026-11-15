@@ -168,6 +168,7 @@ it lands, what it unlocks):**
 | 5 | **Meta / Instagram** | Business Manager user with *Ads admin* (or Marketing API token + ad-account id) + IG professional account linked | secrets path | the CHF 25 video test + spend ingestion |
 | 6 | **LinkedIn** | company-page admin session (page build = out of scope for me); Marketing API later | his side | organic page + later paid |
 | 7 | **OpenAI ads** | console/rep access | his side | 4th tracked source (`utm_source=openai_ads`) |
+| 7a | **Claude / Anthropic ads** *(added 2026-11-15 for the CHF 100 test spread)* | ad-platform/console access on his side | his side | 4th paid channel (`utm_source=claude_ads`) — split proposal: Google/Meta/OpenAI/Claude 25 each, LinkedIn 0 (organic only) |
 | 8 | **Telegram bot** | ✅ verified 2026-11-15 — no action needed: token valid (`getWebhookInfo`: url set, pending 0, no errors), webhook live **with secret enforcement** (only Telegram may post), outbound send path wired for follow-up | already wired |
 | 9 | Email (M365) + WhatsApp Cloud | — | **already live** (mail agent + send health green) | follow-up channels 1–2 |
 
