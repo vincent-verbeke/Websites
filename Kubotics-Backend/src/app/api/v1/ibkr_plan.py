@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.ibkr_mcp import _require_admin_token, _require_feed
 from app.db.session import get_db
+from app.services import ibkr_mcp as ibkr_mcp_service
 from app.services import ibkr_plan
 
 router = APIRouter(prefix="/ibkr", tags=["ibkr-plan"])
@@ -91,3 +92,21 @@ async def plan_dry_run() -> dict:
     runner is fail-soft by design)."""
     _require_feed()
     return await ibkr_plan.run_daily_plan(dry_run=True, send_whatsapp=False)
+
+
+@router.get("/plan/status", dependencies=[Depends(_require_admin_token)])
+async def plan_status(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Loop observability (admin, read-only, NO MCP, never 503): the pre-
+    flight proof that the flag is live and the scheduler task actually
+    registered in this process — otherwise a silent no-op at 09:05 would be
+    invisible until Monday. Returns {plan: loop_status(), marker: last
+    same-day-dedupe row or null, state_dataset, feed_enabled}."""
+    marker = await ibkr_plan.load_marker(db)
+    return {
+        "plan": ibkr_plan.loop_status(),
+        "marker": marker,
+        "state_dataset": ibkr_plan.STATE_DATASET,
+        "feed_enabled": ibkr_mcp_service.feed_enabled(),
+    }

@@ -879,6 +879,26 @@ def plan_enabled() -> bool:
     return bool(settings.IBKR_PLAN_DAILY_ENABLED)
 
 
+# Loop observability — the flag's ONLY external proof before Monday's first
+# run (no endpoint could otherwise tell a registered loop from an inert app).
+_LOOP_STARTED_AT: datetime | None = None
+
+
+def loop_status() -> dict:
+    """Read-only loop facts for GET /ibkr/plan/status (admin pre-flight)."""
+    return {
+        "enabled": plan_enabled(),
+        "loop_started": _LOOP_STARTED_AT is not None,
+        "loop_started_at": (
+            _LOOP_STARTED_AT.isoformat() if _LOOP_STARTED_AT is not None else None
+        ),
+        "first_attempt": FIRST_ATTEMPT.strftime("%H:%M"),
+        "deadline": DEADLINE.strftime("%H:%M"),
+        "tz": "Europe/Zurich",
+        "tick_s": PLAN_TICK_S,
+    }
+
+
 def in_run_window(now: datetime) -> bool:
     """Mon–Fri AND 09:05 <= t <= 16:30 (Europe/Zurich). A late wake inside
     the window still runs; before the first attempt or after the deadline
@@ -954,6 +974,8 @@ def maybe_start_plan_loop() -> asyncio.Task | None:
     run additionally needs IBKR_MCP_ENABLED (MCP reads); with the feed off
     the run fails soft, logs once and stops for the day.
     """
+    global _LOOP_STARTED_AT
     if not plan_enabled():
         return None
+    _LOOP_STARTED_AT = datetime.now(UTC)
     return asyncio.create_task(plan_loop())

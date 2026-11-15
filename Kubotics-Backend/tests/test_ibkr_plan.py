@@ -169,6 +169,9 @@ def env(monkeypatch):
     wa = WaStub()
     monkeypatch.setattr(ip, "whatsapp_service", wa)
     monkeypatch.setattr(ip, "_now_zurich", lambda: FROZEN)
+    # per-test isolation for the module-level loop observability: an earlier
+    # test may have recorded a loop start; every test starts from clean.
+    monkeypatch.setattr(ip, "_LOOP_STARTED_AT", None)
     return SimpleNamespace(db=db, yahoo=yahoo, mcp=mcp, wa=wa)
 
 
@@ -973,6 +976,7 @@ def test_endpoints_require_admin(client, env, monkeypatch):
                        json={"_meta": {}}).status_code == 401
     assert client.get("/api/v1/ibkr/plan/state").status_code == 401
     assert client.post("/api/v1/ibkr/plan/dry-run").status_code == 401
+    assert client.get("/api/v1/ibkr/plan/status").status_code == 401
     assert client.post("/api/v1/ibkr/plan/state/import", json={"x": 1},
                        headers={"X-Needle-Token": "wrong"}).status_code == 401
 
@@ -1056,3 +1060,64 @@ def test_dry_run_endpoint_missing_state_still_200(client, monkeypatch):
     body = resp.json()
     assert body["state_after"] is None
     assert any("plan state missing" in n for n in body["notes"])
+
+
+# --------------------------------------------------------------------------- #
+# GET /ibkr/plan/status — loop observability (the Monday pre-flight)           #
+# --------------------------------------------------------------------------- #
+
+def test_plan_status_flag_off_and_shape(client, env):
+    resp = client.get("/api/v1/ibkr/plan/status", headers=ADMIN)
+    assert resp.status_code == 200          # NEVER 503: observability must
+    body = resp.json()
+    plan = body["plan"]
+    # tests run with default settings: flag off, loop never registered
+    assert plan["enabled"] is False
+    assert plan["loop_started"] is False
+    assert plan["loop_started_at"] is None
+    assert plan["first_attempt"] == "09:05"
+    assert plan["deadline"] == "16:30"
+    assert plan["tz"] == "Europe/Zurich"
+    assert plan["tick_s"] == ip.PLAN_TICK_S
+    assert body["marker"] is None
+    assert body["state_dataset"] == "ibkr_plan_state"
+    assert body["feed_enabled"] is False    # settings default in tests
+
+
+def test_plan_status_marker_passthrough(client, env):
+    run(ip.save_marker(env.db, {"date": "2099-01-01", "ok": False}))
+    body = client.get("/api/v1/ibkr/plan/status", headers=ADMIN).json()
+    assert body["marker"] == {"date": "2099-01-01", "ok": False}
+
+
+def test_maybe_start_plan_loop_records_and_defaults_off(monkeypatch):
+    # (a) flag ON -> task created + loop_started timestamped
+    async def _spawn_on():
+        monkeypatch.setattr(settings, "IBKR_PLAN_DAILY_ENABLED", True)
+        monkeypatch.setattr(ip, "_LOOP_STARTED_AT", None)
+
+        async def _noop():
+            return None
+
+        monkeypatch.setattr(ip, "plan_loop", _noop)
+        task = ip.maybe_start_plan_loop()
+        st = ip.loop_status()
+        if task is not None:
+            task.cancel()
+        await asyncio.sleep(0)
+        return task, st
+
+    task, st = run(_spawn_on())
+    assert task is not None
+    assert st["enabled"] is True
+    assert st["loop_started"] is True
+    assert st["loop_started_at"] is not None
+
+    # (b) flag OFF -> None + nothing recorded (default-off rule)
+    async def _spawn_off():
+        monkeypatch.setattr(settings, "IBKR_PLAN_DAILY_ENABLED", False)
+        monkeypatch.setattr(ip, "_LOOP_STARTED_AT", None)
+        return ip.maybe_start_plan_loop()
+
+    assert run(_spawn_off()) is None
+    assert ip.loop_status()["loop_started"] is False

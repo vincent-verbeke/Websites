@@ -271,6 +271,7 @@ registration endpoint.
 | POST | `/api/v1/ibkr/plan/state/import` | admin | Phase 2a (§10.7) — seed the plan state row from the dev state JSON (NOT feed-gated; 422 on empty body) |
 | GET | `/api/v1/ibkr/plan/state` | admin | Phase 2a (§10.7) — `{found, state, updated_at, source}`, fail-soft 200 |
 | POST | `/api/v1/ibkr/plan/dry-run` | admin | Phase 2a (§10.7) — ALWAYS dry `run_daily_plan` (never creates/saves/sends); 503 when the feed gate is off |
+| GET | `/api/v1/ibkr/plan/status` | admin | Phase 2a (§10.7) — loop observability: `{plan: {enabled, loop_started, loop_started_at, first_attempt, deadline, tz, tick_s}, marker, state_dataset, feed_enabled}`; NEVER 503 (the Monday pre-flight) |
 
 Admin = `Authorization: Bearer <NEEDLE_TOKEN or API_SECRET_KEY>` or
 `X-Needle-Token: <same>`.
@@ -547,6 +548,7 @@ API_SECRET_KEY>` or `X-Needle-Token: <same>`):
 | POST | `/api/v1/ibkr/plan/state/import` | admin (NOT feed-gated — seed while flags are off) | body = the full dev state JSON, stored EXACTLY |
 | GET | `/api/v1/ibkr/plan/state` | admin | verification read, fail-soft 200 |
 | POST | `/api/v1/ibkr/plan/dry-run` | admin + feed (503 when `IBKR_MCP_ENABLED` off) | ALWAYS dry: never creates, never saves, never sends |
+| GET | `/api/v1/ibkr/plan/status` | admin (never 503) | loop observability: flag + registered-loop timestamp + last marker — pre-flight proof that the scheduler is actually live in the running process |
 
 `POST /api/v1/ibkr/plan/state/import` — request is the raw
 `investments_state.json` document (NOT wrapped):
