@@ -1,5 +1,5 @@
 import { Component, ChangeDetectionStrategy, inject, signal, computed, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { SeoService } from '../../core/services/seo';
@@ -881,6 +881,7 @@ export class ItBusinessProcessAutomationPageComponent implements OnInit {
   private readonly seo = inject(SeoService);
   private readonly api = inject(KuboticsApiService);
   private readonly analytics = inject(AnalyticsService);
+  private readonly doc = inject(DOCUMENT);
 
   // Interactive ROI Estimator Signals
   readonly employees = signal(5);
@@ -915,11 +916,44 @@ export class ItBusinessProcessAutomationPageComponent implements OnInit {
   };
 
   ngOnInit(): void {
+    const canonicalUrl = 'https://www.kubotics.ch/automation/it-business-process-automation';
     this.seo.updateMeta({
       title: 'IT- & Geschäftsprozess-Automatisierung für Schweizer KMU | Kubotics',
       description: 'Weniger manuelle Arbeit, mehr automatisierte Geschäftsprozesse: Kubotics verbindet bestehende IT-Systeme in Schweizer KMU und automatisiert repetitive Abläufe.',
       keywords: 'Geschäftsprozess Automatisierung Schweiz, IT Automatisierung KMU, Systemintegration ERP CRM, Prozessautomatisierung Schweiz, Kubotics'
     });
+    this.setCanonicalAndJsonLd(canonicalUrl);
+  }
+
+  private setCanonicalAndJsonLd(url: string): void {
+    let link = this.doc.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    if (!link) {
+      link = this.doc.createElement('link');
+      link.setAttribute('rel', 'canonical');
+      this.doc.head.appendChild(link);
+    }
+    link.setAttribute('href', url);
+
+    const scriptId = 'jsonld-it-bpa';
+    if (!this.doc.getElementById(scriptId)) {
+      const script = this.doc.createElement('script');
+      script.id = scriptId;
+      script.type = 'application/ld+json';
+      script.text = JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'Service',
+        name: 'IT- & Geschäftsprozess-Automatisierung für Schweizer KMU',
+        url,
+        provider: {
+          '@type': 'Organization',
+          name: 'Kubotics (KuroLIV GmbH)',
+          url: 'https://www.kubotics.ch'
+        },
+        areaServed: 'CH',
+        serviceType: 'IT Automation and Business Process Automation'
+      });
+      this.doc.head.appendChild(script);
+    }
   }
 
   private trackGtag(eventName: AnalyticsEventName, params: AnalyticsParams): void {

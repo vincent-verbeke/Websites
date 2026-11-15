@@ -1,0 +1,19 @@
+# Kubotics (KuroLIV GmbH)
+
+> Swiss specialist in IT automation, business process automation, system integration, and industrial automation for SMEs.
+
+## Core Services & Landing Pages
+
+- [Home](https://www.kubotics.ch/): Overview of Kubotics automation and robotics capabilities.
+- [IT & Business Process Automation](https://www.kubotics.ch/automation/it-business-process-automation): End-to-end workflow automation, ERP/CRM/M365 integration, legacy application modernization, and controlled AI workflows for Swiss SMEs (10–250 employees).
+- [Invoice & Document Processing](https://www.kubotics.ch/automation/invoice-processing): Multimodal LLM-based invoice and document extraction with ERP integration.
+- [Automation Discovery](https://www.kubotics.ch/automation/discovery): Structured process assessment and automation roadmap.
+- [AI Marketing & Sales](https://www.kubotics.ch/marketing/ai-marketing-sales): AI-assisted lead generation and marketing automation.
+- [CNC Machine Tending](https://www.kubotics.ch/automation/cnc-machine-tending): Industrial robotics and CNC machine tending.
+- [Unitree H2 Test Day](https://www.kubotics.ch/robotics/unitree-h2-test-day): Humanoid robotics demonstration and testing.
+
+## Company
+
+- Legal Entity: KuroLIV GmbH (Switzerland)
+- Website: https://www.kubotics.ch
+- Sitemap: https://www.kubotics.ch/sitemap.xml
