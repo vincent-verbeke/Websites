@@ -393,8 +393,9 @@ pending (non-terminal) review queue, exactly the mapping the feed embeds as
 `instructions_pending`.
 
 **`DELETE /api/v1/ibkr/instructions/{instruction_id}`** — admin, calls
-`delete_order_instruction` with `{"instruction_id": …, "flow_type":
-"REVIEW_AND_APPROVE"}`; `404 {"detail": "instruction not found: …"}` when MCP
+`delete_order_instruction` with `{"id": …, "flow_type":
+"REVIEW_AND_APPROVE"}` (`id` is the field name the live IBKR tool schema
+requires — `instruction_id` fails MCP input validation); `404 {"detail": "instruction not found: …"}` when MCP
 reports not found (both the `isError`-text and result-dict shapes), 502 when
 the MCP call layer fails, 200 `{"ok": true, "instruction_id": …}` on success.
 

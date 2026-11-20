@@ -616,7 +616,9 @@ def test_delete_instruction_happy_path(client, feed_only, monkeypatch):
     assert resp.json() == {"ok": True, "instruction_id": "INS-77"}
     name, args = calls[0]
     assert name == "delete_order_instruction"
-    assert args["instruction_id"] == "INS-77"
+    # the live IBKR tool schema wants the field named "id" (input validation
+    # rejects "instruction_id" — real-incident fix 2026-11-20)
+    assert args["id"] == "INS-77"
     assert args["flow_type"] == "REVIEW_AND_APPROVE"
 
 
@@ -710,7 +712,7 @@ def test_mcp_call_delete_defaults_review_flow(client, feed_only, monkeypatch):
     calls = _mock_mcp(monkeypatch, result_for={"delete_order_instruction": {"ok": True}})
     resp = client.post("/api/v1/ibkr/mcp/call", headers=ADMIN,
                        json={"name": "delete_order_instruction",
-                             "args": {"instruction_id": "INS-1"}})
+                             "args": {"id": "INS-1"}})
     assert resp.status_code == 200, resp.text
     assert calls[0][1]["flow_type"] == "REVIEW_AND_APPROVE"
 

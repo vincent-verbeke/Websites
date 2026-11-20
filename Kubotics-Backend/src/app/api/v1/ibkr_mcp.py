@@ -409,9 +409,12 @@ async def delete_instruction(instruction_id: str) -> dict:
     )  # assert-before-network invariant
     tok, sid = await _open_mcp_session()
     try:
+        # NOTE: the live IBKR tool schema keys the field ``id`` — passing
+        # ``instruction_id`` fails MCP input validation (found 2026-11-20
+        # when a real delete 502'd; the mocked tests masked it).
         res = await ibkr_mcp.call_tool(
             "delete_order_instruction",
-            {"instruction_id": instruction_id,
+            {"id": instruction_id,
              "flow_type": ibkr_mcp.REVIEW_AND_APPROVE},
             tok,
             sid,
