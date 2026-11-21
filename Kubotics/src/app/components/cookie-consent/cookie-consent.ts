@@ -198,6 +198,11 @@ export class CookieConsentComponent implements OnInit {
           'ad_personalization': status
         });
       }
+
+      // Mirror consent choice to the Meta Pixel (added 2026-11-21, PIXEL GO)
+      if (typeof (window as any).fbq === 'function') {
+        (window as any).fbq('consent', status === 'granted' ? 'grant' : 'revoke');
+      }
     }
   }
 }

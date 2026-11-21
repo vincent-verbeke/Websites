@@ -79,7 +79,37 @@
       'anonymize_ip': true,
       'cookie_flags': 'SameSite=None;Secure'
     });
+    // Google Ads global site tag (Google Ads e-mail 2026-11-20 18:45):
+    // gtag.js is already loaded from the GA4 tag above, so per Google's
+    // instructions only the Ads config command is added here — it then runs
+    // on every page (single index.html, SPA + SSR). The matching event
+    // snippet for the "Submit lead form" conversion lives in
+    // AnalyticsService.trackAdsConversion().
+    gtag('config', 'AW-17955497634');
   </script>
+
+  <!-- Meta Pixel Code (Kubotics DE Pixel, id 1520583619920505) - added 2026-11-21 (Vincent PIXEL GO) -->
+  <script>
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window, document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('consent', 'revoke');
+    fbq('init', '1520583619920505');
+    // Mirror the site's kubotics_consent flag (same source of truth as Google Consent Mode)
+    try {
+      if (localStorage.getItem('kubotics_consent') === 'granted') { fbq('consent', 'grant'); }
+    } catch(e) {}
+    fbq('track', 'PageView');
+  </script>
+  <noscript><img height="1" width="1" style="display:none"
+    src="https://www.facebook.com/tr?id=1520583619920505&ev=PageView&noscript=1"
+  /></noscript>
+  <!-- End Meta Pixel Code -->
 </head>
 <body class="dark-theme">
   <app-root></app-root>
