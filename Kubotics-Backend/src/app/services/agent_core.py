@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import uuid
@@ -14,14 +15,22 @@ from app.models.entities import (
     AgentToolCall,
 )
 from app.schemas.channel_dto import NormalizedChannelMessage, NormalizedAgentResponse
+from app.services import mail_llm
+from app.services.chat_context import (
+    BOOKING_LINK,
+    CHAT_SYSTEM_PROMPT,
+    offer_context_block,
+    strip_chat_markdown,
+)
 from app.services.m365_service import m365_service
 
 logger = logging.getLogger(__name__)
 
-BOOKING_LINK = (
-    "https://bookings.cloud.microsoft/book/"
-    "KuboticsGet2Know@kuroliv.ch/?ismsaljsauthenabled"
-)
+#: Vincent 2026-11-23 ("pls LLM + Offer Context in Whatsapp"): one agent turn
+#: through the shared provider chain may take up to 60s per provider, so the
+#: messaging lane caps the whole call here and falls back to the canned stage
+#: reply — a WhatsApp reply must never hang on a slow model.
+AGENT_LLM_TIMEOUT_S = 45.0
 
 #: Vincent 2026-11-23 workflow rule: ALWAYS run 2-3 messages of qualifying
 #: questions to determine the lead's need BEFORE asking for a meeting. The
@@ -96,10 +105,26 @@ class KuboticsAgentCore:
         # message asks for both, so they must land in the CRM contact rows.
         await self._capture_contact_points(contact, envelope, db)
 
-        # 5. Agent Reasoning & Tool Execution
-        reply_text, tool_calls_executed, handoff, meeting_link, quick_replies = (
-            await self._run_agent_reasoning(envelope.message, stage)
-        )
+        # 5. Agent Reasoning & Tool Execution. The stage machine is a plain
+        # def (NOT a coroutine) — it must not be awaited: awaiting its tuple
+        # return raised TypeError on every inbound message, which the webhook's
+        # catch-all turned into a silent no-reply (2026-11-23).
+        canned = self._run_agent_reasoning(envelope.message, stage)
+        reply_text, tool_calls_executed, handoff, meeting_link, quick_replies = canned
+
+        # 5b. LLM turn with offer context (Vincent 2026-11-23: "pls LLM +
+        # Offer Context in Whatsapp"): same provider chain + shared system
+        # prompt as the website chat, fed with this conversation's history and
+        # the offer matching the message topic. A handoff never reaches the
+        # model, and any model failure keeps the canned reply.
+        if not handoff:
+            history = await self._recent_history(
+                db, conversation.id, inbound_msg.id
+            )
+            llm_text = await self._llm_reply(envelope, history)
+            reply_text, meeting_link = self._merge_llm_reply(
+                canned, llm_text, envelope.message, stage
+            )
 
         # 6. Record Observability Audit (agent_runs & agent_tool_calls)
         latency = int((datetime.utcnow() - start_time).total_seconds() * 1000)
@@ -301,6 +326,114 @@ class KuboticsAgentCore:
                     is_verified=False,
                 ))
                 await db.flush()
+
+    async def _recent_history(
+        self, db: AsyncSession, conversation_id, exclude_message_id
+    ) -> list[dict[str, str]]:
+        """Last turns of this conversation as LLM history rows (oldest first),
+        the just-recorded inbound message excluded — it is sent as the latest
+        message instead of appearing twice."""
+        rows = (
+            (
+                await db.execute(
+                    select(Message)
+                    .where(Message.conversation_id == conversation_id)
+                    .order_by(Message.id.desc())
+                    .limit(12)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        history = [
+            m for m in rows if m.id != exclude_message_id
+        ][::-1]
+        return [
+            {
+                "role": "user" if m.sender_type == "visitor" else "assistant",
+                "content": (m.content or ""),
+            }
+            for m in history
+        ]
+
+    async def _llm_reply(
+        self, envelope: NormalizedChannelMessage, history: list[dict[str, str]]
+    ) -> str | None:
+        """One messaging turn through the shared provider chain (mail_llm).
+
+        Returns None on any failure (no provider keys, all providers failed,
+        timeout) so the caller keeps the canned stage reply — the lane never
+        500s and never stays silent because an LLM provider had a bad day.
+        """
+        parts = [
+            (
+                f"Channel: {envelope.channel} (messaging conversation, no "
+                "landing page — drive your opening from the offer context "
+                "below instead)."
+            ),
+            offer_context_block(envelope.message),
+        ]
+        if history:
+            lines = ["Conversation so far:"]
+            for turn in history:
+                role = "Contact" if turn["role"] == "user" else "Kubotics"
+                content = (turn.get("content") or "").strip()
+                if content:
+                    lines.append(f"{role}: {content[:1000]}")
+            parts.append("\n".join(lines))
+        parts.append(
+            f"Contact's latest message: {(envelope.message or '').strip()}"
+        )
+        try:
+            content, provider, model = await asyncio.wait_for(
+                mail_llm.chat_text(CHAT_SYSTEM_PROMPT, "\n\n".join(parts)),
+                timeout=AGENT_LLM_TIMEOUT_S,
+            )
+        except Exception as e:  # noqa: BLE001 — LLMUnavailable, timeout, transport
+            logger.warning(
+                "[agent_core:%s] LLM reply unavailable, using canned reply: %s",
+                envelope.channel, e,
+            )
+            return None
+        text = strip_chat_markdown((content or "").strip())
+        if not text:
+            return None
+        logger.info(
+            "[agent_core:%s] LLM reply via %s/%s (%d chars)",
+            envelope.channel, provider, model, len(text),
+        )
+        return text
+
+    @staticmethod
+    def _merge_llm_reply(
+        canned: tuple, llm_text: str | None, message: str, stage: int
+    ) -> tuple[str, str | None]:
+        """Adopt the model's text only when it respects the 2026-11-23
+        workflow guards; otherwise keep the canned stage reply.
+
+        Guards: a handoff never changes; a closing turn must ask for an email
+        address ("mail" in de/en/fr/it) and always carries the booking link; a
+        qualifying turn must ask a question and never carries the booking link.
+        """
+        reply_text, _tools, handoff, link, _chips = canned
+        if handoff or not llm_text:
+            return reply_text, link
+        closing = stage >= QUALIFYING_TURNS or bool(
+            _BOOKING_INTENT_RE.search(message.lower())
+        )
+        if closing:
+            if "mail" not in llm_text.lower():
+                return reply_text, link
+            if BOOKING_LINK not in llm_text:
+                llm_text = f"{llm_text}\n\n{BOOKING_LINK}"
+            return llm_text, BOOKING_LINK
+        if "?" not in llm_text:
+            return reply_text, link
+        if BOOKING_LINK in llm_text:
+            llm_text = "\n".join(
+                line for line in llm_text.splitlines() if BOOKING_LINK not in line
+            ).strip()
+        return llm_text, None
 
     def _run_agent_reasoning(self, text: str, stage: int):
         """Conversation driver for the qualification workflow (Vincent
