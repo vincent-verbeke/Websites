@@ -5,17 +5,26 @@ completely via email / whatsapp / telegram without manual intervention and
 professional llm interaction and only the last contact should be the meeting
 with me").
 
+Vincent 2026-11-23: "interact 2-3 messages always with questions to
+determine the need before asking for a meeting and in the end ask email and
+phone and propose meeting" -> touches 1 and 2 are qualifying QUESTIONS
+only (no meeting, no booking link); touch 3 is the closing message (asks
+the contact details we are missing, then proposes the meeting).
+
 Sequence (Europe/Zurich, quiet hours 08:00-18:00, <= 3 touches, <= 25 sends
 per day counted from `lead_followup_log`):
 
   step 1  T+2h  after max(lead creation, last inbound)   EMAIL (LLM-drafted,
-          references primary_interest + landing page, invites a REPLY)
+          references primary_interest + landing page, asks the FIRST
+          qualifying question — no meeting, no booking link)
   step 2  T+24h after touch 1                            WHATSAPP iff the last
           INBOUND WhatsApp message is <24h old (Meta customer-service window,
           encoded literally), else TELEGRAM if a telegram ExternalIdentity
-          exists, else EMAIL
-  step 3  T+72h after touch 2                            EMAIL, final: the
-          booking link is the ONLY next step
+          exists, else EMAIL — asks a SECOND qualifying question (still no
+          meeting)
+  step 3  T+72h after touch 2                            EMAIL, final: asks
+          for the contact details we are missing (email / phone), then
+          proposes the meeting — the booking link is the ONLY next step
 
 STOP conditions are evaluated before EVERY send and land in
 `lead_followup_log` (status=skipped + reason): inbound reply after our last
@@ -586,27 +595,66 @@ def resolve_channel(
 # ---------------------------------------------------------------------------
 # LLM drafting (reuses mail_llm's provider chain; templates on ANY failure)
 # ---------------------------------------------------------------------------
-def _system_prompt(step: int, lang: str) -> str:
+def _contact_ask(has_email: bool, has_phone: bool, lang: str) -> str:
+    """Opening of the CLOSING touch: ask only for the details we do not have
+    yet (Vincent 2026-11-23: "in the end ask email and phone"). Empty when
+    both points are known — never ask for something already stored."""
+    if has_email and has_phone:
+        return ""
+    if lang == "de":
+        if not has_email and not has_phone:
+            return ("Bitte senden Sie mir noch Ihre E-Mail-Adresse und Ihre "
+                    "Telefonnummer, damit ich Sie direkt erreiche.\n\n")
+        if not has_email:
+            return "Bitte senden Sie mir noch Ihre E-Mail-Adresse.\n\n"
+        return "Bitte senden Sie mir noch Ihre Telefonnummer.\n\n"
+    if not has_email and not has_phone:
+        return ("Please share your email address and phone number so I can "
+                "reach you directly.\n\n")
+    if not has_email:
+        return "Please share your email address.\n\n"
+    return "Please share your phone number.\n\n"
+
+
+def _system_prompt(
+    step: int,
+    lang: str,
+    *,
+    has_email: bool = True,
+    has_phone: bool = True,
+) -> str:
     lang_name = "German (Swiss German business style)" if lang == "de" else "English"
     sign = (
         "Mit freundlichen Grüßen\nVincent Verbeke\nFounder, Kubotics"
         if lang == "de"
         else "Kind regards\nVincent Verbeke\nFounder, Kubotics"
     )
+    if has_email and has_phone:
+        contact_ask = "then "
+    elif not has_email and not has_phone:
+        contact_ask = "ask for their email address AND phone number, then "
+    elif not has_email:
+        contact_ask = "ask for their email address, then "
+    else:
+        contact_ask = "ask for their phone number, then "
     goals = {
         1: (
-            "Write touch 1: a short, warm first follow-up to their inquiry. "
+            "Write touch 1: a short, warm first follow-up to their inquiry "
+            "that asks ONE clear qualifying question to determine their need "
+            "(goal, problem or use case). "
             f"Reference their interest and point them to {LANDING_PAGE}. "
-            "End by inviting them to simply REPLY to this message with any "
-            "question. Do NOT offer a meeting or booking link yet."
+            "Do NOT offer a meeting, a call or a booking link yet."
         ),
         2: (
-            "Write touch 2: a brief, friendly single-paragraph nudge that we "
-            "are still happy to help and would love a short reply. "
-            "Do NOT offer a meeting or booking link."
+            "Write touch 2: a brief, friendly follow-up that asks ONE "
+            "further qualifying question to understand their need "
+            "concretely (volume, systems, process, timeline — whatever fits "
+            "their inquiry). Do NOT offer a meeting, a call or a booking "
+            "link yet."
         ),
         3: (
-            "Write touch 3 (FINAL): state that the only next step is a short "
+            "Write touch 3 (FINAL): recap their need in one short line, "
+            f"{contact_ask}state that the only next step is a short "
             f"get-to-know call and include this booking link verbatim: "
             f"{BOOKING_LINK} Nothing else — no other offers, no marketing."
         ),
@@ -643,9 +691,13 @@ async def _llm_chat(system: str, user: str) -> tuple[dict, str, str]:
 
 
 def _template(step: int, lang: str, *, first_name: str | None,
-              company: str | None, interest: str | None) -> tuple[str, str]:
-    """Pre-written fallback (subject, body) — used on ANY LLM failure."""
+              company: str | None, interest: str | None,
+              has_email: bool = True, has_phone: bool = True) -> tuple[str, str]:
+    """Pre-written fallback (subject, body) — used on ANY LLM failure.
+    Same workflow as the LLM prompts: touches 1-2 ask qualifying questions,
+    touch 3 asks the missing contact details and proposes the meeting."""
     name = (first_name or "").strip()
+    contact_ask = _contact_ask(has_email, has_phone, lang)
     if lang == "de":
         greet = f"{name}," if name else "Grüezi,"
         topic = interest or "Ihre Anfrage"
@@ -658,22 +710,25 @@ def _template(step: int, lang: str, *, first_name: str | None,
                  f"Kundinnen und Kunden in der Schweiz genau damit weiter — "
                  f"von Beratung über Test bis schlüsselfertiger Installation "
                  f"({LANDING_PAGE}).\n\n"
-                 "Wenn Sie mehr wissen möchten, antworten Sie einfach auf "
-                 "diese E-Mail — dann melde ich mich persönlich bei Ihnen.\n\n"
+                 "Welchen Prozess möchten Sie als Erstes automatisieren oder "
+                 "verbessern? Antworten Sie einfach auf diese E-Mail — dann "
+                 "melde ich mich persönlich bei Ihnen.\n\n"
                  "Mit freundlichen Grüßen\nVincent Verbeke\nFounder, Kubotics"),
             )
         if step == 2:
             return (
-                f"Kubotics: kurze Nachfrage zu {topic}",
+                f"Kubotics: kurze Rückfrage zu {topic}",
                 (f"{greet}\n\n"
-                 "ich wollte nur kurz nachfassen: Steht Ihre Anfrage zu "
-                 f"{topic} noch? Wenn ja, antworten Sie einfach hier — ich "
-                 "kümmere mich darum.\n\n"
+                 "ich wollte kurz nachfassen — damit ich Ihnen gezielt "
+                 f"weiterhelfen kann: Was genau soll sich mit {topic} "
+                 "verbessern, und welches System läuft dafür heute? "
+                 "Antworten Sie einfach hier.\n\n"
                  "Mit freundlichen Grüßen\nVincent Verbeke\nFounder, Kubotics"),
             )
         return (
             f"Kubotics: Kennenlernen zu {topic}",
             (f"{greet}\n\n"
+             f"{contact_ask}"
              "der nächste und einzige Schritt ist ein kurzes Kennenlernen "
              "per Video — 15 Minuten, ohne Verpflichtung:\n"
              f"{BOOKING_LINK}\n\n"
@@ -689,22 +744,24 @@ def _template(step: int, lang: str, *, first_name: str | None,
              f"thank you for your inquiry about {topic}{firm}. This is exactly "
              f"what we help Swiss customers with — from consulting to "
              f"turnkey installation ({LANDING_PAGE}).\n\n"
-             "If you would like to know more, simply REPLY to this message "
-             "and I will come back to you personally.\n\n"
+             "Which process would you like to automate or improve first? "
+             "Simply REPLY to this message and I will come back to you "
+             "personally.\n\n"
              "Kind regards\nVincent Verbeke\nFounder, Kubotics"),
         )
     if step == 2:
         return (
             f"Kubotics: quick follow-up on {topic}",
             (f"{greet}\n\n"
-             "just a quick nudge: is your inquiry about "
-             f"{topic} still open? If so, reply here — I will take care of "
-             "it.\n\n"
+             "quick follow-up — to point you in the right direction: what "
+             f"exactly should improve with {topic}, and which system does it "
+             "run on today? Just reply here and I will take care of it.\n\n"
              "Kind regards\nVincent Verbeke\nFounder, Kubotics"),
         )
     return (
         f"Kubotics: let's talk about {topic}",
         (f"{greet}\n\n"
+         f"{contact_ask}"
          "the one next step is a short get-to-know call on video — "
          "15 minutes, no strings attached:\n"
          f"{BOOKING_LINK}\n\n"
@@ -731,13 +788,17 @@ async def draft_touch(
     first_name: str | None,
     company: str | None,
     interest: str | None,
+    has_email: bool = True,
+    has_phone: bool = True,
 ) -> Draft:
     """LLM-drafted {subject, body}; on ANY failure/timeout/bad shape fall
     back to the pre-written template for this step and language."""
     try:
         parsed, provider, _model = await asyncio.wait_for(
             _llm_chat(
-                _system_prompt(step, lang),
+                _system_prompt(
+                    step, lang, has_email=has_email, has_phone=has_phone
+                ),
                 _user_prompt(first_name, company, interest, lang),
             ),
             timeout=LLM_TIMEOUT_S,
@@ -760,7 +821,8 @@ async def draft_touch(
             exc_info=True,
         )
     subject, body = _template(
-        step, lang, first_name=first_name, company=company, interest=interest
+        step, lang, first_name=first_name, company=company, interest=interest,
+        has_email=has_email, has_phone=has_phone,
     )
     return Draft(subject, body, "template", None, lang)
 
@@ -955,6 +1017,13 @@ async def _process_contact(
         first_name=contact.first_name,
         company=await _company_name(db, contact.id),
         interest=await _primary_interest(db, contact.id),
+        # closing touch (step 3) only asks for the details we do NOT have
+        has_email=any(p.channel_type == "email" and p.value for p in points),
+        has_phone=any(
+            p.channel_type in ("whatsapp", "phone_mobile", "phone_office")
+            and p.value
+            for p in points
+        ),
     )
 
     ok, provider_id, err = await _dispatch(target, draft)

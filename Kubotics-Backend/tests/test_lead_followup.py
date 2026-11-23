@@ -949,7 +949,9 @@ def test_status_shape_counts_and_due(client):
     db.followups.extend([waiting, done])
     db.logs.append(LeadFollowupLog(
         contact_id=contacted.id, step=1, channel="email", status="ok",
-        created_at=NOW - timedelta(hours=1),
+        # the status endpoint counts "today" against the REAL clock (not the
+        # fixed NOW fixture) — anchor to now so the test is date-independent
+        created_at=datetime.now(UTC),
     ))
     res = c.get("/api/v1/leads/followup/status", headers=admin_headers())
     assert res.status_code == 200
