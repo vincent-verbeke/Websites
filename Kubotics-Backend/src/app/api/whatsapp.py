@@ -329,6 +329,15 @@ async def _process_whatsapp_inbound_async(payload: dict[str, Any]):
 
                     # 3. Deliver reply back to WhatsApp
                     # If user sent voice and ElevenLabs is enabled, optionally send voice note
+                    meeting_link = getattr(agent_resp, "meeting_link", None)
+                    # The closing workflow reply carries the booking link in its
+                    # text already; this guard additionally delivers a separately
+                    # computed meeting_link that the text does not contain (the
+                    # 2026-11-23 lead analysis showed it was dropped -> never again).
+                    text_reply = reply_text
+                    if meeting_link and meeting_link not in reply_text:
+                        text_reply = f"{reply_text}\n\n{meeting_link}"
+
                     sent_voice = False
                     if is_voice and elevenlabs_tts.is_configured:
                         try:
@@ -338,7 +347,10 @@ async def _process_whatsapp_inbound_async(payload: dict[str, Any]):
                             logger.error(f"[WhatsApp] Error sending voice note reply: {e}")
 
                     if not sent_voice:
-                        await whatsapp_service.send_text_message(sender_phone, reply_text)
+                        await whatsapp_service.send_text_message(sender_phone, text_reply)
+                    elif meeting_link and meeting_link not in reply_text:
+                        # Voice note spoke the words but not the URL — follow with the link.
+                        await whatsapp_service.send_text_message(sender_phone, meeting_link)
 
     except Exception:
         logger.exception("[WhatsApp Inbound Error]")

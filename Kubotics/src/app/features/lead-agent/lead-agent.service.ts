@@ -683,15 +683,17 @@ export class LeadAgentService {
         processProblem: input,
         recommendedSolution: 'Unitree H2 Hands-On Test Day & Feasibility'
       }));
-      this.currentStage.set('recommendation');
+      // Closing turn (Vincent 2026-11-23): contact details first, then the meeting.
+      if (!qualifyingPhase) return this.closingMeetingReply();
 
+      this.currentStage.set('recommendation');
       return {
         id: 'agent-' + Date.now(),
         sender: 'agent',
         stage: 'recommendation',
-        text: 'Empfehlung Kubotics Sales Engineering: Der Unitree H2 (31 Freiheitsgrade, 360Nm Drehmoment) eignet sich ideal für variable menschliche Arbeitsumgebungen und F&E-Automatisierung.\n\nDer nächste konkrete Schritt: Unser begleiteter Consulting- & Testtag in der Schweiz. Wir testen Ihren realen Prozess hands-on.\n\nMöchten Sie einen Termin vereinbaren oder weitere Spezifikationen prüfen?',
+        text: 'Der Unitree H2 (31 Freiheitsgrade, 360Nm Drehmoment) eignet sich ideal für variable menschliche Arbeitsumgebungen und F&E-Automatisierung.\n\nWelche konkrete Anwendung möchten Sie mit dem H2 prüfen — Testtag vor Ort, Forschung oder ein Prozess in Ihrem Betrieb?',
         timestamp: new Date(),
-        quickReplies: ['Testtag-Termin buchen', 'Preise & Turnkey Konditionen', 'WhatsApp Chat starten']
+        quickReplies: ['Testtag vor Ort', 'F&E / Forschung', 'Technische Daten H2']
       };
     }
 
@@ -703,15 +705,17 @@ export class LeadAgentService {
         processProblem: input,
         recommendedSolution: 'Turnkey Cobot / 6-Achs-Roboterzelle für Maschinenbeschickung'
       }));
-      this.currentStage.set('recommendation');
+      // Closing turn (Vincent 2026-11-23): contact details first, then the meeting.
+      if (!qualifyingPhase) return this.closingMeetingReply();
 
+      this.currentStage.set('recommendation');
       return {
         id: 'agent-' + Date.now(),
         sender: 'agent',
         stage: 'recommendation',
         text: 'Empfehlung Kubotics Sales Engineering: Für hochpräzise Maschinenbeschickung empfehlen wir eine schlüsselfertige 6-Achs-Roboterarm- oder Cobot-Zelle.\n\nDamit entkoppeln Sie Ihre Maschinenlaufzeiten von personellen Schichten und erreichen typischerweise einen ROI innerhalb von 3 bis 6 Monaten.\n\nWie viele Zyklen oder Schichten fahren Sie aktuell pro Tag?',
         timestamp: new Date(),
-        quickReplies: ['1-2 Schichten', '3-Schicht-Betrieb (24/7)', 'Beratungstermin mit Vincent']
+        quickReplies: ['1-2 Schichten', '3-Schicht-Betrieb (24/7)', 'Neue Zelle / Retrofit']
       };
     }
 
@@ -723,49 +727,57 @@ export class LeadAgentService {
         processProblem: input,
         recommendedSolution: 'Multimodale LLM-Belegextraktion (>98.5% Genauigkeit)'
       }));
-      this.currentStage.set('recommendation');
+      // Closing turn (Vincent 2026-11-23): contact details first, then the meeting.
+      if (!qualifyingPhase) return this.closingMeetingReply();
 
+      this.currentStage.set('recommendation');
       return {
         id: 'agent-' + Date.now(),
         sender: 'agent',
         stage: 'recommendation',
-        text: 'Empfehlung Kubotics Sales Engineering: Unsere multimodale LLM-Extraktionspipeline liest eingehende Belege selbst aus minderwertigen Scans oder zerknitterten Dokumenten fehlerfrei (>98.5%) direkt in Ihr ERP.\n\nBei über 400 Belegen/Monat sparen Sie jährlich über CHF 35\'000.- bei weniger als 3 Monaten Amortisation.\n\nMöchten Sie eine Test-Extraktion mit Ihren Musterbelegen durchführen oder einen Discovery Call vereinbaren?',
+        text: 'Empfehlung Kubotics Sales Engineering: Unsere multimodale LLM-Extraktionspipeline liest eingehende Belege selbst aus minderwertigen Scans oder zerknitterten Dokumenten fehlerfrei (>98.5%) direkt in Ihr ERP.\n\nBei über 400 Belegen/Monat sparen Sie jährlich über CHF 35\'000.- bei weniger als 3 Monaten Amortisation.\n\nMöchten Sie eine Test-Extraktion mit Ihren Musterbelegen durchführen — und in welches System sollen die extrahierten Daten?',
         timestamp: new Date(),
-        quickReplies: ['Discovery Call buchen', 'ERP Schnittstellen (SAP, Odoo)', 'Testbelege einreichen']
+        quickReplies: ['Testbelege einreichen', 'ERP Schnittstellen (SAP, Odoo)', 'Volumen pro Monat']
       };
     }
 
     // ERP / Quellsystem Qualification Handlers
     if (lower.includes('sap') || lower.includes('dynamics') || lower.includes('odoo') || lower.includes('schnittstelle') || lower.includes('eigenentwicklung')) {
       this.qualification.update(q => ({ ...q, notes: (q.notes ? q.notes + '; ' : '') + `Quellsystem: ${input}` }));
-      this.currentStage.set('recommendation');
+      // Closing turn (Vincent 2026-11-23): contact details first, then the meeting.
+      if (!qualifyingPhase) return this.closingMeetingReply();
 
+      this.currentStage.set('recommendation');
       return {
         id: 'agent-' + Date.now(),
         sender: 'agent',
         stage: 'recommendation',
-        text: `Ausgezeichnet. Wir integrieren standardmässig via REST/GraphQL API, SFTP oder direkten Datenbank-Connectoren in Ihr ${input}-System.\n\nGerne prüfen wir die Schnittstelle in einem kurzen 30-minütigen technischen Strategiegespräch mit Vincent Verbeke:`,
+        text: `Ausgezeichnet. Wir integrieren standardmässig via REST/GraphQL API, SFTP oder direkten Datenbank-Connectoren in Ihr ${input}-System.\n\nWelche Daten sollen synchronisiert werden — und wie oft (Nachtlauf oder Echtzeit)?`,
         timestamp: new Date(),
-        quickReplies: ['Termin buchen', 'WhatsApp Direktkontakt', 'Weitere Fragen stellen']
+        quickReplies: ['Echtzeit-Sync', 'Nachtlauf / Batch', 'Weitere Fragen stellen']
       };
     }
 
     // Shift / Volume / Bottleneck Qualification Handlers
     if (lower.includes('schicht') || lower.includes('fehler') || lower.includes('personal') || lower.includes('mangel') || lower.includes('monat')) {
       this.qualification.update(q => ({ ...q, processProblem: (q.processProblem ? q.processProblem + '; ' : '') + input }));
-      this.currentStage.set('recommendation');
+      // Closing turn (Vincent 2026-11-23): contact details first, then the meeting.
+      if (!qualifyingPhase) return this.closingMeetingReply();
 
+      this.currentStage.set('recommendation');
       return {
         id: 'agent-' + Date.now(),
         sender: 'agent',
         stage: 'recommendation',
-        text: 'Genau hier greift unsere Schweizer Automationsmethodik: Wir entlasten Ihre Fachkräfte von repetitiver Taktarbeit und steigern die Produktivität planbar.\n\nSollen wir die Machbarkeit für Ihren Betrieb in einem unverbindlichen Beratungsgespräch prüfen?',
+        text: 'Genau hier greift unsere Schweizer Automationsmethodik: Wir entlasten Ihre Fachkräfte von repetitiver Taktarbeit und steigern die Produktivität planbar.\n\nFür welchen Prozess sollen wir die Machbarkeit zuerst prüfen?',
         timestamp: new Date(),
-        quickReplies: ['Beratungstermin mit Vincent', 'Machbarkeitsbericht anfordern', 'WhatsApp starten']
+        quickReplies: ['Machbarkeitsbericht anfordern', 'Fertigung', 'Logistik & Intralogistik']
       };
     }
 
     // Adaptive General Discovery (only when no specific intent detected yet)
+    if (!qualifyingPhase) return this.closingMeetingReply();
+
     this.currentStage.set('discovery');
     return {
       id: 'agent-' + Date.now(),
@@ -773,7 +785,7 @@ export class LeadAgentService {
       stage: 'discovery',
       text: 'Verstanden. Um die Machbarkeit und den passenden Lösungsansatz für Sie fundiert einzuschätzen:\n\nWelche Kernherausforderung steht bei Ihnen im Vordergrund?',
       timestamp: new Date(),
-      quickReplies: ['CNC-Maschinenbeschickung', 'Unitree H2 Humanoid Testtag', 'Rechnungsverarbeitung LLM', 'Direkte Beratung mit Vincent']
+      quickReplies: ['CNC-Maschinenbeschickung', 'Unitree H2 Humanoid Testtag', 'Rechnungsverarbeitung LLM']
     };
   }
 
