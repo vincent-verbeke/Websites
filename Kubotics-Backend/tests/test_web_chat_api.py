@@ -95,22 +95,57 @@ def test_marketing_intent_signals_and_fallback(monkeypatch):
     assert r.status_code == 200
     d = r.json()
     assert d["quick_replies"] == [
-        "Show me the setup", "Book a discovery call", "Pricing & caps"
+        "Show me the setup", "Pricing & caps", "Which channel first?"
     ]
     assert "fully automated AI-driven marketing & sales" in d["reply"]
+    # no meeting chip before the qualification turns (Vincent 2026-11-23)
+    assert not any("book" in chip.lower() for chip in d["quick_replies"])
 
 
-def test_h2_intent_keeps_booking_link_and_qualification(monkeypatch):
+def test_h2_intent_waits_for_qualification_before_meeting(monkeypatch):
+    """Vincent 2026-11-23: the first QUALIFYING_TURNS messages are
+    questions only; the closing turn asks email + phone and proposes the
+    meeting with the booking link."""
     async def boom(system, user):
         raise mail_llm.LLMUnavailable("chain down")
 
     monkeypatch.setattr(ep.mail_llm, "chat_text", boom)
 
-    r = _post("I want an H2 test day")
-    d = r.json()
-    assert d["lead_qualified"] is True
-    assert d["meeting_link"] and "bookings.cloud.microsoft" in d["meeting_link"]
-    assert d["quick_replies"][0] == "Book M365 Calendar"
+    # turn 1: a qualifying question, no link, no qualification, no book chip
+    d = _post("I want an H2 test day").json()
+    assert d["lead_qualified"] is False
+    assert d["meeting_link"] is None
+    assert not any("book" in chip.lower() for chip in d["quick_replies"])
+    assert "?" in d["reply"]
+
+    # turn 2: the second qualifying question — still no meeting ask
+    d2 = _post(
+        "It is for a research pilot",
+        history=[
+            {"role": "user", "content": "I want an H2 test day"},
+            {"role": "assistant", "content": d["reply"]},
+        ],
+    ).json()
+    assert d2["lead_qualified"] is False
+    assert d2["meeting_link"] is None
+
+    # turn 3 (two qualifying messages done): closing message
+    d3 = _post(
+        "Timeline is Q1 next year",
+        history=[
+            {"role": "user", "content": "I want an H2 test day"},
+            {"role": "assistant", "content": d["reply"]},
+            {"role": "user", "content": "It is for a research pilot"},
+            {"role": "assistant", "content": d2["reply"]},
+        ],
+    ).json()
+    assert d3["lead_qualified"] is True
+    assert d3["meeting_link"] and "bookings.cloud.microsoft" in d3["meeting_link"]
+    # closing turn offers a booking chip (keywords are classified per message)
+    assert d3["quick_replies"][0].startswith("Book")
+    # closing copy: email + phone first, then the meeting
+    assert "email address" in d3["reply"] and "phone number" in d3["reply"]
+    assert "bookings.cloud.microsoft" in d3["reply"]
 
 
 def test_llm_reply_wins_over_fallback_but_signals_survive(monkeypatch):
@@ -161,3 +196,132 @@ def test_payload_validation():
     """Oversized / empty messages are rejected by the schema (422)."""
     assert _post("").status_code == 422
     assert _post("x" * 4001).status_code == 422
+
+
+# --- Vincent 2026-11-23: offer injection, personal/language rules,
+# --- landing-page-dependent default sentence ---------------------------
+
+
+def test_llm_turn_carries_offer_injection_and_style_rules(monkeypatch):
+    """The LLM turn must carry the landing page's OFFER data and the prompt
+    must pin the personal / language / page-dependent rules."""
+    captured = {}
+
+    async def fake_chat_text(system, user):
+        captured["system"] = system
+        captured["user"] = user
+        return "Persönliche Antwort.", "mimo", "model-x"
+
+    monkeypatch.setattr(ep.mail_llm, "chat_text", fake_chat_text)
+
+    r = _post(
+        "Welcher Prozess lässt sich automatisieren?",
+        extracted_context={"page": "/automation/it-business-process-automation",
+                           "language": "de-CH"},
+    )
+    assert r.status_code == 200
+    # the specific offer of the IT-BPA landing page is injected
+    assert "Offer of the landing page" in captured["user"]
+    assert "Free Automation Analysis" in captured["user"]
+    assert "within 1 working day" in captured["user"]
+    # the prompt pins: language of the user, personal, page-dependent opening
+    assert "ALWAYS answer in the language of the visitor's latest message" in \
+        captured["system"]
+    assert "Be personal:" in captured["system"]
+    assert "must fit THAT page" in captured["system"]
+    assert "language=de-CH" in captured["user"]
+
+
+def test_no_offer_injected_on_home_but_portfolio_prompt_stays(monkeypatch):
+    """Pages without a defined offer get no offer block (no fabrication)."""
+    captured = {}
+
+    async def fake_chat_text(system, user):
+        captured["user"] = user
+        return "ok", "mimo", "model-x"
+
+    monkeypatch.setattr(ep.mail_llm, "chat_text", fake_chat_text)
+
+    _post("hello", extracted_context={"page": "/", "language": "en-US"})
+    assert "Offer of the landing page" not in captured["user"]
+    assert "Visitor page context: page=/" in captured["user"]
+
+
+def test_fallback_answers_in_the_visitors_language(monkeypatch):
+    """LLM down -> German visitor gets German canned copy + German chips."""
+    async def boom(system, user):
+        raise mail_llm.LLMUnavailable("chain down")
+
+    monkeypatch.setattr(ep.mail_llm, "chat_text", boom)
+
+    d = _post(
+        "hallo, was können Sie automatisieren?",
+        extracted_context={"page": "/", "language": "de-CH"},
+    ).json()
+    assert "Ich bin Ihr Kubotics Sales Engineer" in d["reply"]
+    assert d["quick_replies"][0] == "Unitree H2 Testtag"
+
+    # French visitor -> French copy
+    d_fr = _post(
+        "bonjour, que pouvez-vous automatiser ?",
+        extracted_context={"page": "/", "language": "fr-CH"},
+    ).json()
+    assert "Je suis votre Sales Engineer Kubotics" in d_fr["reply"]
+
+    # English visitor (explicit locale) -> original English copy untouched
+    d_en = _post(
+        "hello, what do you automate?",
+        extracted_context={"page": "/", "language": "en-US"},
+    ).json()
+    assert "I am the Kubotics Sales Engineer" in d_en["reply"]
+
+
+def test_default_reply_depends_on_the_landing_page(monkeypatch):
+    """No intent keyword on the IT-BPA landing page -> THAT page's offer is
+    the default sentence, in the visitor's language (Vincent 2026-11-23)."""
+    async def boom(system, user):
+        raise mail_llm.LLMUnavailable("chain down")
+
+    monkeypatch.setattr(ep.mail_llm, "chat_text", boom)
+
+    page = "/automation/it-business-process-automation"
+
+    d_de = _post(
+        "grüezi",
+        extracted_context={"page": page, "language": "de-CH"},
+    ).json()
+    assert "IT- & Geschäftsprozess-Automatisierung" in d_de["reply"]
+    assert d_de["quick_replies"][0] == "Kostenlose Automatisierungsanalyse"
+
+    d_en = _post(
+        "hi",
+        extracted_context={"page": page, "language": "en-US"},
+    ).json()
+    assert "You are on our IT & business process automation page" in d_en["reply"]
+    assert d_en["quick_replies"][0] == "Free automation analysis"
+
+
+def test_localized_closing_turn_keeps_structured_signals(monkeypatch):
+    """German visitor reaching the closing turn: German email+phone ask with
+    the booking link, while lead_qualified/meeting_link stay the signals of
+    `_intent_signals`."""
+    async def boom(system, user):
+        raise mail_llm.LLMUnavailable("chain down")
+
+    monkeypatch.setattr(ep.mail_llm, "chat_text", boom)
+
+    history = [
+        {"role": "user", "content": "ich brauche automatisierung"},
+        {"role": "assistant", "content": "gerne, eine Frage"},
+        {"role": "user", "content": "es geht um unsere rechnungen"},
+        {"role": "assistant", "content": "verstanden"},
+    ]
+    d = _post(
+        "zeitrahmen ist q1",
+        history=history,
+        extracted_context={"language": "de-CH"},
+    ).json()
+    assert d["lead_qualified"] is True
+    assert d["meeting_link"] and "bookings.cloud.microsoft" in d["meeting_link"]
+    assert "E-Mail-Adresse" in d["reply"] and "Telefonnummer" in d["reply"]
+    assert "bookings.cloud.microsoft" in d["reply"]
