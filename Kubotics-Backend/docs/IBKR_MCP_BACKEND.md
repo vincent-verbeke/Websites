@@ -130,11 +130,25 @@ or the deploy workflow's env injection — repo is private):
 Nothing else needs to change: the feature is completely inert when the first
 two are unset, which is the default.
 
-**IBKR-side one-time step:** register the redirect URI
-`https://api.kubotics.ch/api/v1/ibkr/auth/callback` for client
-`ba3ab3ee-3468-442b-8183-113e7d777dae` (currently only
-`http://127.0.0.1:53117/callback` is registered). Without this, IBKR rejects
-the authorize request with `invalid_redirect_uri` and re-auth cannot complete.
+**IBKR-side one-time step — DONE 2026-11-25:** the cloud callback was never
+registered for the original client `ba3ab3ee-3468-442b-8183-113e7d777dae`
+(only `http://127.0.0.1:53117/callback` was), so IBKR rejected the cloud
+authorize request (`error_code=invalid_request`, verified by probe). IBKR has
+no client-management (RFC 7592) endpoint, so a **new public client was
+registered via IBKR's published DCR endpoint**
+(`/.well-known/oauth-authorization-server` → `registration_endpoint`
+= `https://api.ibkr.com/oauth2/register`):
+
+* `IBKR_MCP_CLIENT_ID` = `30222d9d-9752-4dce-9d8e-79317c729404` (task def),
+  redirect URIs: `https://api.kubotics.ch/api/v1/ibkr/auth/callback` **and**
+  `http://127.0.0.1:53117/callback` (loopback kept as fallback),
+* registration response saved (0600) at
+  `~/.jcode/scratch/ibkr_dcr_client.json` on the dev PC,
+* old client `ba3ab3ee-…` left untouched — the dev-PC local helpers keep
+  working against it.
+
+Authorize probe with the new client + cloud callback now renders the IBKR
+login page (no error).
 
 ---
 
@@ -241,19 +255,22 @@ Reasoning, documented exactly as required by the design notes:
   `ibkr_mcp_login.py` explicitly says: *"Reuse the public client registered
   2026-11-08 (ba3ab3ee-…). Re-running DCR each time would orphan clients and
   force fuller consent."*
-* No verified IBKR registration URL is documented anywhere in the reference
-  material, so the endpoint defaults to `{issuer}/oauth2/api/v1/clients` —
-  an **unverified** guess — and only fires when both
-  `IBKR_MCP_DCR_ENABLED=true` and (optionally) `IBKR_MCP_DCR_URL` are set.
+* The verified registration endpoint IS now known (probed 2026-11-25):
+  `https://api.ibkr.com/oauth2/register` (published as `registration_endpoint`
+  in `/.well-known/oauth-authorization-server`; RFC 7591 POST → 201). The
+  code default `{issuer}/oauth2/api/v1/clients` is WRONG (404) — set
+  `IBKR_MCP_DCR_URL=https://api.ibkr.com/oauth2/register` if DCR is ever
+  enabled, and only fires when `IBKR_MCP_DCR_ENABLED=true`.
 * The endpoint posts RFC 7591-style JSON (`client_name`, `redirect_uris`,
   `grant_types`, `response_types`, `token_endpoint_auth_method: none`,
   `scope`) and **strips `client_secret`** from anything it returns.
 
-**Recommendation:** keep it disabled. The supported path is to register the
-redirect URI for the existing client `ba3ab3ee-3468-442b-8183-113e7d777dae`
-(or for a new client created once manually in the IBKR account portal) and set
-`IBKR_MCP_CLIENT_ID` accordingly. Enable DCR only after IBKR confirms the
-registration endpoint.
+**Status 2026-11-25:** DCR was run ONCE (client `30222d9d-9752-4dce-9d8e-
+79317c729404`, cloud callback + loopback) to unblock the online re-auth —
+see §3. Endpoint stays disabled in the backend (`IBKR_MCP_DCR_ENABLED=false`);
+re-running DCR would orphan clients, so do NOT re-run it — reuse
+`30222d9d-…` and, if another redirect URI is ever needed, register it on a
+one-off DCR run only after IBKR confirms.
 
 ---
 
