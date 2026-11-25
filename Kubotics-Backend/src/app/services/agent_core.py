@@ -117,11 +117,14 @@ class KuboticsAgentCore:
         # prompt as the website chat, fed with this conversation's history and
         # the offer matching the message topic. A handoff never reaches the
         # model, and any model failure keeps the canned reply.
+        llm_text = llm_provider = llm_model = None
         if not handoff:
             history = await self._recent_history(
                 db, conversation.id, inbound_msg.id
             )
-            llm_text = await self._llm_reply(envelope, history)
+            llm_text, llm_provider, llm_model = await self._llm_reply(
+                envelope, history
+            )
             reply_text, meeting_link = self._merge_llm_reply(
                 canned, llm_text, envelope.message, stage
             )
@@ -131,7 +134,14 @@ class KuboticsAgentCore:
         agent_run = AgentRun(
             conversation_id=conversation.id,
             agent_name="KuboticsUnifiedAgent",
-            model_identifier="claude-3-7-sonnet",
+            # REAL pair that answered, or the canned marker — this used to be
+            # the hard-coded "claude-3-7-sonnet" for every row (report
+            # 2026-11-25), which made the audit table useless for analysis.
+            model_identifier=(
+                f"{llm_provider}:{llm_model}"[:100]
+                if llm_text and llm_provider and llm_model
+                else "canned:stage-machine"
+            ),
             input_prompt=envelope.message,
             agent_reasoning=f"Identified intent from channel: {envelope.channel}. Evaluated tools and business context.",
             final_output=reply_text,
@@ -358,11 +368,14 @@ class KuboticsAgentCore:
 
     async def _llm_reply(
         self, envelope: NormalizedChannelMessage, history: list[dict[str, str]]
-    ) -> str | None:
+    ) -> tuple[str | None, str | None, str | None]:
         """One messaging turn through the shared provider chain (mail_llm).
 
-        Returns None on any failure (no provider keys, all providers failed,
-        timeout) so the caller keeps the canned stage reply — the lane never
+        Returns ``(text, provider, model)`` — text is None on any failure (no
+        provider keys, all providers failed, timeout) so the caller keeps the
+        canned stage reply. provider/model are the pair that actually
+        answered, so agent_runs can record audit truth instead of the old
+        hard-coded claude-3-7-sonnet (report 2026-11-25). The lane never
         500s and never stays silent because an LLM provider had a bad day.
         """
         parts = [
@@ -394,15 +407,15 @@ class KuboticsAgentCore:
                 "[agent_core:%s] LLM reply unavailable, using canned reply: %s",
                 envelope.channel, e,
             )
-            return None
+            return None, None, None
         text = strip_chat_markdown((content or "").strip())
         if not text:
-            return None
+            return None, None, None
         logger.info(
             "[agent_core:%s] LLM reply via %s/%s (%d chars)",
             envelope.channel, provider, model, len(text),
         )
-        return text
+        return text, provider, model
 
     @staticmethod
     def _merge_llm_reply(

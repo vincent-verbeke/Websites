@@ -53,7 +53,7 @@ def test_llm_turn_carries_shared_prompt_offer_and_history(monkeypatch):
 
     monkeypatch.setattr(ac.mail_llm, "chat_text", fake_chat_text)
 
-    reply = asyncio.run(
+    reply, provider, model = asyncio.run(
         agent._llm_reply(
             _envelope("Wie viele Rechnungen verarbeiten Sie pro Monat?"),
             [
@@ -65,6 +65,8 @@ def test_llm_turn_carries_shared_prompt_offer_and_history(monkeypatch):
 
     # markdown stripped: WhatsApp must not show raw ** markers
     assert reply == "Grüezi! Welches monatliche Volumen haben Sie?"
+    # audit truth: the pair that answered is what agent_runs records
+    assert (provider, model) == ("mimo", "mx")
     # the SAME system prompt the website chat uses
     assert "FULLY AUTOMATED AI-DRIVEN MARKETING & SALES" in captured["system"]
     assert "QUALIFICATION FLOW (fixed, no exceptions)" in captured["system"]
@@ -86,9 +88,10 @@ def test_llm_turn_returns_none_when_chain_fails(monkeypatch):
 
     monkeypatch.setattr(ac.mail_llm, "chat_text", boom)
 
-    assert (
-        asyncio.run(agent._llm_reply(_envelope("Hallo"), [])) is None
+    text, provider, model = asyncio.run(
+        agent._llm_reply(_envelope("Hallo"), [])
     )
+    assert (text, provider, model) == (None, None, None)
 
 
 def test_llm_turn_returns_none_on_empty_model_output(monkeypatch):
@@ -96,7 +99,10 @@ def test_llm_turn_returns_none_on_empty_model_output(monkeypatch):
         return "   ", "mimo", "mx"
 
     monkeypatch.setattr(ac.mail_llm, "chat_text", empty)
-    assert asyncio.run(agent._llm_reply(_envelope("Hallo"), [])) is None
+    text, provider, model = asyncio.run(
+        agent._llm_reply(_envelope("Hallo"), [])
+    )
+    assert (text, provider, model) == (None, None, None)
 
 
 # --------------------------------------------------------------------------- #
