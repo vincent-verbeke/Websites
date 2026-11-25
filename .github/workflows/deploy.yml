@@ -15,6 +15,17 @@ env:
   ECS_TASK_DEFINITION: Kubotics-Backend/.aws/task-definition.json
   CONTAINER_NAME: kubotics-backend
 
+# Serialize deploys (2026-11-25): rapid successive pushes used to race their
+# ECS deployments — the newer update-service superseded the older run's
+# deployment mid-wait and Actions failed that run with a misleading
+# "Deployment ... not found after stabilization / likely rolled back by the
+# deployment circuit breaker" error (run #93 vs #94, both green at ECS).
+# One running + one pending per group: push bursts collapse to the newest
+# commit instead of producing phantom failures.
+concurrency:
+  group: kubotics-backend-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Build, Test & Deploy Container
