@@ -584,7 +584,10 @@ def test_whatsapp_never_sent_to_needle_operator_number(net):
     out = run(lf.run_due(db, NOW))
     assert net.whatsapp.calls == []
     assert [s["reason"] for s in out["skipped"]] == ["no_reachable_channel"]
-    assert db.followups[0].status == "stopped"
+    # defer, never terminal stop: the sequence must survive an unreachable
+    # channel (operator number) and retry at the next allowed send window
+    assert db.followups[0].status == "pending"
+    assert db.followups[0].next_due_at is not None
 
 
 def test_no_contact_point_and_no_identity_never_sends(net):
@@ -594,7 +597,9 @@ def test_no_contact_point_and_no_identity_never_sends(net):
     out = run(lf.run_due(db, NOW))
     assert out["sent"] == []
     assert not (net.email.calls or net.whatsapp.calls or net.telegram)
-    assert db.followups[0].status == "stopped"
+    # no_reachable_channel defers (pending + future due), it never kills step 3
+    assert db.followups[0].status == "pending"
+    assert db.followups[0].next_due_at > NOW
     skipped = [r for r in db.logs if r.status == "skipped"]
     assert skipped[0].detail == "no_reachable_channel"
 

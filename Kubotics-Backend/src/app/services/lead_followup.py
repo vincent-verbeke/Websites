@@ -999,16 +999,24 @@ async def _process_contact(
     telegram_id = await _telegram_identity(db, contact.id)
     target, reason = resolve_channel(points, telegram_id, step, info, now)
     if target is None:
+        # No channel reaches this lead RIGHT NOW (e.g. the Meta 24h window is
+        # closed and there is no email/telegram point): DEFER to the next
+        # allowed send window instead of killing the sequence. "stopped" is
+        # terminal (candidate_skip_reason filters terminal rows forever), so
+        # this path used to silently drop step 3 — the closing touch that
+        # asks for the missing contact details (Vincent 2026-11-25 suggested
+        # fix). The age stop (LEAD_MAX_AGE) still bounds the deferring.
+        due = next_allowed_time(now)
         if row is not None:
-            row.status = "stopped"
-            row.next_due_at = None
+            row.status = "pending"
+            row.next_due_at = due
             row.updated_at = now
         else:
-            db.add(_new_row(contact.id, step, "stopped", now))
+            db.add(_new_row(contact.id, step, "pending", now, next_due=due))
         _log(db, now=now, contact_id=contact.id, step=step,
              status="skipped", detail=reason)
         return {"kind": "skipped", "contact_id": str(contact.id),
-                "reason": reason}
+                "reason": reason, "deferred_to": due.isoformat()}
 
     lang = pick_language(contact, info.last_text)
     draft = await draft_touch(
