@@ -538,7 +538,7 @@ async def dynamic_client_registration() -> tuple[int, dict]:
     explicit IBKR_MCP_DCR_URL override. See docs/IBKR_MCP_BACKEND.md §DCR.
     Never returns/logs a client_secret value.
     """
-    url = settings.IBKR_MCP_DCR_URL or f"{ISSUER}/oauth2/api/v1/clients"
+    url = settings.IBKR_MCP_DCR_URL or f"{ISSUER}/oauth2/register"
     payload = {
         "client_name": "kubotics-backend",
         "redirect_uris": [settings.IBKR_MCP_REDIRECT_URI],

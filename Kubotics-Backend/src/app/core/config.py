@@ -123,7 +123,9 @@ class Settings(BaseSettings):
     # RFC 7591 dynamic client registration — OFF by default: the proven flow
     # reuses client ba3ab3ee (re-running DCR orphans clients, see docs).
     IBKR_MCP_DCR_ENABLED: bool = False
-    # Empty => {ISSUER}/oauth2/api/v1/clients (UNVERIFIED — docs/IBKR_MCP_BACKEND.md).
+    # Empty => https://api.ibkr.com/oauth2/register (VERIFIED 2026-11-25 via
+    # /.well-known/oauth-authorization-server registration_endpoint — docs §7;
+    # the old {ISSUER}/oauth2/api/v1/clients guess answered 404).
     IBKR_MCP_DCR_URL: str = ""
     # Phase 2a (docs/IBKR_MCP_BACKEND.md §10.7): daily IBKR plan runner in the
     # backend (gates → plan → reconcile → REVIEW_AND_APPROVE instructions →
