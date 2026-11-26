@@ -26,6 +26,10 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/unitree-h2-test-day/unitree-h2-test-day').then(m => m.UnitreeH2LandingPageComponent)
   },
   {
+    path: 'robotics/unitree-h2-rental',
+    loadComponent: () => import('./pages/unitree-h2-test-day/unitree-h2-test-day').then(m => m.UnitreeH2LandingPageComponent)
+  },
+  {
     path: 'automation/discovery',
     loadComponent: () => import('./pages/automation-discovery/automation-discovery').then(m => m.AutomationDiscoveryPageComponent)
   },

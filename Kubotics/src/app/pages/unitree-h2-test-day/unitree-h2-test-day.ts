@@ -23,21 +23,43 @@ import { KuboticsApiService } from '../../core/services/kubotics-api.service';
       <section class="landing-hero">
         <div class="container hero-inner">
           <div class="badge-tag">OFFIZIELLER UNITREE SPEZIALIST SCHWEIZ</div>
-          <h1 class="landing-title">Unitree H2 Humanoid Consulting & Testtag</h1>
+          <h1 class="landing-title">Unitree H2 Humanoid mieten - 2 Tage oder 1 Woche in der Schweiz</h1>
           <p class="landing-subtitle">
-            Erleben und evaluieren Sie die humanoide Flaggschiff-Plattform Unitree H2 
-            (1.8m, 31 Freiheitsgrade, 360Nm Drehmoment) direkt vor Ort in der Schweiz. 
-            Wir testen Ihre realen Fertigungs- und Manipulationsaufgaben hands-on vor einer Investition.
+            Mieten Sie die humanoide Flaggschiff-Plattform Unitree H2 (1.8m, 31 Freiheitsgrade, 360Nm Drehmoment)
+            direkt in der Schweiz und testen Sie Ihre realen Aufgaben vor einer Investition -
+            hands-on, ohne Kaufrisiko.
           </p>
+
+          <!-- Pricing -->
+          <div class="pricing-card glass-panel">
+            <div class="pricing-grid">
+              <div class="pricing-option">
+                <span class="pricing-duration">2 TAGE</span>
+                <span class="pricing-amount">CHF 500</span>
+                <span class="pricing-excl">excl. MwSt. und excl. Versand</span>
+              </div>
+              <div class="pricing-separator"></div>
+              <div class="pricing-option">
+                <span class="pricing-duration">1 WOCHE</span>
+                <span class="pricing-amount">CHF 1000</span>
+                <span class="pricing-excl">excl. MwSt. und excl. Versand</span>
+              </div>
+            </div>
+            <p class="pricing-footnote">
+              Lieferung in der Schweiz. Beide Mietpakete jeweils excl. MwSt. und excl. Versand.
+              Der Mietzeitraum dient der Auswertung Ihres konkreten Anwendungsfalls - das hands-on
+              Testen Ihrer realen Aufgaben ist der Zweck der Miete.
+            </p>
+          </div>
 
           <!-- Direct Intake CTA -->
           <div class="direct-cta-card glass-panel">
             <div class="intake-header">
               <span class="live-dot"></span>
-              <strong>DIREKTE MACHBARKEITS-ANFRAGE: UNITREE H2 TESTTAG</strong>
+              <strong>DIREKTE MACHBARKEITS-ANFRAGE: UNITREE H2 MIETE</strong>
             </div>
             <p class="intake-desc">
-              Welchen Anwendungsfall möchten Sie mit dem H2 testen (z.B. Intralogistik, Greifoperationen, F&E)?
+              Welchen Anwendungsfall möchten Sie mit dem gemieteten H2 abtesten (z.B. Intralogistik, Greifoperationen, F&E)?
             </p>
 
             <form (submit)="onSubmitQuestion($event)" class="question-form">
@@ -49,22 +71,25 @@ import { KuboticsApiService } from '../../core/services/kubotics-api.service';
                   placeholder="z.B. Bauteiltransport zwischen Montageinseln, Teleoperation, Greifen von Schüttgut..." 
                   class="direct-input" />
                 <button type="submit" class="btn-ask-cta">
-                  <span>Machbarkeit prüfen</span>
+                  <span>Anwendungsfall prüfen</span>
                   <span class="material-icons">arrow_forward</span>
                 </button>
               </div>
             </form>
 
             <div class="quick-prompts">
-              <span>Häufige Testtag-Szenarien:</span>
-              <button type="button" class="prompt-chip" (click)="askPreset('Hands-on Testtag in unserem Werk in der Schweiz buchen')">
-                Testtag im Werk buchen
+              <span>Häufige Miet-Szenarien:</span>
+              <button type="button" class="prompt-chip" (click)="askPreset('Unitree H2 2 Tage mieten - Termin in der Schweiz buchen')">
+                Miete 2 Tage
               </button>
-              <button type="button" class="prompt-chip" (click)="askPreset('Teleoperation und VR-Steuerung für F&E-Labor')">
+              <button type="button" class="prompt-chip" (click)="askPreset('Unitree H2 1 Woche mieten - Einsatz in der Schweiz planen')">
+                Miete 1 Woche
+              </button>
+              <button type="button" class="prompt-chip" (click)="askPreset('Greif- und Transportszenario mit dem H2 in unserer Firma testen')">
+                Greifen & Transport testen
+              </button>
+              <button type="button" class="prompt-chip" (click)="askPreset('Teleoperation und VR-Steuerung für F&E-Labor mieten')">
                 Teleoperation & F&E
-              </button>
-              <button type="button" class="prompt-chip" (click)="askPreset('Lieferzeit, Turnkey-Inbetriebnahme und Schulung')">
-                Lieferzeit & Konditionen
               </button>
             </div>
           </div>
@@ -76,7 +101,11 @@ import { KuboticsApiService } from '../../core/services/kubotics-api.service';
         <div class="container">
           <div class="grid-2col">
             <div class="content-block">
-              <h2>Was passiert an einem Unitree H2 Testtag?</h2>
+              <h2>Was testen Sie mit dem gemieteten Unitree H2?</h2>
+              <p class="content-intro">
+                Die Miete ist bewusst auf Anwendungsauswertung ausgelegt: Sie prüfen den H2 mit Ihren
+                realen Aufgaben, bevor Sie investieren.
+              </p>
               <ul class="benefit-list">
                 <li>
                   <span class="material-icons check-icon">check_circle</span>
@@ -102,16 +131,16 @@ import { KuboticsApiService } from '../../core/services/kubotics-api.service';
                 <li>
                   <span class="material-icons check-icon">check_circle</span>
                   <div>
-                    <strong>4. Verbindlicher Machbarkeits- und Wirtschaftlichkeitsbericht:</strong>
-                    Sie erhalten eine fundierte Entscheidungsgrundlage mit klaren technischen und finanziellen KPIs.
+                    <strong>4. Entscheidungsgrundlage vor der Investition:</strong>
+                    Nach der Miete erhalten Sie eine fundierte Entscheidungsgrundlage mit klaren technischen und finanziellen KPIs.
                   </div>
                 </li>
               </ul>
             </div>
 
             <div class="consultation-box glass-panel">
-              <h3>Testtag unverbindlich anfragen</h3>
-              <p>Wählen Sie Ihren Wunschzeitraum für eine Live-Demonstration:</p>
+              <h3>Unitree H2 unverbindlich mieten</h3>
+              <p>Wählen Sie Ihren Wunschzeitraum (2 Tage oder 1 Woche) für Miete & Live-Evaluation:</p>
 
               <form (submit)="onConsultationSubmit(); $event.preventDefault()" class="lead-form">
                 <div class="field">
@@ -136,13 +165,13 @@ import { KuboticsApiService } from '../../core/services/kubotics-api.service';
 
                 <div class="field">
                   <label>WUNSCHZEITRAUM & ANFORDERUNGEN</label>
-                  <textarea [(ngModel)]="leadDetails" name="details" rows="2" placeholder="Bevorzugte Kalenderwoche oder Testziele..."></textarea>
+                  <textarea [(ngModel)]="leadDetails" name="details" rows="2" placeholder="Mietdauer (2 Tage / 1 Woche), Kalenderwoche oder Testziele..."></textarea>
                 </div>
 
                 @if (submitStatus() === 'success') {
                   <div class="success-banner">
                     <span class="material-icons">task_alt</span>
-                    <span>Vielen Dank! Ihre Anfrage wurde im CRM erfasst. Wir koordinieren den Termin persönlich.</span>
+                    <span>Vielen Dank! Ihre Mietanfrage wurde im CRM erfasst. Wir koordinieren den Zeitraum persönlich.</span>
                   </div>
                 }
 
@@ -156,7 +185,7 @@ import { KuboticsApiService } from '../../core/services/kubotics-api.service';
                   @if (isSubmitting()) {
                     <span>Wird übermittelt...</span>
                   } @else {
-                    <span>H2 Testtag anfragen</span>
+                    <span>H2 Miete anfragen</span>
                   }
                 </button>
               </form>
@@ -164,7 +193,7 @@ import { KuboticsApiService } from '../../core/services/kubotics-api.service';
               <div class="direct-contact-footer">
                 <span>Direkter Draht zu unseren Robotik-Ingenieuren:</span>
                 <div class="messenger-row">
-                  <a [href]="channelLinks.getWhatsAppLink('h2_testday')" target="_blank" rel="noopener noreferrer" class="btn-msg wa">
+                  <a [href]="channelLinks.getWhatsAppLink('h2_testday', 'Grüezi, ich interessiere mich für eine Unitree H2 Miete (2 Tage / 1 Woche) in der Schweiz.')" target="_blank" rel="noopener noreferrer" class="btn-msg wa">
                     💬 WhatsApp (+41 78 220 68 96)
                   </a>
                   <a [href]="channelLinks.getTelegramLink('h2_testday')" target="_blank" rel="noopener noreferrer" class="btn-msg tg">
@@ -229,6 +258,64 @@ import { KuboticsApiService } from '../../core/services/kubotics-api.service';
       line-height: 1.6;
       max-width: 780px;
       margin: 0 auto 40px auto;
+    }
+
+    .pricing-card {
+      max-width: 720px;
+      margin: 0 auto 32px auto;
+      background: rgba(18, 18, 24, 0.75);
+      border: 1px solid rgba(0, 113, 227, 0.35);
+      border-radius: 20px;
+      padding: 26px 30px;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(0, 113, 227, 0.15);
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .pricing-option {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .pricing-duration {
+      font-size: 0.75rem;
+      font-family: 'Space Mono', monospace;
+      color: #0071e3;
+      letter-spacing: 0.15em;
+    }
+
+    .pricing-amount {
+      font-size: 2.4rem;
+      font-weight: 800;
+      color: #ffffff;
+      letter-spacing: -0.02em;
+    }
+
+    .pricing-excl {
+      font-size: 0.8rem;
+      color: #86868b;
+    }
+
+    .pricing-separator {
+      width: 1px;
+      align-self: stretch;
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .pricing-footnote {
+      margin: 22px 0 0 0;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.85rem;
+      color: #a1a1a6;
+      line-height: 1.55;
     }
 
     .direct-cta-card {
@@ -345,11 +432,20 @@ import { KuboticsApiService } from '../../core/services/kubotics-api.service';
       .grid-2col { grid-template-columns: 1fr; }
       .question-form .input-wrap { flex-direction: column; }
       .landing-title { font-size: 2.4rem; }
+      .pricing-grid { grid-template-columns: 1fr; gap: 16px; }
+      .pricing-separator { width: 100%; height: 1px; }
     }
 
     .content-block h2 {
       font-size: 1.8rem;
-      margin-bottom: 24px;
+      margin-bottom: 14px;
+    }
+
+    .content-intro {
+      font-size: 1rem;
+      color: #a1a1a6;
+      line-height: 1.55;
+      margin: 0 0 24px 0;
     }
 
     .benefit-list {
@@ -532,23 +628,23 @@ export class UnitreeH2LandingPageComponent implements OnInit {
 
   ngOnInit() {
     this.seo.updateMeta({
-      title: 'Unitree H2 Humanoid Testtag & Beratung | Kubotics Schweiz',
-      description: 'Erleben Sie den humanoiden Roboter Unitree H2 hands-on in der Schweiz. Dedizierter Consulting- & Testtag für industrielle Manipulation und F&E-Projekte.',
-      keywords: 'Unitree H2 Schweiz, Humanoid Robot Testtag, Unitree Partner Schweiz, Humanoide Robotik Miete Kauf'
+      title: 'Unitree H2 mieten | Humanoid Roboter mieten Schweiz | Kubotics',
+      description: 'Unitree H2 Humanoid mieten in der Schweiz: 2 Tage CHF 500 oder 1 Woche CHF 1000, jeweils excl. MwSt. und Versand. B2B-Miete für den hands-on Test Ihrer realen Aufgaben vor der Investition.',
+      keywords: 'Unitree H2 mieten, Humanoid Roboter mieten Schweiz, humanoid Robotermiete Schweiz, Unitree Partner Schweiz, Humanoid Miete B2B'
     });
   }
 
   onSubmitQuestion(event: Event) {
     event.preventDefault();
     if (this.directQuestion.trim()) {
-      const prompt = `[Thema: Unitree H2 Testtag] ${this.directQuestion.trim()}`;
+      const prompt = `[Thema: Unitree H2 Miete] ${this.directQuestion.trim()}`;
       this.agent.openChat(prompt, true);
     }
   }
 
   askPreset(preset: string) {
     this.directQuestion = preset;
-    this.agent.openChat(`[Thema: Unitree H2 Testtag] ${preset}`, true);
+    this.agent.openChat(`[Thema: Unitree H2 Miete] ${preset}`, true);
   }
 
   async onConsultationSubmit() {
@@ -564,8 +660,8 @@ export class UnitreeH2LandingPageComponent implements OnInit {
         email: this.leadEmail,
         phone: this.leadPhone,
         company_name: this.leadCompany || undefined,
-        primary_interest: 'Unitree H2 Hands-On Test Day',
-        project_description: this.leadDetails || 'Direct landing page inquiry: /robotics/unitree-h2-test-day'
+        primary_interest: 'Unitree H2 Rental (2 days / 1 week)',
+        project_description: this.leadDetails || 'Direct landing page rental inquiry: /robotics/unitree-h2-rental'
       }).toPromise();
 
       this.isSubmitting.set(false);
