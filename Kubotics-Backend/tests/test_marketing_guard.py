@@ -120,20 +120,21 @@ def test_spend_within_caps_allowed():
 
 
 def test_spend_total_cap_blocks():
-    ok, why = spend_decision(45, "meta", 60, 0, approved=True)   # 105 > 100
+    ok, why = spend_decision(45, "meta", 65, 0, approved=True)   # 110 > 105
     assert not ok and "total cap" in why and "remaining 40" in why
 
 
 def test_spend_search_subcap_blocks_google_only():
-    ok, why = spend_decision(25, "google", 50, 55, approved=True)  # 80 > 70 search
+    ok, why = spend_decision(25, "google", 50, 80, approved=True)  # 105 > 100 search
     assert not ok and "search sub-cap" in why
-    ok2, _ = spend_decision(25, "meta", 50, 55, approved=True)      # non-search ok
+    ok2, _ = spend_decision(25, "meta", 50, 80, approved=True)      # non-search ok (75 <= 105)
     assert ok2
 
 
 def test_caps_default_to_settings():
-    assert settings.SPEND_TOTAL_CAP_CHF == 100.0
-    assert settings.SPEND_SEARCH_CAP_CHF == 70.0
+    # raised 26 Nov 2026 per Vincent (WhatsApp #145 "agree to Google Budget")
+    assert settings.SPEND_TOTAL_CAP_CHF == 105.0
+    assert settings.SPEND_SEARCH_CAP_CHF == 100.0
     # explicit caps override settings
     ok, why = spend_decision(10, "meta", 0, 0, approved=True,
                              total_cap=5, search_cap=5)

@@ -99,8 +99,11 @@ class Settings(BaseSettings):
     )
 
     # --- B5 spend caps + approval (docs §19; §6 hard boundary) ---
-    SPEND_TOTAL_CAP_CHF: float = 100.0        # per calendar month, all channels
-    SPEND_SEARCH_CAP_CHF: float = 70.0        # google search sub-cap
+    # Raised 26 Nov 2026 by Vincent (WhatsApp #145 "agree to Google Budget"):
+    # total 100 -> 105 (31-day months at CHF 3.30/day = 102.30), search 70 -> 100
+    # (both Google campaigns = ~CHF 99-102/mo planned spend).
+    SPEND_TOTAL_CAP_CHF: float = 105.0        # per calendar month, all channels
+    SPEND_SEARCH_CAP_CHF: float = 100.0       # google search sub-cap
     SPEND_APPROVAL_PHRASE: str = "APPROVE-SPEND"  # typed by Vincent in the UI
 
     # --- Conversion targets (Vincent 26 Nov 2026: "set conversion targets
