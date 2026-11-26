@@ -933,6 +933,9 @@ export class LeadAgentService {
           console.warn('[LeadAgentService] Conversion tracking dispatch ignored:', trackErr);
         }
       }
+      // Meta pixel "Schedule" standard event (Meta conversion target for
+      // booked meetings; consent-gated inside the analytics service).
+      this.analytics.trackMetaEvent('Schedule');
 
       return {
         success: true,
