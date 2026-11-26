@@ -533,6 +533,11 @@ export class ContactSectionComponent {
             'currency': 'CHF'
           });
         }
+        // Google Ads "Submit lead form" conversion (event snippet, e-mail
+        // 2026-11-20 18:45) — fires once per successful submission.
+        this.analytics.trackAdsConversion();
+        // Meta pixel "Lead" standard event (Meta conversion target).
+        this.analytics.trackMetaEvent('Lead');
         
         this.resetForm();
         this.isSubmitting.set(false);

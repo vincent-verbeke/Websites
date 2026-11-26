@@ -2,7 +2,11 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { AnalyticsService } from './analytics.service';
 
-type DLWindow = { dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void };
+type DLWindow = {
+  dataLayer?: unknown[];
+  gtag?: (...args: unknown[]) => void;
+  fbq?: (...args: unknown[]) => void;
+};
 
 /**
  * GTM_MIGRATION_ANALYSIS_2026-11-15.md deliverables 2+3 — typed dataLayer
@@ -71,5 +75,35 @@ describe('AnalyticsService', () => {
 
     delete win.gtag;
     expect(() => svc.gtagForward('qualify_lead')).not.toThrow();
+  });
+
+  it('trackAdsConversion sends the Google Ads event snippet (default send_to)', () => {
+    const calls: unknown[][] = [];
+    win.gtag = (...args: unknown[]) => calls.push(args);
+    svc.trackAdsConversion();
+    expect(calls).toEqual([
+      ['event', 'conversion', { send_to: 'AW-17955497634/JUoDCK_prLwdEKLN7PFC' }],
+    ]);
+
+    svc.trackAdsConversion('AW-17955497634/OTHER_label');
+    expect(calls[1]).toEqual([
+      'event', 'conversion', { send_to: 'AW-17955497634/OTHER_label' },
+    ]);
+
+    delete win.gtag;
+    expect(() => svc.trackAdsConversion()).not.toThrow();
+  });
+
+  it('trackMetaEvent sends the Meta pixel standard event, no-ops without fbq', () => {
+    const calls: unknown[][] = [];
+    win.fbq = (...args: unknown[]) => calls.push(args);
+    svc.trackMetaEvent('Lead');
+    expect(calls).toEqual([['track', 'Lead']]);
+
+    svc.trackMetaEvent('Schedule');
+    expect(calls[1]).toEqual(['track', 'Schedule']);
+
+    delete win.fbq;
+    expect(() => svc.trackMetaEvent('Lead')).not.toThrow();
   });
 });

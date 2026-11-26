@@ -48,9 +48,26 @@ const CONVERSION_EVENTS = new Set<AnalyticsEventName>([
   'schedule_appointment',
 ]);
 
+/**
+ * Google Ads conversion `send_to` for the "Submit lead form" conversion
+ * action (Google Ads e-mail 2026-11-20 18:45, conversion ID
+ * AW-17955497634 — the matching global site tag config is in index.html).
+ */
+export const ADS_CONVERSION_SUBMIT_LEAD_FORM =
+  'AW-17955497634/JUoDCK_prLwdEKLN7PFC';
+
+/**
+ * Meta pixel standard events used as Meta conversion targets (pixel
+ * 1520583619920505, live since 21 Nov): `Lead` on every successful lead
+ * submission, `Schedule` when a meeting/booking is confirmed. Campaigns
+ * optimize against these once they accumulate.
+ */
+export type MetaStandardEvent = 'Lead' | 'Schedule';
+
 type GWindow = Window & {
   dataLayer?: unknown[];
   gtag?: (...args: unknown[]) => void;
+  fbq?: (...args: unknown[]) => void;
 };
 
 @Injectable({ providedIn: 'root' })
@@ -117,6 +134,35 @@ export class AnalyticsService {
     if (typeof window === 'undefined') return;
     const win = window as GWindow;
     if (typeof win.gtag === 'function') win.gtag('event', name, params);
+  }
+
+  /**
+   * Google Ads conversion event snippet (Google Ads e-mail 2026-11-20 18:45):
+   * `gtag('event', 'conversion', {send_to: …})` — exactly what Google asks to
+   * place on the conversion page. In this SPA "conversion page" = the moment a
+   * lead form submit succeeds, so callers fire it from their success handler
+   * (once per completed submission). Needs the `AW-17955497634` config in
+   * index.html; Consent Mode v2 from index.html governs it like every tag.
+   */
+  trackAdsConversion(
+    sendTo: string = ADS_CONVERSION_SUBMIT_LEAD_FORM,
+  ): void {
+    if (typeof window === 'undefined') return;
+    const win = window as GWindow;
+    if (typeof win.gtag === 'function') win.gtag('event', 'conversion', { send_to: sendTo });
+  }
+
+  /**
+   * Meta pixel standard-event conversion (`fbq('track', …)`). Consent stays
+   * centralized: index.html inits the pixel with `fbq('consent','revoke')`
+   * and the cookie-consent component grants/revokes, so Meta's own gating
+   * drops this call while consent is not granted. Callers fire it from their
+   * success handler (once per completed action).
+   */
+  trackMetaEvent(event: MetaStandardEvent): void {
+    if (typeof window === 'undefined') return;
+    const win = window as GWindow;
+    if (typeof win.fbq === 'function') win.fbq('track', event);
   }
 
   private push(entry: Record<string, unknown>): void {
