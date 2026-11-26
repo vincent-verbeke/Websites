@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +17,7 @@ from app.services import mail_llm
 from app.services.chat_context import (
     BOOKING_LINK,
     CHAT_SYSTEM_PROMPT,
+    QUALIFYING_TEXTS,
 )
 from app.services.chat_context import (
     offer_for_page as _offer_for_page,
@@ -40,11 +42,34 @@ CHAT_LLM_TIMEOUT_S = 30.0
 # BOOKING_LINK, CHAT_SYSTEM_PROMPT and PAGE_OFFERS live in
 # app.services.chat_context — shared with the WhatsApp/Telegram agent core.
 
-#: Vincent 2026-11-23 workflow: the first QUALIFYING_TURNS visitor messages
-#: are answered with qualifying questions ONLY — never with a meeting ask.
-#: The closing turn asks for email + phone and proposes the meeting (the
-#: booking link + lead_qualified flip the widget into its conversion stage).
-QUALIFYING_TURNS = 2
+#: Vincent 2026-11-26 workflow ("the chat should ALWAYS do 3 to 5 steps
+#: asking deeper about the exact expectations of a potential customer"): the
+#: first QUALIFYING_TURNS visitor messages are answered with qualifying
+#: questions ONLY — never with a meeting ask. Turns 0-2 (3 guaranteed) dig
+#: into the need, turns 3 and 4 each ask one deeper question, and the closing
+#: turn asks for email + phone and proposes the meeting (the booking link +
+#: lead_qualified flip the widget into its conversion stage).
+#: The closing turn runs at turn_count >= QUALIFYING_TURNS — or earlier, but
+#: never before MIN_EARLY_CLOSE_TURN, when the message shows explicit
+#: booking intent (existing _BOOKING_INTENT-style gate, any stage) or the
+#: visitor already volunteered BOTH an email address and a phone number.
+QUALIFYING_TURNS = 5
+
+#: Earliest turn at which the "email + phone already volunteered" shortcut
+#: may close the flow — the first 3 qualifying questions always happen.
+MIN_EARLY_CLOSE_TURN = 3
+
+#: Explicit "I want to book" — the same gate agent_core uses
+#: (_BOOKING_INTENT_RE): never block an explicit booking request at ANY
+#: stage. The other two patterns detect contact details the visitor has
+#: already volunteered in the conversation.
+_BOOKING_INTENT_RE = re.compile(
+    r"\b(book|booking|meet|meeting|termin|appointment|demo|discovery|slot|"
+    r"kennenlernen|calendar|calendly|call|videocall|video call)\b",
+    re.IGNORECASE,
+)
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_PHONE_RE = re.compile(r"(?<!\d)\+?[\d][\d\s().\-]{6,}\d(?!\d)")
 
 # CHAT_SYSTEM_PROMPT lives in app.services.chat_context (shared with the
 # WhatsApp/Telegram/Teams agent core) so both lanes tell the model the same
@@ -84,8 +109,40 @@ def _build_chat_user_content(payload: ChatMessagePayload) -> str:
     return "\n\n".join(parts)
 
 
+def _volunteered_contact(text: str) -> bool:
+    """True when BOTH an email address and a phone number appear in text."""
+    return bool(_EMAIL_RE.search(text)) and bool(_PHONE_RE.search(text))
+
+
+def _should_close(
+    user_msg: str, turn_count: int = 0, history: list[dict] | None = None
+) -> bool:
+    """Closing decision of the 2026-11-26 workflow (3-5 qualifying steps).
+
+    * ``turn_count >= QUALIFYING_TURNS`` — the normal path: after the 5
+      qualifying questions the flow always closes.
+    * explicit booking intent (existing _BOOKING_INTENT-style gate) — closes
+      at ANY stage, a booking request is never blocked by the question flow.
+    * both email AND phone already volunteered in the conversation — closes
+      from ``MIN_EARLY_CLOSE_TURN`` on (the first 3 questions always happen;
+      after that only contact details are missing before the meeting ask).
+    """
+    if turn_count >= QUALIFYING_TURNS:
+        return True
+    if _BOOKING_INTENT_RE.search(user_msg):
+        return True
+    if turn_count >= MIN_EARLY_CLOSE_TURN:
+        blob = [user_msg]
+        for turn in history or []:
+            if turn.get("role") == "user":
+                blob.append(str(turn.get("content") or ""))
+        if _volunteered_contact("\n".join(blob)):
+            return True
+    return False
+
+
 def _intent_signals(
-    user_msg: str, turn_count: int = 0
+    user_msg: str, turn_count: int = 0, history: list[dict] | None = None
 ) -> tuple[list[str], str | None, bool, str]:
     """Keyword intent detection — structured signals + canned fallback reply.
 
@@ -93,17 +150,22 @@ def _intent_signals(
     chips, the booking link and lead qualification working even when the
     provider chain is down (and drive them when it is up).
 
-    ``turn_count`` = number of visitor messages BEFORE this one. While
-    ``turn_count < QUALIFYING_TURNS`` the signals NEVER carry a booking
-    link, a meeting chip or lead_qualified=True — each of those turns
-    returns ONE qualifying question instead (Vincent 2026-11-23: "2-3
-    messages with questions to determine the need before asking for a
-    meeting"). The closing turn asks for email + phone and proposes the
+    ``turn_count`` = number of visitor messages BEFORE this one. While the
+    current message is still a qualifying turn (``_should_close`` is False)
+    the signals NEVER carry a booking link, a meeting chip or
+    lead_qualified=True — each of those turns returns ONE qualifying
+    question instead (Vincent 2026-11-26: "3 to 5 steps asking deeper about
+    the exact expectations of a potential customer" before any meeting
+    ask). The closing turn asks for email + phone FIRST, then proposes the
     meeting.
+
+    Turns 0 and 1 are offer/intent specific; turns 2-4 ask the shared deeper
+    questions from ``QUALIFYING_TEXTS`` (success criteria, constraints,
+    recap) — ONE question per message, never a meeting ask.
     """
     if "test day" in user_msg or "h2" in user_msg:
         chips = (
-            ["Test Day on-site", "Research & demo", "Pricing"],
+            ["Test Day on-site", "Research & evaluation", "Pricing"],
             ["Evaluation / pilot", "Concrete use case", "Pricing"],
         )
         replies = (
@@ -203,7 +265,7 @@ def _intent_signals(
         final_chips = ["Book M365 Discovery Slot", "Unitree H2 Test Day",
                        "Invoice LLMs"]
 
-    if turn_count >= QUALIFYING_TURNS:
+    if _should_close(user_msg, turn_count, history):
         # Closing turn: ask for email + phone FIRST, then propose the meeting.
         return (
             final_chips,
@@ -216,11 +278,23 @@ def _intent_signals(
                 f"call with Vincent Verbeke — book directly here: {BOOKING_LINK}"
             ),
         )
+    stage = min(turn_count, 4)
+    if stage >= 2:
+        # Deeper qualifying stages 2-4 (Vincent 2026-11-26): progressive
+        # questions about the lead's exact expectations are intent-
+        # independent (QUALIFYING_TEXTS); quick replies stay the intent's
+        # stage-1 chips — topic chips, never a meeting chip.
+        return (
+            chips[1],
+            None,
+            False,
+            QUALIFYING_TEXTS["en"][stage],
+        )
     return (
-        chips[turn_count],
+        chips[stage],
         None,
         False,
-        replies[turn_count],
+        replies[stage],
     )
 
 
@@ -309,12 +383,16 @@ _CLOSING_TEXT: dict[str, str] = {
 #: (English keeps `_intent_signals` byte-for-byte, so its contract tests stay
 #: authoritative). "it_bpa" is the landing-page-dependent default for
 #: /automation/it-business-process-automation.
+#: Structure per entry: (turn0, turn1, final chips) — turns 2-4 are served by
+#: `_localized_signals` from the shared QUALIFYING_TEXTS (same de/en/fr/it
+#: progression as the other lane: success criteria, constraints, recap), so
+#: the localized flow also runs 3-5 qualifying steps (Vincent 2026-11-26).
 LOCALIZED_FALLBACK: dict[str, dict[str, tuple[
     tuple[list[str], str], tuple[list[str], str], list[str]
 ]]] = {
     "h2": {
         "de": (
-            (["Test Day vor Ort", "Forschung & Demo", "Preise"],
+            (["Test Day vor Ort", "Forschung & Evaluation", "Preise"],
              "Wir bieten dedizierte Unitree-H2-Humanoid Consulting- & Testtags "
              "direkt bei Ihnen in der Schweiz. Kurze Frage vorab: welche "
              "Anwendung haben Sie für den H2 im Sinn — ein Test-/Evaluierungstag "
@@ -326,7 +404,7 @@ LOCALIZED_FALLBACK: dict[str, dict[str, tuple[
             ["M365-Kalender buchen", "Technische Daten", "Preise"],
         ),
         "fr": (
-            (["Test Day sur site", "Recherche & démo", "Prix"],
+            (["Test Day sur site", "Recherche & évaluation", "Prix"],
              "Nous organisons des Unitree H2 Humanoid Consulting & Test Days "
              "directement chez vous en Suisse. Une question d'abord : quelle "
              "application envisagez-vous pour le H2 — un jour d'essai/évaluation "
@@ -339,7 +417,7 @@ LOCALIZED_FALLBACK: dict[str, dict[str, tuple[
             ["Réserver via calendrier M365", "Fiches techniques", "Prix"],
         ),
         "it": (
-            (["Test Day in sede", "Ricerca & demo", "Prezzi"],
+            (["Test Day in sede", "Ricerca & valutazione", "Prezzi"],
              "Organizziamo Unitree H2 Humanoid Consulting & Test Day "
              "direttamente presso di voi in Svizzera. Prima una domanda: quale "
              "applicazione avete in mente per l'H2 — un giorno di test/valutazione "
@@ -585,21 +663,27 @@ def _localized_signals(
     Returns None for English locales so `_intent_signals` serves the original
     copy untouched — except on the IT-BPA landing page, where the English
     default sentence must also be that page's offer (its own copy lives in
-    LOCALIZED_FALLBACK["it_bpa"]["en"]). Stage mirrors the 2026-11-23
-    qualifying workflow: turn 0, turn 1, then the closing turn (email +
-    phone + meeting proposal).
+    LOCALIZED_FALLBACK["it_bpa"]["en"]). Mirrors the 2026-11-26 qualifying
+    workflow: turns 0 and 1 from the intent table, turns 2-4 the shared deeper
+    questions (QUALIFYING_TEXTS), then the closing turn (email + phone +
+    meeting proposal) via `_should_close` — same rule as `_intent_signals`.
     """
     ctx = payload.extracted_context or {}
     lang = _visitor_lang(ctx)
-    intent = _localized_intent(payload.message.lower(), ctx)
+    low = payload.message.lower()
+    intent = _localized_intent(low, ctx)
     if lang == "en" and intent != "it_bpa":
         return None
     copy = LOCALIZED_FALLBACK[intent][lang]
-    if turn_count >= QUALIFYING_TURNS:
+    if _should_close(low, turn_count, payload.history):
         return copy[2], _CLOSING_TEXT[lang]
-    stage = 1 if turn_count >= 1 else 0
-    chips, text = copy[stage]
-    return chips, text
+    stage = min(turn_count, 4)
+    if stage >= 2:
+        # Deeper qualifying stages 2-4: progressive questions about the
+        # lead's exact expectations, shared per language (never a meeting
+        # ask); quick replies stay the intent's stage-1 chips.
+        return copy[1][0], QUALIFYING_TEXTS[lang][stage]
+    return copy[stage]
 
 
 async def _llm_chat_reply(payload: ChatMessagePayload) -> str | None:
@@ -649,12 +733,13 @@ async def chat_interaction(payload: ChatMessagePayload):
     chain is unavailable — degraded, but never broken.
     """
     # Visitor messages BEFORE this one -> qualification stage (Vincent
-    # 2026-11-23: no meeting ask in the first QUALIFYING_TURNS turns).
+    # 2026-11-26: 3-5 qualifying questions, no meeting ask before the
+    # closing turn — see `_should_close`).
     turn_count = sum(
         1 for turn in (payload.history or []) if turn.get("role") == "user"
     )
     quick_replies, meeting_link, qualified, fallback_reply = _intent_signals(
-        payload.message.lower(), turn_count
+        payload.message.lower(), turn_count, payload.history
     )
     # Language- and landing-page-aware canned copy for non-English visitors
     # (Vincent 2026-11-23). English keeps the original `_intent_signals`

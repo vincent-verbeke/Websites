@@ -103,47 +103,87 @@ def test_marketing_intent_signals_and_fallback(monkeypatch):
 
 
 def test_h2_intent_waits_for_qualification_before_meeting(monkeypatch):
-    """Vincent 2026-11-23: the first QUALIFYING_TURNS messages are
-    questions only; the closing turn asks email + phone and proposes the
-    meeting with the booking link."""
+    """Vincent 2026-11-26: turns 0-4 are qualifying questions only (3 to 5
+    steps digging into the expectations); the closing turn (turn_count >= 5)
+    asks email + phone and proposes the meeting with the booking link."""
     async def boom(system, user):
         raise mail_llm.LLMUnavailable("chain down")
 
     monkeypatch.setattr(ep.mail_llm, "chat_text", boom)
 
-    # turn 1: a qualifying question, no link, no qualification, no book chip
-    d = _post("I want an H2 test day").json()
-    assert d["lead_qualified"] is False
-    assert d["meeting_link"] is None
-    assert not any("book" in chip.lower() for chip in d["quick_replies"])
-    assert "?" in d["reply"]
-
-    # turn 2: the second qualifying question — still no meeting ask
-    d2 = _post(
+    history: list[dict] = []
+    for turn, msg in enumerate([
+        "I want an H2 test day",
         "It is for a research pilot",
-        history=[
-            {"role": "user", "content": "I want an H2 test day"},
-            {"role": "assistant", "content": d["reply"]},
-        ],
-    ).json()
+        "Timeline is Q1 next year",
+        "Our team evaluates the unit",
+        "Budget is approved for pilots",
+    ]):
+        d = _post(msg, history=history).json()
+        # no meeting before turn 5: qualifying question only
+        assert d["lead_qualified"] is False, f"turn {turn} closed too early"
+        assert d["meeting_link"] is None, f"turn {turn} carries a booking link"
+        assert not any("book" in chip.lower() for chip in d["quick_replies"]), \
+            f"turn {turn} offers a booking chip"
+        assert "?" in d["reply"]
+        assert "bookings.cloud.microsoft" not in d["reply"]
+        history.append({"role": "user", "content": msg})
+        history.append({"role": "assistant", "content": d["reply"]})
+
+    # turn_count 5: closing message
+    d5 = _post("Let us continue", history=history).json()
+    assert d5["lead_qualified"] is True
+    assert d5["meeting_link"] and "bookings.cloud.microsoft" in d5["meeting_link"]
+    # closing turn offers a booking chip (keywords are classified per message)
+    assert d5["quick_replies"][0].startswith("Book")
+    # closing copy: email + phone first, then the meeting
+    assert "email address" in d5["reply"] and "phone number" in d5["reply"]
+    assert "bookings.cloud.microsoft" in d5["reply"]
+
+
+def test_booking_intent_skips_qualification_at_any_stage(monkeypatch):
+    """Vincent 2026-11-26: an explicit booking request is never blocked by
+    the question flow — it closes even on the very first message."""
+    async def boom(system, user):
+        raise mail_llm.LLMUnavailable("chain down")
+
+    monkeypatch.setattr(ep.mail_llm, "chat_text", boom)
+
+    d = _post("Can we book a 15-minute call this week?").json()
+    assert d["lead_qualified"] is True
+    assert d["meeting_link"] and "bookings.cloud.microsoft" in d["meeting_link"]
+    assert "email address" in d["reply"] and "phone number" in d["reply"]
+    assert "bookings.cloud.microsoft" in d["reply"]
+
+
+def test_volunteered_email_and_phone_close_early_from_turn_three(monkeypatch):
+    """Both contact details already in the conversation -> the closing turn
+    fires from turn_count 3 on; before that the 3-question floor holds."""
+    async def boom(system, user):
+        raise mail_llm.LLMUnavailable("chain down")
+
+    monkeypatch.setattr(ep.mail_llm, "chat_text", boom)
+
+    base: list[dict] = [
+        {"role": "user", "content": "mail me at lead@example.ch"},
+        {"role": "assistant", "content": "Verstanden, eine Frage."},
+        {"role": "user", "content": "or call +41 79 123 45 67"},
+        {"role": "assistant", "content": "Danke, noch eine Frage."},
+    ]
+    # floor: turn_count 2 with both details still qualifies
+    d2 = _post("und weiter?", history=base).json()
     assert d2["lead_qualified"] is False
     assert d2["meeting_link"] is None
+    assert "?" in d2["reply"]
 
-    # turn 3 (two qualifying messages done): closing message
-    d3 = _post(
-        "Timeline is Q1 next year",
-        history=[
-            {"role": "user", "content": "I want an H2 test day"},
-            {"role": "assistant", "content": d["reply"]},
-            {"role": "user", "content": "It is for a research pilot"},
-            {"role": "assistant", "content": d2["reply"]},
-        ],
-    ).json()
+    # turn_count 3: closes early — email + phone first, then the meeting
+    history3 = base + [
+        {"role": "user", "content": "klingt gut"},
+        {"role": "assistant", "content": "Noch eine Frage."},
+    ]
+    d3 = _post("und weiter?", history=history3).json()
     assert d3["lead_qualified"] is True
     assert d3["meeting_link"] and "bookings.cloud.microsoft" in d3["meeting_link"]
-    # closing turn offers a booking chip (keywords are classified per message)
-    assert d3["quick_replies"][0].startswith("Book")
-    # closing copy: email + phone first, then the meeting
     assert "email address" in d3["reply"] and "phone number" in d3["reply"]
     assert "bookings.cloud.microsoft" in d3["reply"]
 
@@ -304,7 +344,9 @@ def test_default_reply_depends_on_the_landing_page(monkeypatch):
 def test_localized_closing_turn_keeps_structured_signals(monkeypatch):
     """German visitor reaching the closing turn: German email+phone ask with
     the booking link, while lead_qualified/meeting_link stay the signals of
-    `_intent_signals`."""
+    `_intent_signals`. Here it closes EARLY: both contact details are already
+    in the conversation and turn_count >= MIN_EARLY_CLOSE_TURN (Vincent
+    2026-11-26)."""
     async def boom(system, user):
         raise mail_llm.LLMUnavailable("chain down")
 
@@ -313,8 +355,11 @@ def test_localized_closing_turn_keeps_structured_signals(monkeypatch):
     history = [
         {"role": "user", "content": "ich brauche automatisierung"},
         {"role": "assistant", "content": "gerne, eine Frage"},
-        {"role": "user", "content": "es geht um unsere rechnungen"},
+        {"role": "user",
+         "content": "es geht um unsere rechnungen, mail: einkauf@firma.ch"},
         {"role": "assistant", "content": "verstanden"},
+        {"role": "user", "content": "unser telefon ist +41 44 123 45 67"},
+        {"role": "assistant", "content": "danke, noch eine frage"},
     ]
     d = _post(
         "zeitrahmen ist q1",
@@ -325,3 +370,41 @@ def test_localized_closing_turn_keeps_structured_signals(monkeypatch):
     assert d["meeting_link"] and "bookings.cloud.microsoft" in d["meeting_link"]
     assert "E-Mail-Adresse" in d["reply"] and "Telefonnummer" in d["reply"]
     assert "bookings.cloud.microsoft" in d["reply"]
+
+
+def test_localized_turns_run_five_progressive_qualifying_stages(monkeypatch):
+    """German visitor, LLM down: turns 0-4 serve 5 progressive qualifying
+    questions in German (LOCALIZED_FALLBACK + QUALIFYING_TEXTS), never a
+    meeting ask; the closing turn (>=5) switches to the German email+phone
+    ask with the booking link."""
+    async def boom(system, user):
+        raise mail_llm.LLMUnavailable("chain down")
+
+    monkeypatch.setattr(ep.mail_llm, "chat_text", boom)
+
+    ctx = {"language": "de-CH"}
+    history: list[dict] = []
+    replies = []
+    for turn, msg in enumerate([
+        "hallo, wir brauchen automatisierung",
+        "es geht um unsere rechnungen",
+        "das volumen ist rund 800 belege pro monat",
+        "erfolg heisst weniger manuelle tipparbeit",
+        "budget und timeline stehen",
+    ]):
+        d = _post(msg, history=history, extracted_context=ctx).json()
+        assert d["lead_qualified"] is False, f"turn {turn} closed too early"
+        assert d["meeting_link"] is None, f"turn {turn} carries a booking link"
+        assert not any("book" in chip.lower() for chip in d["quick_replies"])
+        assert "?" in d["reply"]
+        assert "bookings.cloud.microsoft" not in d["reply"]
+        replies.append(d["reply"])
+        history.append({"role": "user", "content": msg})
+        history.append({"role": "assistant", "content": d["reply"]})
+    assert len(set(replies)) == 5       # progressive, not the same text 5x
+
+    d5 = _post("bitte weiter", history=history, extracted_context=ctx).json()
+    assert d5["lead_qualified"] is True
+    assert d5["meeting_link"] and "bookings.cloud.microsoft" in d5["meeting_link"]
+    assert "E-Mail-Adresse" in d5["reply"] and "Telefonnummer" in d5["reply"]
+    assert "bookings.cloud.microsoft" in d5["reply"]

@@ -47,12 +47,36 @@ export interface LeadQualificationData {
 export const BOOKING_PAGE_URL = 'https://bookings.cloud.microsoft/book/KuboticsGet2Know@kuroliv.ch/?ismsaljsauthenabled';
 
 /**
- * Vincent 2026-11-23 interaction workflow: the first QUALIFYING_TURNS
- * messages of a lead conversation are questions to determine the need —
- * never a meeting ask. The closing message asks for email + phone first,
- * then proposes the meeting (booking form / booking link).
+ * Vincent 2026-11-26 interaction workflow: the chat ALWAYS runs 3 to 5
+ * steps asking deeper about the exact expectations of a potential customer
+ * before any meeting ask. Turns 0-2 qualify (3 guaranteed), turns 3 and 4
+ * ask one deeper question each; the closing message asks for email + phone
+ * first, then proposes the meeting (booking form / booking link). An
+ * explicit booking request never reaches the fallback (detectConversionIntent
+ * serves the booking form first, at ANY stage).
  */
-export const QUALIFYING_TURNS = 2;
+export const QUALIFYING_TURNS = 5;
+
+/**
+ * Earliest turn at which "email + phone already captured" may close the
+ * fallback flow — the first 3 qualifying questions always happen.
+ * (Backend: endpoints.py / agent_core MIN_EARLY_CLOSE_TURN.)
+ */
+export const MIN_EARLY_CLOSE_TURN = 3;
+
+/**
+ * Closing decision of the LLM-down fallback — the widget mirror of the
+ * backend's `_should_close`: closes at QUALIFYING_TURNS, or from
+ * MIN_EARLY_CLOSE_TURN on when both contact details are already known.
+ * Booking intent is handled BEFORE this (detectConversionIntent).
+ */
+export function isClosingQualifyingTurn(
+  turnIndex: number,
+  contactComplete: boolean = false
+): boolean {
+  if (turnIndex >= QUALIFYING_TURNS) return true;
+  return turnIndex >= MIN_EARLY_CLOSE_TURN && contactComplete;
+}
 
 /**
  * The chat's default (welcome) sentence is dependent on the landing page AND
@@ -615,14 +639,59 @@ export class LeadAgentService {
     };
   }
 
+  /**
+   * Deeper qualifying questions for fallback turns 1-4 (Vincent 2026-11-26:
+   * "3 to 5 steps asking deeper about the exact expectations of a potential
+   * customer"). Turn 0 keeps each intent branch's own question; turns 1-4
+   * progress: current setup/process & volume -> success criteria & timeline
+   * -> constraints/budget & decision process -> recap + confirm. ONE question
+   * per message, never a meeting ask — mirrors the backend's
+   * QUALIFYING_TEXTS (Swiss High German, the widget fallback copy is de).
+   */
+  private deeperQualifyingReply(turnIndex: number): ChatMessage {
+    this.currentStage.set('qualification');
+    const stage = Math.min(Math.max(turnIndex, 1), 4);
+    const steps: Record<number, { text: string; chips: string[] }> = {
+      1: {
+        text: 'Danke. Wie sieht Ihr heutiger Setup aus — welches Volumen oder wie viele Vorgänge verarbeiten Sie aktuell pro Monat?',
+        chips: ['Setup beschreiben', 'Volumen pro Monat', 'Timeline']
+      },
+      2: {
+        text: 'Woran messen Sie den Erfolg — welches konkrete Ergebnis brauchen Sie, und bis wann soll die Lösung produktiv sein?',
+        chips: ['Konkretes Ziel', 'Bis wann produktiv?', 'Erst mal orientieren']
+      },
+      3: {
+        text: 'Gibt es Rahmenbedingungen, die ich berücksichtigen soll — ein Budgetrahmen, technische Vorgaben oder wer entscheidet mit?',
+        chips: ['Budgetrahmen', 'Technische Vorgaben', 'Entscheidungsteam']
+      },
+      4: {
+        text: 'Letzte Kontrolle: Habe ich Ihre Erwartungen — Ziel, heutiger Ablauf, Zeitrahmen und Rahmenbedingungen — richtig verstanden, oder soll ich noch etwas ergänzen?',
+        chips: ['Ja, passt', 'Ergänzen', 'Weiter zur Empfehlung']
+      }
+    };
+    const step = steps[stage];
+    return {
+      id: 'agent-' + Date.now(),
+      sender: 'agent',
+      stage: 'qualification',
+      text: step.text,
+      timestamp: new Date(),
+      quickReplies: step.chips
+    };
+  }
+
   private async processSalesEngineerReasoning(input: string): Promise<ChatMessage> {
     const lower = input.toLowerCase();
     await new Promise(r => setTimeout(r, 450));
 
     // Visitor messages BEFORE this one (the current one is already appended)
     // -> qualification stage, identical rule to the backend's turn_count.
+    // Vincent 2026-11-26: 3-5 qualifying steps before any meeting ask.
     const turnIndex = this.messages().filter(m => m.sender === 'user').length - 1;
-    const qualifyingPhase = turnIndex < QUALIFYING_TURNS;
+    const closingPhase = isClosingQualifyingTurn(
+      turnIndex,
+      !!this.qualification().email && !!this.qualification().phone
+    );
 
     // Detect direct contact details: Email and/or Phone
     const emailMatch = input.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
@@ -683,8 +752,10 @@ export class LeadAgentService {
         processProblem: input,
         recommendedSolution: 'Unitree H2 Hands-On Test Day & Feasibility'
       }));
-      // Closing turn (Vincent 2026-11-23): contact details first, then the meeting.
-      if (!qualifyingPhase) return this.closingMeetingReply();
+      // Closing turn (Vincent 2026-11-26): contact details first, then the
+      // meeting — never before 3 qualifying steps; turns 1-4 dig deeper.
+      if (closingPhase) return this.closingMeetingReply();
+      if (turnIndex > 0) return this.deeperQualifyingReply(turnIndex);
 
       this.currentStage.set('recommendation');
       return {
@@ -705,8 +776,10 @@ export class LeadAgentService {
         processProblem: input,
         recommendedSolution: 'Turnkey Cobot / 6-Achs-Roboterzelle für Maschinenbeschickung'
       }));
-      // Closing turn (Vincent 2026-11-23): contact details first, then the meeting.
-      if (!qualifyingPhase) return this.closingMeetingReply();
+      // Closing turn (Vincent 2026-11-26): contact details first, then the
+      // meeting — never before 3 qualifying steps; turns 1-4 dig deeper.
+      if (closingPhase) return this.closingMeetingReply();
+      if (turnIndex > 0) return this.deeperQualifyingReply(turnIndex);
 
       this.currentStage.set('recommendation');
       return {
@@ -727,8 +800,10 @@ export class LeadAgentService {
         processProblem: input,
         recommendedSolution: 'Multimodale LLM-Belegextraktion (>98.5% Genauigkeit)'
       }));
-      // Closing turn (Vincent 2026-11-23): contact details first, then the meeting.
-      if (!qualifyingPhase) return this.closingMeetingReply();
+      // Closing turn (Vincent 2026-11-26): contact details first, then the
+      // meeting — never before 3 qualifying steps; turns 1-4 dig deeper.
+      if (closingPhase) return this.closingMeetingReply();
+      if (turnIndex > 0) return this.deeperQualifyingReply(turnIndex);
 
       this.currentStage.set('recommendation');
       return {
@@ -744,8 +819,10 @@ export class LeadAgentService {
     // ERP / Quellsystem Qualification Handlers
     if (lower.includes('sap') || lower.includes('dynamics') || lower.includes('odoo') || lower.includes('schnittstelle') || lower.includes('eigenentwicklung')) {
       this.qualification.update(q => ({ ...q, notes: (q.notes ? q.notes + '; ' : '') + `Quellsystem: ${input}` }));
-      // Closing turn (Vincent 2026-11-23): contact details first, then the meeting.
-      if (!qualifyingPhase) return this.closingMeetingReply();
+      // Closing turn (Vincent 2026-11-26): contact details first, then the
+      // meeting — never before 3 qualifying steps; turns 1-4 dig deeper.
+      if (closingPhase) return this.closingMeetingReply();
+      if (turnIndex > 0) return this.deeperQualifyingReply(turnIndex);
 
       this.currentStage.set('recommendation');
       return {
@@ -761,8 +838,10 @@ export class LeadAgentService {
     // Shift / Volume / Bottleneck Qualification Handlers
     if (lower.includes('schicht') || lower.includes('fehler') || lower.includes('personal') || lower.includes('mangel') || lower.includes('monat')) {
       this.qualification.update(q => ({ ...q, processProblem: (q.processProblem ? q.processProblem + '; ' : '') + input }));
-      // Closing turn (Vincent 2026-11-23): contact details first, then the meeting.
-      if (!qualifyingPhase) return this.closingMeetingReply();
+      // Closing turn (Vincent 2026-11-26): contact details first, then the
+      // meeting — never before 3 qualifying steps; turns 1-4 dig deeper.
+      if (closingPhase) return this.closingMeetingReply();
+      if (turnIndex > 0) return this.deeperQualifyingReply(turnIndex);
 
       this.currentStage.set('recommendation');
       return {
@@ -776,7 +855,8 @@ export class LeadAgentService {
     }
 
     // Adaptive General Discovery (only when no specific intent detected yet)
-    if (!qualifyingPhase) return this.closingMeetingReply();
+    if (closingPhase) return this.closingMeetingReply();
+    if (turnIndex > 0) return this.deeperQualifyingReply(turnIndex);
 
     this.currentStage.set('discovery');
     return {

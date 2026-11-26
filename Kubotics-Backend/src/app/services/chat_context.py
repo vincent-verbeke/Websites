@@ -82,16 +82,22 @@ contacts that have no page) drive your opening: every turn carries \
 sentence and recommended next step must fit THAT page/offer (e.g. the free \
 automation analysis on the IT & business process automation page), not a \
 generic company intro.
-- QUALIFICATION FLOW (fixed, no exceptions): the first TWO turns of a \
-conversation each ask exactly ONE question to determine the contact's need \
-(goal, situation, volume, timeline). Never propose a meeting, a call, a \
-calendar slot or a booking link before those two questions — regardless of \
-topic or how interested the contact seems.
-- From the THIRD turn on (or immediately when the contact explicitly asks \
-to book or meet): recap the need in ONE line, ask for the contact's email \
-address AND phone number, then propose a 15-minute get-to-know call with \
-Vincent Verbeke, include the booking link and say the team follows up \
-within 24h. Booking link: {BOOKING_LINK}
+- QUALIFICATION FLOW (fixed, no exceptions): before the closing turn, every \
+turn asks exactly ONE deeper qualifying question about the lead's EXACT \
+expectations. Build the picture step by step: (1) which application or \
+problem to solve, (2) their current setup/process and volume, (3) success \
+criteria, goal and timeline, (4) constraints, budget and who decides, (5) \
+recap and confirm what they expect. Never propose a meeting, a call, a \
+calendar slot or a booking link before the THIRD turn of the conversation — \
+regardless of topic or how interested the contact seems.
+- Close by the FIFTH qualifying turn at the latest: recap the need in ONE \
+line, ask for the contact's email address AND phone number, then propose a \
+15-minute get-to-know call with Vincent Verbeke, include the booking link \
+and say the team follows up within 24h. Booking link: {BOOKING_LINK}
+- Two exceptions close IMMEDIATELY and are never blocked by the question \
+flow: when the contact explicitly asks to book or meet, and when the contact \
+has already given BOTH an email address and a phone number (then ask only \
+for what is still missing, then propose the call in the same turn).
 - For the marketing & sales offer, always describe BOTH the setup and the \
 benefit, then ask which channel or bottleneck they want automated first.
 - If asked something outside this portfolio, say honestly what we do and offer \
@@ -99,11 +105,78 @@ to route the question to the team. Never fabricate case studies or clients.
 """
 
 
+#: Progressive deeper qualifying questions shared by BOTH conversation lanes
+#: (Vincent 2026-11-26: the chat should ALWAYS do 3 to 5 steps asking deeper
+#: about the exact expectations of a potential customer before any meeting
+#: ask). Stages 0-1 stay offer/intent specific in each lane; stages 2-4 are
+#: these questions — ONE question per message, never a meeting ask:
+#: stage 2 = success criteria/goal & timeline, stage 3 = constraints/budget/
+#: decision process, stage 4 = recap + confirm expectations.
+#: Keys: language -> visitor turn -> canned question.
+QUALIFYING_TEXTS: dict[str, dict[int, str]] = {
+    "en": {
+        2: ("Thanks. What would a successful outcome look like for you — and "
+            "by when do you need the solution up and running?"),
+        3: ("Understood. Are there any constraints I should plan around — a "
+            "budget range, technical requirements, or who else is involved "
+            "in the decision?"),
+        4: ("Last check before I prepare a concrete proposal: did I get your "
+            "expectations right — goal, current process, timeline and "
+            "constraints — or is there anything you would add?"),
+    },
+    "de": {
+        2: ("Danke. Woran messen Sie den Erfolg — welches konkrete Ergebnis "
+            "brauchen Sie, und bis wann soll die Lösung produktiv sein?"),
+        3: ("Verstanden. Gibt es Rahmenbedingungen, die ich berücksichtigen "
+            "soll — ein Budgetrahmen, technische Vorgaben, oder wer "
+            "entscheidet mit?"),
+        4: ("Letzte Kontrolle, bevor ich eine konkrete Empfehlung vorbereite: "
+            "Habe ich Ihre Erwartungen richtig verstanden — Ziel, heutiger "
+            "Ablauf, Zeitrahmen und Rahmenbedingungen — oder soll ich noch "
+            "etwas ergänzen?"),
+    },
+    "fr": {
+        2: ("Merci. Comment mesurerez-vous le succès — quel résultat concret "
+            "faut-il obtenir, et à quelle date la solution doit-elle être "
+            "opérationnelle ?"),
+        3: ("Compris. Y a-t-il des contraintes à prendre en compte — une "
+            "fourchette de budget, des exigences techniques, ou qui d'autre "
+            "décide ?"),
+        4: ("Dernière vérification avant que je prépare une proposition "
+            "concrète : ai-je bien compris vos attentes — objectif, processus "
+            "actuel, calendrier et contraintes — ou faut-il que j'ajoute "
+            "quelque chose ?"),
+    },
+    "it": {
+        2: ("Grazie. Come misurerete il successo — quale risultato concreto "
+            "serve, e entro quando la soluzione deve essere operativa?"),
+        3: ("Capito. Ci sono vincoli da considerare — un range di budget, "
+            "requisiti tecnici, o chi altro partecipa alla decisione?"),
+        4: ("Ultimo controllo prima di preparare una proposta concreta: ho "
+            "capito correttamente le vostre aspettative — obiettivo, processo "
+            "attuale, tempistica e vincoli — o c'è qualcosa da aggiungere?"),
+    },
+}
+
+
 # Offer of each landing page (copied from the page's own CTA copy). The
 # website chat must inject the specific offer data of the page the visitor is
 # on (Vincent 2026-11-23: "reply via LLM with specific data from our offer
 # injected ... the default sentence and reply should be dependent on the
 # landing page"). Matched by exact path or path prefix.
+
+#: Vincent 2026-11-26: the Unitree H2 offer now leads with the RENTAL offer
+#: (2 days CHF 500 / 1 week CHF 1000); the Test Day stays mentioned but
+#: secondary. Both H2 page paths (/robotics/unitree-h2-test-day and the new
+#: alias /robotics/unitree-h2-rental) serve the SAME offer string.
+_H2_RENTAL_OFFER = (
+    "Unitree H2 humanoid rentable in Switzerland: 2 days CHF 500 or 1 week "
+    "CHF 1000, excl. MwSt., excl. shipping, on-site. Secondary: Unitree H2 "
+    "Humanoid Consulting & Test Day in Switzerland — hands-on testing of "
+    "the visitor's real process with the H2 (31 DoF, 360 Nm), plus G1/B2 "
+    "portfolio and Swiss support."
+)
+
 PAGE_OFFERS: dict[str, str] = {
     "/automation/it-business-process-automation": (
         "Free Automation Analysis (Kostenlose Automatisierungsanalyse): we review "
@@ -133,11 +206,9 @@ PAGE_OFFERS: dict[str, str] = {
         "qualification and meeting booking straight into Vincent's M365 calendar; "
         "hard monthly spend caps with human approval; brand voice in de/en/fr/it."
     ),
-    "/robotics/unitree-h2-test-day": (
-        "Unitree H2 Humanoid Consulting & Test Day in Switzerland: hands-on "
-        "testing of the visitor's real process with the H2 (31 DoF, 360 Nm), "
-        "plus G1/B2 portfolio and Swiss support."
-    ),
+    "/robotics/unitree-h2-test-day": _H2_RENTAL_OFFER,
+    # Alias path: the rental-focused H2 page (Vincent 2026-11-26) — same offer.
+    "/robotics/unitree-h2-rental": _H2_RENTAL_OFFER,
     "/automation/discovery": (
         "Automation discovery: concept & ROI calculation with an amortization "
         "forecast before any hardware investment, validated hands-on via a test "
@@ -202,7 +273,7 @@ def offers_for_text(text: str) -> list[str]:
 
     No topic keyword -> every offer, so the model still has the exact figures
     (98.5%, CHF 35'000, ROI < 6 months, free analysis) instead of inventing
-    them.
+    them. Values are de-duplicated (the H2 rental alias shares its string).
     """
     low = (text or "").lower()
     hits: list[str] = []
@@ -211,7 +282,9 @@ def offers_for_text(text: str) -> list[str]:
             offer = PAGE_OFFERS[page]
             if offer not in hits:
                 hits.append(offer)
-    return hits or list(PAGE_OFFERS.values())
+    if hits:
+        return hits
+    return list(dict.fromkeys(PAGE_OFFERS.values()))
 
 
 def offer_context_block(text: str) -> str:

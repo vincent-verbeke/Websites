@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   WELCOME_COPY,
   welcomePageKey,
-  visitorChatLang
+  visitorChatLang,
+  QUALIFYING_TURNS,
+  MIN_EARLY_CLOSE_TURN,
+  isClosingQualifyingTurn
 } from './lead-agent.service';
 
 /**
@@ -66,5 +69,34 @@ describe('landing-page-dependent welcome copy', () => {
     expect(visitorChatLang('nl-NL')).toBe('en'); // no Dutch copy -> English
     expect(visitorChatLang('es-ES')).toBe('de');  // site default (de-CH)
     expect(visitorChatLang(undefined)).toBe('de');
+  });
+});
+
+/**
+ * Vincent 2026-11-26: the LLM-down fallback must mirror the backend rule —
+ * 3 guaranteed qualifying turns, deeper questions up to turn 4, closing at
+ * turn 5, early close only for complete contact details (booking intent is
+ * handled before the fallback, at ANY stage, by detectConversionIntent).
+ */
+describe('3-5 qualifying turns before any meeting ask (widget fallback)', () => {
+  it('runs 3 guaranteed qualifying turns and closes at turn 5', () => {
+    expect(QUALIFYING_TURNS).toBe(5);
+    expect(MIN_EARLY_CLOSE_TURN).toBe(3);
+    for (const turn of [0, 1, 2, 3, 4]) {
+      expect(isClosingQualifyingTurn(turn), `turn ${turn} closed too early`)
+        .toBe(false);
+    }
+    expect(isClosingQualifyingTurn(5)).toBe(true);
+    expect(isClosingQualifyingTurn(9)).toBe(true);
+  });
+
+  it('closes early from turn 3 only when email AND phone are captured', () => {
+    // 3-question floor holds before MIN_EARLY_CLOSE_TURN
+    expect(isClosingQualifyingTurn(2, true)).toBe(false);
+    expect(isClosingQualifyingTurn(3, true)).toBe(true);
+    expect(isClosingQualifyingTurn(4, true)).toBe(true);
+    // incomplete contact details never close early
+    expect(isClosingQualifyingTurn(3, false)).toBe(false);
+    expect(isClosingQualifyingTurn(4, false)).toBe(false);
   });
 });

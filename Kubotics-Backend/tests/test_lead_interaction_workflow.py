@@ -1,12 +1,14 @@
-"""Vincent 2026-11-23 workflow rule, enforced end to end:
+"""Vincent 2026-11-26 workflow rule, enforced end to end:
 
-    "we should interact 2-3 messages always with questions to determine
-     the need before asking for a meeting and in the end ask email and
-     phone and propose meeting"
+    "the chat should ALWAYS do 3 to 5 steps asking deeper about the exact
+     expectations of a potential customer" before any meeting ask, "and
+     in the end ask email and phone and propose meeting"
 
 Covers the two conversation drivers:
 - agent_core (WhatsApp / Telegram / voice inbound), stage = number of agent
-  messages already sent in the conversation;
+  messages already sent in the conversation (qualifying stages 0-4, closing
+  at QUALIFYING_TURNS — or earlier on explicit booking intent, or both
+  email + phone volunteered from MIN_EARLY_CLOSE_TURN on);
 - lead_followup (email / whatsapp / telegram sequence), step = touch number.
 """
 from app.services import agent_core as ac
@@ -39,15 +41,51 @@ def test_second_reply_still_qualifies_no_meeting():
     assert "get-to-know call" not in reply
 
 
+def test_no_meeting_before_turn_three():
+    """Vincent 2026-11-26: turns 0-2 (3 guaranteed) are qualifying
+    questions only — no link, no lead-qualified, no meeting ask."""
+    for stage in (0, 1, 2):
+        reply, _t, _h, link, _c = agent._run_agent_reasoning(
+            "We need an automation solution", stage
+        )
+        assert link is None, f"stage {stage} closed too early"
+        assert "?" in reply
+        assert "bookings.cloud.microsoft" not in reply
+        assert "get-to-know call" not in reply
+
+
+def test_turns_three_and_four_ask_deeper_qualifying_questions():
+    """Stages 3 and 4 dig deeper (constraints, recap) and stay questions
+    without any meeting ask until QUALIFYING_TURNS."""
+    seen = set()
+    for stage in (3, 4):
+        reply, _t, _h, link, _c = agent._run_agent_reasoning(
+            "We need an automation solution", stage
+        )
+        assert link is None, f"stage {stage} closed too early"
+        assert "?" in reply
+        assert "bookings.cloud.microsoft" not in reply
+        assert "get-to-know call" not in reply
+        assert reply not in seen          # progressive, not the same text twice
+        seen.add(reply)
+    # stage 4 is the recap + confirm-expectations question
+    reply4, _t, _h, link4, _c = agent._run_agent_reasoning(
+        "We need an automation solution", 4
+    )
+    assert link4 is None and "expectations" in reply4
+
+
 def test_closing_reply_asks_email_and_phone_then_proposes_meeting():
     reply, _tools, _handoff, link, _chips = agent._run_agent_reasoning(
         "Klingt gut", ac.QUALIFYING_TURNS
     )
     assert link == ac.BOOKING_LINK
     assert ac.BOOKING_LINK in reply           # link lives in the TEXT
-    # email + phone BEFORE the meeting proposal
-    assert reply.index("email address") < reply.index("get-to-know call")
-    assert "phone number" in reply
+    # "Klingt gut" is a German message -> Swiss High German (de-CH) closing:
+    # contact details asked BEFORE the meeting proposal
+    assert "E-Mail-Adresse" in reply and "Telefonnummer" in reply
+    assert reply.index("Telefonnummer") < reply.index("15-minütiger Call")
+    assert reply.index("E-Mail-Adresse") < reply.index(ac.BOOKING_LINK)
 
 
 def test_h2_branch_asks_questions_before_the_meeting():
@@ -55,32 +93,32 @@ def test_h2_branch_asks_questions_before_the_meeting():
     assert link0 is None and "?" in reply0
     assert "bookings.cloud.microsoft" not in reply0
     assert tools and tools[0]["name"] == "query_product_catalog"  # observability kept
-    reply1, _t, _h, link1, _c = agent._run_agent_reasoning(
-        "It is for the H2 in our factory", 1
+    for stage in (1, 2, 3, 4):   # 3-5 qualifying steps (Vincent 2026-11-26)
+        reply, _t, _h, link, _c = agent._run_agent_reasoning(
+            "It is for the H2 in our factory", stage
+        )
+        assert link is None and "?" in reply
+        assert "bookings.cloud.microsoft" not in reply
+        assert "get-to-know call" not in reply
+    reply5, _t, _h, link5, _c = agent._run_agent_reasoning(
+        "It is for the H2 in our factory", ac.QUALIFYING_TURNS
     )
-    assert link1 is None and "?" in reply1
-    assert "bookings.cloud.microsoft" not in reply1
-    reply2, _t, _h, link2, _c = agent._run_agent_reasoning(
-        "It is for the H2 in our factory", 2
-    )
-    assert link2 == ac.BOOKING_LINK and ac.BOOKING_LINK in reply2
-    assert reply2.index("email address") < reply2.index("get-to-know call")
+    assert link5 == ac.BOOKING_LINK and ac.BOOKING_LINK in reply5
+    assert reply5.index("email address") < reply5.index("get-to-know call")
 
 
 def test_invoice_branch_asks_questions_before_the_meeting():
-    reply0, _t, _h, link0, _c = agent._run_agent_reasoning(
-        "invoice automation please", 0
+    for stage in range(ac.QUALIFYING_TURNS):
+        reply, _t, _h, link, _c = agent._run_agent_reasoning(
+            "invoice automation please", stage
+        )
+        assert link is None and "?" in reply
+        assert "bookings.cloud.microsoft" not in reply
+    closing, _t, _h, link, _c = agent._run_agent_reasoning(
+        "invoice automation please", ac.QUALIFYING_TURNS
     )
-    assert link0 is None and "?" in reply0
-    assert "bookings.cloud.microsoft" not in reply0
-    reply1, _t, _h, link1, _c = agent._run_agent_reasoning(
-        "invoice automation please", 1
-    )
-    assert link1 is None and "?" in reply1
-    reply2, _t, _h, link2, _c = agent._run_agent_reasoning(
-        "invoice automation please", 2
-    )
-    assert link2 == ac.BOOKING_LINK and ac.BOOKING_LINK in reply2
+    assert link == ac.BOOKING_LINK and ac.BOOKING_LINK in closing
+    assert closing.index("email address") < closing.index("get-to-know call")
 
 
 def test_explicit_booking_intent_jumps_to_the_closing_reply():
@@ -91,6 +129,54 @@ def test_explicit_booking_intent_jumps_to_the_closing_reply():
     assert "email address" in reply and "phone number" in reply
     assert ac.BOOKING_LINK in reply
     assert reply.index("email address") < reply.index(ac.BOOKING_LINK)
+
+
+def test_booking_intent_skips_at_any_stage():
+    """Vincent 2026-11-26: never block an explicit booking request — the
+    closing reply fires from the very first message to stage 4 alike."""
+    for stage in (0, 1, 2, 3, 4):
+        reply, _t, _h, link, _c = agent._run_agent_reasoning(
+            "I would like to book a meeting", stage
+        )
+        assert link == ac.BOOKING_LINK, f"stage {stage} blocked a booking"
+        assert ac.BOOKING_LINK in reply
+        assert "email address" in reply and "phone number" in reply
+        assert reply.index("email address") < reply.index("get-to-know call")
+
+
+def test_volunteered_email_and_phone_close_early_from_stage_three():
+    """Both contact details already in the conversation -> close from
+    MIN_EARLY_CLOSE_TURN on; the 3-question floor still holds before it."""
+    history = "reach me at lead@example.ch"
+    phone_line = "or call +41 79 123 45 67"
+
+    # floor: stage 2 with both details still qualifies
+    reply, _t, _h, link, _c = agent._run_agent_reasoning(
+        "und weiter?", 2, f"{history}\n{phone_line}"
+    )
+    assert link is None and "?" in reply
+    assert "bookings.cloud.microsoft" not in reply
+
+    # from stage 3 on: closing (ask only what is missing, propose the call)
+    reply3, _t, _h, link3, _c = agent._run_agent_reasoning(
+        "und weiter?", 3, f"{history}\n{phone_line}"
+    )
+    assert link3 == ac.BOOKING_LINK and ac.BOOKING_LINK in reply3
+
+
+def test_german_message_gets_swiss_german_canned_text():
+    """Canned stage replies: Swiss High German (de-CH) for German messages,
+    English variants consistent with the existing style."""
+    reply_de, _t, _h, link_de, _c = agent._run_agent_reasoning(
+        "Grüezi, wir brauchen Automatisierung für unseren Betrieb", 0
+    )
+    assert link_de is None and "?" in reply_de
+    assert "Schweiz" in reply_de
+    reply_en, _t, _h, link_en, _c = agent._run_agent_reasoning(
+        "We need automation for our plant", 0
+    )
+    assert link_en is None and "?" in reply_en
+    assert "Grüezi! I am the Kubotics Autonomous Assistant" in reply_en
 
 
 def test_human_request_still_hands_off_without_meeting_pitch():

@@ -4,7 +4,7 @@ The WhatsApp / Telegram / Teams agent core must answer through the SAME
 provider chain (mail_llm) and the SAME shared system prompt as the website
 chat, with the offer matching the message topic injected as context. The
 canned stage reply stays the reply whenever the chain fails or the model's
-text breaks the 2-qualifying-turns workflow.
+text breaks the 3-5-qualifying-turns workflow (Vincent 2026-11-26).
 
 No DB, no network: `_llm_reply` runs against a stubbed `chat_text`, the
 workflow guards run against the pure `_merge_llm_reply`.
@@ -119,10 +119,52 @@ def test_offer_context_without_topic_carries_every_offer():
     block = offer_context_block("Hallo, grüezi")
     for offer in PAGE_OFFERS.values():
         assert offer in block
+    # the H2 rental alias shares its string with the test-day path — the
+    # fallback must never show the same offer twice
+    assert block.count(PAGE_OFFERS["/robotics/unitree-h2-rental"]) == 1
+
+
+def test_h2_offer_sells_the_rental_and_has_the_alias_path():
+    """Vincent 2026-11-26: the Unitree H2 entries lead with the RENTAL
+    offer; the Test Day stays a secondary mention; both H2 page paths
+    (/robotics/unitree-h2-test-day and /robotics/unitree-h2-rental) serve
+    the same offer."""
+    from app.services.chat_context import offer_for_page
+
+    rental_sentence = (
+        "Unitree H2 humanoid rentable in Switzerland: 2 days CHF 500 or "
+        "1 week CHF 1000, excl. MwSt., excl. shipping, on-site"
+    )
+    offer = PAGE_OFFERS["/robotics/unitree-h2-rental"]
+    assert rental_sentence in offer
+    # rental first, Test Day secondary
+    assert offer.index(rental_sentence) < offer.index("Test Day")
+    # both H2 paths resolve to the same offer
+    assert PAGE_OFFERS["/robotics/unitree-h2-test-day"] == offer
+    assert offer_for_page("/robotics/unitree-h2-rental") == offer
+    assert offer_for_page("/robotics/unitree-h2-test-day/") == offer
+    # topic-selected messaging turns carry it too
+    assert offer in offer_context_block("Unitree H2 rental price?")
+
+
+def test_shared_prompt_pins_the_3_to_5_turn_qualification_rule():
+    """The system prompt must tell the model the NEW rule: one deeper
+    qualifying question per turn, no meeting before turn 3, close by turn 5,
+    immediate close on booking intent or both contact details."""
+    prompt = ac.CHAT_SYSTEM_PROMPT
+    assert "QUALIFICATION FLOW (fixed, no exceptions)" in prompt
+    assert "EXACT" in prompt and "expectations" in prompt
+    assert "before the THIRD turn" in prompt
+    assert "FIFTH qualifying turn at the latest" in prompt
+    assert "BOTH an email address and a phone number" in prompt
+    assert "explicitly asks to book or meet" in prompt
+    # the old 2-turn wording is gone
+    assert "first TWO turns" not in prompt
+    assert "From the THIRD turn on" not in prompt
 
 
 # --------------------------------------------------------------------------- #
-# workflow guards: the model may never widen the 2026-11-23 rules              #
+# workflow guards: the model may never widen the 2026-11-26 rules              #
 # --------------------------------------------------------------------------- #
 def test_stage_machine_return_is_not_awaitable():
     """Regression: `await self._run_agent_reasoning(...)` on this plain def
@@ -196,3 +238,48 @@ def test_merge_handoff_is_never_replaced():
     )
     assert reply == canned[0]
     assert link is None
+
+
+def test_merge_keeps_stage_four_a_qualifying_turn():
+    """Vincent 2026-11-26: stages 0-4 qualify; only QUALIFYING_TURNS=5
+    closes (plus the two early-close gates below)."""
+    canned = _canned("We need automation", 4)
+    assert canned[3] is None
+    reply, link = agent._merge_llm_reply(
+        canned, "Which outcome do you need, and by when?",
+        "We need automation", 4,
+    )
+    assert reply.startswith("Which outcome")
+    assert link is None
+
+
+def test_merge_booking_intent_closes_from_stage_zero():
+    """Never block an explicit booking request — the closing guard applies
+    at ANY stage, so the model's contact ask is adopted at stage 0."""
+    canned = _canned("Can we book a call?", 0)
+    assert canned[3] == ac.BOOKING_LINK          # canned already closes
+    reply, link = agent._merge_llm_reply(
+        canned, "Sure — your email address and phone number first.",
+        "can we book a call?", 0,
+    )
+    assert reply.endswith(ac.BOOKING_LINK)       # link appended by the guard
+    assert link == ac.BOOKING_LINK
+
+
+def test_merge_sees_volunteered_email_and_phone_in_history():
+    """Both contact details in the conversation -> closing from stage 3 on
+    (3-question floor holds before that)."""
+    history = "reach me at lead@example.ch or call +41 79 123 45 67"
+    canned3 = agent._run_agent_reasoning("und weiter?", 3, history)
+    assert canned3[3] == ac.BOOKING_LINK         # early close fires
+    reply, link = agent._merge_llm_reply(
+        canned3, "Gerne, eine Frage.", "und weiter?", 3, history
+    )
+    # llm text has no contact ask -> canned closing (with its link) stays
+    assert reply == canned3[0]
+    assert link == ac.BOOKING_LINK
+
+    # floor: the same history at stage 2 still qualifies
+    canned2 = agent._run_agent_reasoning("und weiter?", 2, history)
+    assert canned2[3] is None
+    assert "?" in canned2[0]
