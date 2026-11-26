@@ -15,6 +15,8 @@ export interface InboundLeadPayload {
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
+  utm_content?: string;
+  utm_term?: string;
   gclid?: string;
   referrer_url?: string;
 }
@@ -77,7 +79,24 @@ export class KuboticsApiService {
   private readonly baseUrl = 'https://api.kubotics.ch/api/v1';
 
   submitLead(payload: InboundLeadPayload): Observable<LeadApiResponse> {
-    return this.http.post<LeadApiResponse>(`${this.baseUrl}/leads`, payload).pipe(
+    // Attribution E2E fix (Vincent 2026-11-26, "when a lead lands on a page
+    // it should work"): every lead-form caller (H2 rental form, home contact
+    // section, ...) previously sent NO utm/gclid unless the component read
+    // the URL itself — so paid traffic filled forms as unattributed leads.
+    // Enrich once at the single choke point: URL params win only when the
+    // caller did not set the field; referrer fills when absent. SSR-safe.
+    const lead: InboundLeadPayload = { ...payload };
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      lead.utm_source = lead.utm_source || p.get('utm_source') || undefined;
+      lead.utm_medium = lead.utm_medium || p.get('utm_medium') || undefined;
+      lead.utm_campaign = lead.utm_campaign || p.get('utm_campaign') || undefined;
+      lead.utm_content = lead.utm_content || p.get('utm_content') || undefined;
+      lead.utm_term = lead.utm_term || p.get('utm_term') || undefined;
+      lead.gclid = lead.gclid || p.get('gclid') || undefined;
+      lead.referrer_url = lead.referrer_url || document.referrer || undefined;
+    }
+    return this.http.post<LeadApiResponse>(`${this.baseUrl}/leads`, lead).pipe(
       tap(() => {
         this.analytics.track('generate_lead', {
           event_category: 'Lead Generation',
