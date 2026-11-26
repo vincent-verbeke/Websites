@@ -143,3 +143,51 @@ def test_caps_default_to_settings():
 def test_month_start_is_first_utc_day():
     ms = month_start_utc(datetime(2026, 11, 17, 23, 59, tzinfo=UTC))
     assert ms == datetime(2026, 11, 1, tzinfo=UTC)
+
+
+# --------------------- Conversion targets (Vincent 2026-11-26) -------------
+
+def test_targets_not_evaluable_without_metrics_feed():
+    from app.api.v1.marketing_guard import evaluate_targets
+    r = evaluate_targets(days=7, spend_chf=20.0, metrics_leads=0,
+                         crm_leads=4, meetings=0, metrics_rows=0)
+    assert r["status"]["cpl_ok"] is None          # never a false PASS
+    assert r["actual"]["cpl_chf"] is None
+    assert r["actual"]["leads"] == 4              # max(metrics, crm)
+    assert r["status"]["leads_ok"] is False       # 4 < 5 weekly target
+    assert r["status"]["meetings_ok"] is False
+    assert "metrics feed empty" in r["note"]
+
+
+def test_targets_evaluates_cpl_and_scales_window():
+    from app.api.v1.marketing_guard import evaluate_targets
+    r = evaluate_targets(days=14, spend_chf=60.0, metrics_leads=4,
+                         crm_leads=1, meetings=2, metrics_rows=14,
+                         cpl_target=40.0, weekly_leads_target=5,
+                         weekly_meetings_target=2)
+    assert r["actual"]["cpl_chf"] == 15.0
+    assert r["status"]["cpl_ok"] is True          # 15 <= 40
+    assert r["targets"]["leads"] == 10            # 5 * 14/7
+    assert r["status"]["leads_ok"] is False       # max(4,1)=4 < 10
+    assert r["targets"]["meetings"] == 4
+    assert r["status"]["meetings_ok"] is False    # 2 < 4
+    assert r["note"] == ""
+
+
+def test_targets_cpl_fails_when_over_and_leads_pass():
+    from app.api.v1.marketing_guard import evaluate_targets
+    r = evaluate_targets(days=7, spend_chf=100.0, metrics_leads=2,
+                         crm_leads=5, meetings=2, metrics_rows=7,
+                         cpl_target=40.0, weekly_leads_target=5,
+                         weekly_meetings_target=2)
+    assert r["actual"]["cpl_chf"] == 50.0
+    assert r["status"]["cpl_ok"] is False
+    assert r["actual"]["leads"] == 5
+    assert r["status"]["leads_ok"] is True
+    assert r["status"]["meetings_ok"] is True
+
+
+def test_conversion_target_settings_exist():
+    assert settings.TARGET_CPL_CHF > 0
+    assert settings.TARGET_WEEKLY_LEADS > 0
+    assert settings.TARGET_WEEKLY_MEETINGS > 0

@@ -22,7 +22,7 @@ approved approval; monthly caps CHF 100 total, CHF 70 Google search.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -33,7 +33,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.cloud_dashboard import require_needle_bearer_token
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.entities import CampaignMetric, SpendApproval, SpendRecord
+from app.models.entities import CampaignMetric, Contact, SpendApproval, SpendRecord
+from app.models.lead_followup import LeadFollowup
 
 router = APIRouter(tags=["spend-control"])
 
@@ -119,6 +120,55 @@ def spend_decision(amount_chf: float, channel: str,
 def month_start_utc(now: datetime | None = None) -> datetime:
     now = now or datetime.now(UTC)
     return datetime(now.year, now.month, 1, tzinfo=UTC)
+
+
+def evaluate_targets(*, days: int, spend_chf: float, metrics_leads: int,
+                     crm_leads: int, meetings: int,
+                     cpl_target: float | None = None,
+                     weekly_leads_target: int | None = None,
+                     weekly_meetings_target: int | None = None,
+                     metrics_rows: int = 0) -> dict:
+    """Conversion-target evaluation (Vincent 26 Nov 2026: "set conversion
+    targets for Google ads and Meta"). Pure - unit-tested.
+
+    - Leads counted as ``max(metrics_leads, crm_leads)``: platform counter
+      vs. our CRM rows (attribution gaps make either alone unreliable).
+    - Weekly targets scale linearly with the window (target * days / 7).
+    - CPL = spend / metrics_leads; ``None`` (target not yet evaluable) until
+      a metrics feed delivers rows - never a false PASS.
+    """
+    cpl_target = settings.TARGET_CPL_CHF if cpl_target is None else cpl_target
+    weekly_leads = (settings.TARGET_WEEKLY_LEADS
+                    if weekly_leads_target is None else weekly_leads_target)
+    weekly_meetings = (settings.TARGET_WEEKLY_MEETINGS
+                       if weekly_meetings_target is None else weekly_meetings_target)
+    scale = max(days, 1) / 7.0
+    leads = max(int(metrics_leads), int(crm_leads))
+    cpl = round(spend_chf / metrics_leads, 2) if metrics_leads > 0 else None
+    leads_needed = max(1, round(weekly_leads * scale))
+    meetings_needed = max(1, round(weekly_meetings * scale))
+    return {
+        "window_days": days,
+        "targets": {"cpl_chf_max": cpl_target,
+                    "leads": leads_needed,
+                    "meetings": meetings_needed},
+        "actual": {"spend_chf": round(float(spend_chf), 2),
+                   "cpl_chf": cpl,
+                   "leads": leads,
+                   "leads_metrics": int(metrics_leads),
+                   "leads_crm": int(crm_leads),
+                   "meetings": int(meetings),
+                   "metrics_rows": int(metrics_rows)},
+        "status": {
+            # None = not yet evaluable (no metrics feed rows) - NOT a pass.
+            "cpl_ok": None if cpl is None else (cpl <= cpl_target),
+            "leads_ok": leads >= leads_needed,
+            "meetings_ok": meetings >= meetings_needed,
+        },
+        "note": ("metrics feed empty - CPL not evaluable, platform-side "
+                 "numbers pending the Google Ads/Meta API ingestion job"
+                 if metrics_rows == 0 else ""),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +274,43 @@ async def list_campaign_metrics(
         "clicks": r.clicks, "leads": r.leads, "conversions": r.conversions,
         "extra": r.extra,
     } for r in rows], "count": len(rows), "totals": totals}
+
+
+@router.get("/campaigns/targets")   # public read (targets carry no secrets)
+async def conversion_targets(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    days: int = 7,
+) -> dict:
+    """Vincent 26 Nov 2026: conversion targets for Google Ads + Meta.
+
+    Actuals = campaign_metrics rows in the window (platform feed, once the
+    ingestion job runs) cross-checked against CRM contacts created in the
+    window and lead sequences that reached `meeting_booked`. Returns the
+    same shape for the Needle daily evaluation and the dashboard.
+    """
+    days = max(1, min(days, 90))
+    start = datetime.now(UTC) - timedelta(days=days)
+    rows = (await db.execute(
+        select(CampaignMetric).where(CampaignMetric.day >= start)
+    )).scalars().all()
+    spend = float(sum(r.spend_chf or 0 for r in rows))
+    metrics_leads = sum(r.leads or 0 for r in rows)
+    crm_leads = (await db.execute(
+        select(func.count(Contact.id)).where(Contact.created_at >= start)
+    )).scalar_one() or 0
+    meetings = (await db.execute(
+        select(func.count(LeadFollowup.id)).where(
+            LeadFollowup.status == "meeting_booked",
+            LeadFollowup.updated_at >= start,
+        )
+    )).scalar_one() or 0
+    result = evaluate_targets(
+        days=days, spend_chf=spend, metrics_leads=metrics_leads,
+        crm_leads=crm_leads, meetings=meetings, metrics_rows=len(rows),
+    )
+    result["caps"] = {"total_chf": settings.SPEND_TOTAL_CAP_CHF,
+                      "search_chf": settings.SPEND_SEARCH_CAP_CHF}
+    return result
 
 
 async def _month_usage(db: AsyncSession) -> tuple[float, float]:

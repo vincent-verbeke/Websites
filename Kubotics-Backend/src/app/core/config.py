@@ -103,6 +103,14 @@ class Settings(BaseSettings):
     SPEND_SEARCH_CAP_CHF: float = 70.0        # google search sub-cap
     SPEND_APPROVAL_PHRASE: str = "APPROVE-SPEND"  # typed by Vincent in the UI
 
+    # --- Conversion targets (Vincent 26 Nov 2026: "set conversion targets
+    # for Google ads and Meta") — PROPOSED defaults pending his confirmation,
+    # env-overridable; evaluated by GET /api/v1/campaigns/targets and used as
+    # the platform-side target CPA when the campaigns are created via API ---
+    TARGET_CPL_CHF: float = 40.0              # max cost per lead (CHF)
+    TARGET_WEEKLY_LEADS: int = 5              # min leads per rolling 7 days
+    TARGET_WEEKLY_MEETINGS: int = 2           # min meetings per rolling 7 days
+
     # --- IBKR MCP connector (docs/IBKR_MCP_BACKEND.md; Vincent 2026-11-14) ---
     # Master switch: default False => no poller starts and every /api/v1/ibkr/*
     # endpoint answers 503 "not configured" — today's stable behavior untouched.
