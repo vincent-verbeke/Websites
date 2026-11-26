@@ -32,7 +32,7 @@ touch (-> replied, human/agent conversation takes over), meeting booked
 (lifecycle past 'lead' — see docs for the bookings-detection gap), consent
 revoked / opt-out / suppression, lead older than 7 days, touches exhausted
 (-> maxed), daily cap (-> defers the rest of the day), quiet hours (global
-deferral), no reachable channel.
+deferral), no reachable channel (-> defers 24h as pending, never terminal).
 
 Gates: default OFF (LEAD_FOLLOWUP_ENABLED=False => maybe_start_followup_loop()
 returns None => no task registers). Channel seams are module attributes so
@@ -1000,13 +1000,15 @@ async def _process_contact(
     target, reason = resolve_channel(points, telegram_id, step, info, now)
     if target is None:
         # No channel reaches this lead RIGHT NOW (e.g. the Meta 24h window is
-        # closed and there is no email/telegram point): DEFER to the next
-        # allowed send window instead of killing the sequence. "stopped" is
-        # terminal (candidate_skip_reason filters terminal rows forever), so
-        # this path used to silently drop step 3 — the closing touch that
-        # asks for the missing contact details (Vincent 2026-11-25 suggested
-        # fix). The age stop (LEAD_MAX_AGE) still bounds the deferring.
-        due = next_allowed_time(now)
+        # closed and there is no telegram/email point): DEFER the sequence by
+        # 24h instead of killing it. "stopped" is terminal
+        # (candidate_skip_reason filters terminal rows forever), so this path
+        # used to silently drop step 3 — the closing touch that asks for the
+        # missing contact details. Unreachability is NEVER terminal: a reply
+        # reopens the WhatsApp window and an email captured later becomes the
+        # fallback on the next attempt (log detail: deferred_unreachable).
+        # The age stop (LEAD_MAX_AGE) still bounds how long a row may defer.
+        due = now + timedelta(hours=24)
         if row is not None:
             row.status = "pending"
             row.next_due_at = due
@@ -1014,7 +1016,7 @@ async def _process_contact(
         else:
             db.add(_new_row(contact.id, step, "pending", now, next_due=due))
         _log(db, now=now, contact_id=contact.id, step=step,
-             status="skipped", detail=reason)
+             status="skipped", detail="deferred_unreachable")
         return {"kind": "skipped", "contact_id": str(contact.id),
                 "reason": reason, "deferred_to": due.isoformat()}
 

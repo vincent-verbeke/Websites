@@ -597,11 +597,63 @@ def test_no_contact_point_and_no_identity_never_sends(net):
     out = run(lf.run_due(db, NOW))
     assert out["sent"] == []
     assert not (net.email.calls or net.whatsapp.calls or net.telegram)
-    # no_reachable_channel defers (pending + future due), it never kills step 3
+    # unreachable defers (pending + future due), it never kills step 3
     assert db.followups[0].status == "pending"
     assert db.followups[0].next_due_at > NOW
     skipped = [r for r in db.logs if r.status == "skipped"]
-    assert skipped[0].detail == "no_reachable_channel"
+    assert skipped[0].detail == "deferred_unreachable"
+
+
+def test_step2_closed_window_no_telegram_falls_back_to_email(net):
+    """Step 2 order = whatsapp(window) -> telegram -> email: with the Meta
+    window closed and no telegram identity the touch still goes out via the
+    stored email and the row advances to step 3 (the closing touch)."""
+    contact = make_contact(created_at=NOW - timedelta(hours=30),
+                           updated_at=NOW - timedelta(hours=30))
+    row = make_row(contact.id, step=2, next_due=NOW - timedelta(minutes=1),
+                   last_sent=NOW - timedelta(hours=24))
+    conv = make_conv(contact.id, channel="whatsapp")
+    db = FakeDb(
+        contacts=[contact], followups=[row],
+        conversations=[conv],
+        # last INBOUND whatsapp 25h ago -> Meta 24h window is CLOSED
+        messages=[make_msg(conv.id, NOW - timedelta(hours=25), "Hallo")],
+        points=[email_point(contact.id), wa_point(contact.id)],
+    )
+    out = run(lf.run_due(db, NOW))
+    assert [s["channel"] for s in out["sent"]] == ["email"]
+    assert net.email.calls and net.whatsapp.calls == [] and not net.telegram
+    follow = db.followups[0]
+    assert follow.step == 3
+    assert follow.status == "pending"
+    assert follow.next_due_at == NOW + lf.NEXT_STEP_DELAY[3]
+
+
+def test_step2_no_channel_at_all_defers_pending_24h_never_stops(net):
+    """No channel at ANY step => DEFER: row stays pending with next_due_at =
+    now + 24h and the audit says skipped/deferred_unreachable. 'stopped'
+    stays reserved for evaluate_stops reasons and genuine completion."""
+    contact = make_contact()
+    row = make_row(contact.id, step=2, next_due=NOW - timedelta(minutes=1),
+                   last_sent=NOW - timedelta(hours=2))
+    db = FakeDb(contacts=[contact], followups=[row])  # no points, no identity
+    out = run(lf.run_due(db, NOW))
+    assert out["sent"] == []
+    assert not (net.email.calls or net.whatsapp.calls or net.telegram)
+    assert [s["reason"] for s in out["skipped"]] == ["no_reachable_channel"]
+    assert out["skipped"][0]["deferred_to"] == (
+        NOW + timedelta(hours=24)).isoformat()
+    follow = db.followups[0]
+    assert follow.status == "pending"                # NOT stopped
+    assert follow.next_due_at == NOW + timedelta(hours=24)
+    assert follow.next_due_at > NOW                  # future due
+    entry = next(r for r in db.logs if r.status == "skipped")
+    assert entry.detail == "deferred_unreachable"
+    # the sequence stays alive: waits while not due, is re-selected once due
+    assert lf.candidate_skip_reason(
+        contact, follow, NOW + timedelta(hours=1)) == "not_due"
+    due = run(lf.select_candidates(db, NOW + timedelta(hours=25)))
+    assert [c.id for c in due] == [contact.id]
 
 
 def test_whatsapp_window_boundary_is_strict_24h():
@@ -714,6 +766,30 @@ def test_stop_optout_keyword_suppresses_and_persists(net):
     assert out["stopped"][0]["reason"] == "opt_out_keyword"
     assert db.contacts[0].suppressed is True
     assert db.contacts[0].suppression_reason == "followup_keyword_opt_out"
+
+
+def test_step2_optout_still_stops_terminal(net):
+    """Terminal 'stopped' remains ONLY for evaluate_stops reasons: an
+    opt-out stops the sequence at step 2 — it is never deferred the way
+    mere unreachability is."""
+    contact = make_contact()
+    row = make_row(contact.id, step=2, next_due=NOW - timedelta(minutes=1),
+                   last_sent=NOW - timedelta(hours=2))
+    conv = make_conv(contact.id, channel="whatsapp")
+    db = FakeDb(
+        contacts=[contact], followups=[row],
+        conversations=[conv],
+        messages=[make_msg(conv.id, NOW - timedelta(minutes=30), "STOP")],
+        points=[email_point(contact.id)],
+    )
+    out = run(lf.run_due(db, NOW))
+    assert not net.email.calls and not net.whatsapp.calls
+    assert out["stopped"][0]["reason"] == "opt_out_keyword"
+    follow = db.followups[0]
+    assert follow.status == "stopped"
+    assert follow.next_due_at is None
+    entry = next(r for r in db.logs if r.status == "skipped")
+    assert entry.detail == "opt_out_keyword"
 
 
 def test_stop_suppression_flag_blocks_before_any_send(net):

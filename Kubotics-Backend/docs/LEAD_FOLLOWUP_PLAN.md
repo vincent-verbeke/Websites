@@ -63,10 +63,10 @@ Hard channel rules (all enforced in `resolve_channel`):
   requires `channel_type='phone_mobile' + label='whatsapp'` (agent_core's
   backfill) or `channel_type='whatsapp'`; telegram requires an
   `ExternalIdentity(channel='telegram')` — which only exists if they messaged
-  the bot. No contact point anywhere ⇒ `no_reachable_channel` (logged, row
-  `pending` with `next_due_at` = next allowed send window — DEFERRED, never
-  terminal, never a blind send; Vincent 2026-11-25. The age stop
-  (`lead_too_old`, 7 days) still bounds how long a row may defer).
+  the bot. No contact point anywhere ⇒ `no_reachable_channel` (logged as
+  `skipped`/`deferred_unreachable`, row `pending` with `next_due_at` = now +
+  24h — DEFERRED, never terminal, never a blind send; Vincent 2026-11-25/26.
+  The age stop (`lead_too_old`, 7 days) still bounds how long a row may defer).
 * **Needle operator numbers are never lead targets** — the phone is normalized
   exactly like `whatsapp._clean_phone_digits` and checked against
   `NEEDLE_OPERATOR_SENDERS` (Vincent's own lane).
