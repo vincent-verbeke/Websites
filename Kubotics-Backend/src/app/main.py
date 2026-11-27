@@ -22,6 +22,7 @@ from app.services import ibkr_mcp as ibkr_mcp_service
 from app.services import ibkr_plan as ibkr_plan_service
 from app.services import lead_followup as lead_followup_service
 from app.services import mail_agent as mail_agent_service
+from app.services import needle_watchdog as needle_watchdog_service
 from app.services import trading_watch as trading_watch_service
 
 logging.basicConfig(level=logging.INFO)
@@ -108,7 +109,21 @@ async def lifespan(app: FastAPI):
                     settings.LEAD_FOLLOWUP_QUIET_END,
                     settings.LEAD_FOLLOWUP_MAX_PER_DAY,
                     settings.LEAD_FOLLOWUP_MAX_TOUCHES)
+    # needle3 inbox watchdog (Vincent 2026-11-27) — alerts when operator
+    # WhatsApp rows stall because needle3.service on PC-A is down. Alert-only,
+    # never mutates queue state; runs in cloud so it works WHILE PC-A is off.
+    nw = needle_watchdog_service.maybe_start_needle_watchdog_loop()
+    if nw is not None:
+        logger.info("[needle-watchdog] background loop started (tick=%ss, "
+                    "stale=%ss, dispatched=%ss)",
+                    settings.NEEDLE_WATCHDOG_TICK_S,
+                    settings.NEEDLE_WATCHDOG_STALE_AFTER_S,
+                    settings.NEEDLE_WATCHDOG_DISPATCHED_AFTER_S)
     yield
+    if nw is not None:
+        nw.cancel()
+        with suppress(asyncio.CancelledError):
+            await nw
     if lf is not None:
         lf.cancel()
         with suppress(asyncio.CancelledError):

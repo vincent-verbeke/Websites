@@ -79,6 +79,13 @@ class Settings(BaseSettings):
     # needle3 orchestrator intake
     NEEDLE_TOKEN: str = ""
     NEEDLE_OPERATOR_SENDERS: str = "+41797481975"
+    # needle3-inbox watchdog (Vincent 2026-11-27: "cannot trust our system ...
+    # when i am visiting customers"). Cloud-side staleness alerts while
+    # needle3.service on PC-A is down - see services/needle_watchdog.py.
+    NEEDLE_WATCHDOG_ENABLED: bool = True   # alert-only; never touches queue rows
+    NEEDLE_WATCHDOG_TICK_S: int = 120
+    NEEDLE_WATCHDOG_STALE_AFTER_S: int = 600          # status=new unclaimed
+    NEEDLE_WATCHDOG_DISPATCHED_AFTER_S: int = 2700    # claimed, no reply (30-min task limit + margin)
 
     # --- Cloud trading watcher (Vincent-authorized 2026-11-01; full docs in
     #     docs/TRADING_WATCH_CLOUD.md) -------------------------------------
