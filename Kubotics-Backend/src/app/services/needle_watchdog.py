@@ -105,7 +105,7 @@ def recovery_text(count: int) -> str:
     plural = "" if count == 1 else "s"
     return (
         f"✅ needle3 queue recovered: your {count} queued message{plural} "
-        "have been processed - PC-A's network is back."
+        "have been processed - the queue is drained."
     )
 
 
