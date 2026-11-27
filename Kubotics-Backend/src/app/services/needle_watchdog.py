@@ -92,9 +92,12 @@ def alert_text(count: int, oldest_age_s: int, snippet: str) -> str:
     return (
         f"⚠️ needle3 queue alert: {count} WhatsApp message{plural} of yours "
         f"not handled yet (oldest waiting {mins} min).\n"
-        "needle3 on PC-A looks offline (192.168.1.199 unreachable). "
+        "needle3 on PC-A has stopped claiming messages - PC-A's host looks "
+        "network-isolated (its 192.168.1.199, Tailscale and funnel are all "
+        "unreachable while its VMs, e.g. Home Assistant, still answer, so it "
+        "likely needs a local network/cable check or restart - not a power-off). "
         "Your messages ARE queued in the cloud and will be handled as soon as "
-        f"PC-A is back on.\nOldest: \"{snippet}\""
+        f"PC-A's network is back.\nOldest: \"{snippet}\""
     )
 
 
@@ -102,7 +105,7 @@ def recovery_text(count: int) -> str:
     plural = "" if count == 1 else "s"
     return (
         f"✅ needle3 queue recovered: your {count} queued message{plural} "
-        "have been processed. PC-A is back."
+        "have been processed - PC-A's network is back."
     )
 
 
