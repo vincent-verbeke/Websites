@@ -369,6 +369,33 @@ def test_build_compose_system_contains_rules_and_note():
     assert "ACKNOWLEDGEMENT ONLY" in crit and "NO substantive content" in crit  # Q7
 
 
+def test_build_compose_system_sees_their_actual_message():
+    """2026-11-27 Pictet incident: composer must get the inbound text."""
+    from app.services.mail_llm import build_compose_system
+    s = build_compose_system(
+        lang="en", kind="ack_only", sender_name="Maurizio Arrigo",
+        subject="RE: Voting Form – EGM 25 November 2026", tier="contact",
+        contact_note=None, categories=None,
+        classification={"category": "informational", "criticality": "low",
+                        "summary": "Maurizio thanks Vincent for his transparency "
+                                   "on his EGM voting abstention."},
+        message_body="Thank you for sharing your thoughts. We appreciate your "
+                     "transparency.",
+        message_summary="Maurizio thanks Vincent for his transparency on his "
+                        "EGM voting abstention.")
+    assert "We appreciate your transparency" in s, "verbatim body missing"
+    assert "voting abstention" in s, "classifier summary missing"
+    assert "ONLY on this" in s
+    assert "never invent obligations" in s
+
+    # Optional args stay optional: no-body calls build the same prompt shape.
+    s2 = build_compose_system(
+        lang="en", kind="holding", sender_name="x", subject="y",
+        tier="unknown", contact_note=None, categories=None,
+        classification={"category": "informational", "criticality": "low"})
+    assert "Their actual message" not in s2
+
+
 def test_provider_chain_skips_missing_keys(monkeypatch):
     """Q10: chain must work before MIMO/XAI secrets exist (§7.3)."""
     for var in ("MIMO_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY"):

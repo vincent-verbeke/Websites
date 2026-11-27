@@ -801,7 +801,9 @@ async def _process_row(client, db, row, only, tier_map, overrides, contacts,
         reply_html, cprovider, cmodel = await mail_llm.compose_reply(
             lang=cls["language"], kind=action["kind"], sender_name=sender_name,
             subject=row.subject or "", tier=tier, contact_note=note,
-            categories=cats, classification=cls)
+            categories=cats, classification=cls,
+            message_body=body_text,
+            message_summary=cls.get("summary"))
     except mail_llm.ReplyInvalid as exc:
         row.state = "needs_review"        # plan §5: validation failure -> no send
         row.error = f"compose_validation:{exc}"[:500]
