@@ -140,12 +140,13 @@ PORTFOLIO = [
      "target_pct": 17.14, "target_chf": 1714.0},
 ]
 
-# conid -> sleeve key (verified 2026-10-20/22; SMALL intentionally absent)
+# conid -> sleeve key (verified 2026-10-20/22; SMALL added 2026-11-27 from
+# Vincent's agreed proposal: 912229874 = VGSA.DE / Xetra, ISIN IE0007TPRF31)
 # + the three sleeves added 2026-10-29 (resolved via secdef search by ISIN)
 CONID_TO_KEY = {"370359661": "CORPB", "150029461": "CHSPI",
                 "514454916": "VAGX", "32412936": "GOVB",
                 "78999785": "SWDA", "118059437": "IWDC",
-                "153454131": "EIMI"}
+                "153454131": "EIMI", "912229874": "SMALL"}
 
 # sleeve -> (conid, exchange or None).  The four proven sleeves keep the
 # original conid-only routing (fills 2026-10-20/22 — do not touch).  SWDA,
@@ -156,7 +157,7 @@ CONID_TO_KEY = {"370359661": "CORPB", "150029461": "CHSPI",
 SLEEVE_CONID = {"SWDA": ("78999785", "EBS"), "IWDC": ("118059437", "EBS"),
                 "EIMI": ("153454131", "EBS"), "CHSPI": ("150029461", None),
                 "VAGX": ("514454916", None), "GOVB": ("32412936", None),
-                "CORPB": ("370359661", None)}
+                "CORPB": ("370359661", None), "SMALL": ("912229874", "IBIS2")}
 
 
 # --- time helpers (tests freeze time by monkeypatching _now_zurich) ---------
@@ -659,13 +660,6 @@ async def _run(*, dry_run: bool, send_whatsapp: bool) -> tuple[dict, bool]:
             # remaining recomputed AFTER reconcile (daily does the same: a
             # fill booked above closes the sleeve before any instruction).
             remaining = p["target_chf"] - float(s.get("invested_chf") or 0.0)
-            if key == "SMALL":
-                msg = (f"{key}: not eligible on MCP review path "
-                       f"(awaiting GO/conid)")
-                skipped.append(msg)
-                instructions.append({"index": entry_idx[key], "status": "skipped",
-                                     "detail": msg})
-                continue
             if not conid:
                 msg = f"{key}: no conid known — not instructed"
                 skipped.append(msg)
@@ -743,7 +737,14 @@ async def _run(*, dry_run: bool, send_whatsapp: bool) -> tuple[dict, bool]:
                 instructions.append({"index": entry_idx[key], "status": "skipped",
                                      "detail": msg})
                 continue
-            qty = math.floor(remaining / (limit * fx) * 100) / 100.0
+            # qty floors on the LIMIT (never over the remaining target);
+            # SMALL = WHOLE shares only (IBKR rejects fractional LIMIT
+            # quantities at review — the 457.14-share VSML instruction of
+            # 2026-11-20)
+            if key == "SMALL":
+                qty = float(math.floor(remaining / (limit * fx)))
+            else:
+                qty = math.floor(remaining / (limit * fx) * 100) / 100.0
             if qty <= 0:
                 msg = (f"{key}: remaining CHF {remaining:.2f} = 0 units — skip")
                 skipped.append(msg)

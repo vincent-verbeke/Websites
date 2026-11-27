@@ -480,18 +480,22 @@ def test_usd_sleeve_sized_with_fx(env):
     assert "34.84 @ 100 USD" in "; ".join(res["notes"])
 
 
-def test_small_reported_never_ordered(env):
+def test_small_instructed_whole_shares(env):
+    """SMALL (conid 912229874, Vincent's agreed proposal) is a real sleeve now:
+    it plans like every other sleeve and its qty floors to WHOLE shares
+    (IBKR refuses fractional LIMIT quantities at review)."""
     state = base_state(SMALL={"status": "wait", "invested_chf": 0.0})
     seed(env, state)
     res = run(ip.run_daily_plan(dry_run=False, send_whatsapp=False))
 
-    assert env.mcp.creates == [], "SMALL has no conid — never instructed"
+    assert len(env.mcp.creates) == 1, env.mcp.creates
+    args = env.mcp.creates[0]
+    assert args["contract_id_ex"] == "912229874"
+    # target 1714 CHF / price 100 = 17.14 -> WHOLE shares -> 17
+    assert args["quantity"] == 17.0 and float(args["quantity"]).is_integer()
     idx = next(i for i, e in enumerate(res["entries"]) if e["key"] == "SMALL")
-    assert res["instructions"][idx]["status"] == "skipped"
-    assert "awaiting GO/conid" in res["instructions"][idx]["detail"]
-    assert any("not eligible on MCP review path" in n for n in res["notes"])
-    # SMALL stayed untouched in state
-    assert res["state_after"]["SMALL"]["status"] == "wait"
+    assert res["instructions"][idx]["status"] not in ("skipped",)
+    assert res["state_after"]["SMALL"]["status"] == "ordered"
 
 
 def test_pending_instruction_dedupe(env):
@@ -787,8 +791,11 @@ def test_whatsapp_carries_fills_and_skipped_block(env):
     assert len(env.wa.sent) == 1
     text = env.wa.sent[0][1]
     assert "IBKR daily run: IWDC FILLED via MCP position" in text
-    assert "; skipped: IWDC: completed/reconciled this run — skip; SMALL:" in text
-    assert "SMALL: not eligible on MCP review path" in text
+    assert "; skipped: IWDC: completed/reconciled this run — skip" in text
+    # SMALL is orderable since 2026-11-27 (conid wired) — it must no longer
+    # appear in the skipped block as "not eligible"
+    assert "not eligible on MCP review path" not in text
+    assert "SMALL: BUY instruction" in text
     assert text.rstrip().endswith(".")
 
 
