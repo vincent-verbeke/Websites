@@ -228,37 +228,64 @@ async def live_book() -> dict:
             "equity": equity, "available": available}
 
 
-async def _steps(symbols: list[str]) -> dict[str, tuple[float, float, float]]:
-    """Per symbol: (spot step, perp step, perp min notional) — fapi/spot
-    LOT_SIZE + NOTIONAL/MIN_NOTIONAL filters (xsec ``_f``/``tradable``)."""
-    out: dict[str, tuple[float, float]] = {}
-    want = set(symbols)
-    spot_syms = {CARRY_SPOT_MAP.get(s, s) for s in symbols}
-    code, ex = await _public("/api/v3/exchangeInfo",
-                             {"symbols": ",".join(sorted(spot_syms))},
-                             host=SPOT_HOST)
-    spot_steps = {}
-    if code == 200:
-        for s in ex.get("symbols", []):
+_FILTER_CACHE: dict = {"ts": 0.0, "spot": None, "perp": None,
+                       "perp_min": None}
+
+
+async def _filter_maps() -> tuple[dict, dict, dict]:
+    """Spot LOT_SIZE + perp LOT_SIZE/MIN_NOTIONAL maps, memoized 10 min.
+
+    FULL exchangeInfo fetches (no ``symbols`` query — spot requires a JSON
+    array there; the old plain-comma value returned -1100 and silently
+    produced empty steps → 1e-8 fallback → live -1013 LOT_SIZE rejects on
+    2026-11-28 08:57). First-fetch failure RAISES: an unknown step must
+    never be defaulted.
+    """
+    now = time.time()
+    if (_FILTER_CACHE["spot"] is not None
+            and now - _FILTER_CACHE["ts"] < 600):
+        return (_FILTER_CACHE["spot"], _FILTER_CACHE["perp"] or {},
+                _FILTER_CACHE["perp_min"] or {})
+    code, ex = await _public("/api/v3/exchangeInfo", host=SPOT_HOST)
+    if code == 200 and ex.get("symbols"):
+        _FILTER_CACHE["spot"] = {
+            s["symbol"]: float(f["stepSize"])
+            for s in ex["symbols"]
+            for f in s.get("filters", [])
+            if f.get("filterType") == "LOT_SIZE"}
+    code, fx = await _public("/fapi/v1/exchangeInfo")
+    if code == 200 and fx.get("symbols"):
+        perp_steps: dict = {}
+        perp_min: dict = {}
+        for s in fx["symbols"]:
             for f in s.get("filters", []):
                 if f.get("filterType") == "LOT_SIZE":
-                    spot_steps[s["symbol"]] = float(f["stepSize"])
-    code, fx = await _public("/fapi/v1/exchangeInfo")
-    perp_steps = {}
-    perp_min = {}
-    if code == 200:
-        for s in fx.get("symbols", []):
-            if s["symbol"] in want:
-                for f in s.get("filters", []):
-                    if f.get("filterType") == "LOT_SIZE":
-                        perp_steps[s["symbol"]] = float(f["stepSize"])
-                    elif f.get("filterType") in ("MIN_NOTIONAL", "NOTIONAL"):
-                        perp_min[s["symbol"]] = float(
-                            f.get("minNotional") or f.get("notional") or 5.0)
+                    perp_steps[s["symbol"]] = float(f["stepSize"])
+                elif f.get("filterType") in ("MIN_NOTIONAL", "NOTIONAL"):
+                    perp_min[s["symbol"]] = float(
+                        f.get("minNotional") or f.get("notional") or 5.0)
+        _FILTER_CACHE["perp"] = perp_steps
+        _FILTER_CACHE["perp_min"] = perp_min
+    _FILTER_CACHE["ts"] = now
+    if not _FILTER_CACHE["spot"] or not _FILTER_CACHE["perp"]:
+        raise RuntimeError(
+            f"exchangeInfo fetch failed (spot={bool(_FILTER_CACHE['spot'])} "
+            f"perp={bool(_FILTER_CACHE['perp'])}) — no filter data")
+    return (_FILTER_CACHE["spot"], _FILTER_CACHE["perp"],
+            _FILTER_CACHE["perp_min"] or {})
+
+
+async def _steps(symbols: list[str]) -> dict[str, tuple[float, float, float]]:
+    """Per symbol: (spot step, perp step, perp min notional). Symbols with
+    unknown filters are OMITTED — callers defer instead of guessing."""
+    spot, perp, perp_min = await _filter_maps()
+    out: dict[str, tuple[float, float, float]] = {}
     for s in symbols:
-        out[s] = (spot_steps.get(CARRY_SPOT_MAP.get(s, s), 1e-8),
-                  perp_steps.get(s, 1e-3),
-                  perp_min.get(s, 5.0))
+        step_spot = spot.get(CARRY_SPOT_MAP.get(s, s))
+        step_perp = perp.get(s)
+        if step_spot is None or step_perp is None:
+            continue
+        out[s] = (step_spot, step_perp, perp_min.get(s, 5.0))
     return out
 
 
@@ -310,7 +337,8 @@ async def carry_tick() -> dict:
     for perp, pos in shorts.items():
         spot_sym = CARRY_SPOT_MAP[perp]
         spot_amt = book["spot"].get(spot_sym, 0.0)
-        step_spot, step_perp, _ = (await _steps([perp]))[perp]
+        meta = (await _steps([perp])).get(perp)
+        step_spot, step_perp, _ = meta if meta else (0.0, 0.0, 5.0)
         open_now[perp] = {
             "spot": spot_sym, "qty": abs(pos["amt"]),
             "step_spot": step_spot, "step_perp": step_perp,
@@ -378,7 +406,12 @@ async def carry_tick() -> dict:
         if price <= 0:
             continue
         qty = notional / price
-        step_spot, step_perp, min_notional = (await _steps([perp]))[perp]
+        meta = (await _steps([perp])).get(perp)
+        if meta is None:
+            await journal("CARRY_ENTRY_DEFER", symbol=perp, mode=mode,
+                          cycle=cycle, note="no exchange filter data")
+            continue
+        step_spot, step_perp, min_notional = meta
         qty = float(_fmt_qty(qty, min(step_spot, step_perp)))
         if qty * price < min_notional:
             await journal("CARRY_ENTRY_SKIP", symbol=perp, qty=qty,
@@ -455,23 +488,32 @@ async def momentum_tick() -> dict:
     book = await live_book()
     longs = {s: p for s, p in book["positions"].items()
              if p["amt"] > 0 and s not in CARRY_SPOT_MAP}
-    st = await load_state("momentum", {"basket": {}, "adopted": False})
-    if not st.get("basket") and longs and not st.get("adopted"):
-        # adopt the existing challenge legs once (continuation, no rebuy)
-        st["basket"] = {s: {"qty": abs(p["amt"]), "entry": p["entry"],
-                            "adopted": True}
-                        for s, p in longs.items()}
-        st["adopted"] = True
-        await save_state("momentum", st)
-    held = dict(st.get("basket", {}))
+    st = await load_state("momentum", {"basket": {}})
+    # basket IS the live non-carry long book (carry-style derivation: the
+    # challenge legs adopt automatically, phantom claims from any non-live
+    # state — e.g. a dry run against the shared KV — drop, a crash can never
+    # double-enter); richer tracked metadata is kept where it exists.
+    held: dict[str, dict] = {}
+    for sym, p in longs.items():
+        meta = dict((st.get("basket") or {}).get(sym) or
+                    {"entry": p["entry"], "mom": 0.0})
+        meta["qty"] = abs(p["amt"])
+        held[sym] = meta
+    st["basket"] = held
+    await save_state("momentum", st)
     top, mom = await formation_top(settings.BINANCE_EXECUTOR_MOMENTUM_TOP_N)
     actions: list[str] = []
 
-    # exits (rotate rule): TRACKED legs that left the top-N; carry shorts and
-    # any untracked long are never touched.
-    for sym in sorted((set(held) & set(longs)) - set(top)):
+    # exits (rotate rule): LIVE tracked legs that left the top-N; carry
+    # shorts are never in `held` (filtered out of `longs`).
+    for sym in sorted(set(held) - set(top)):
         pos = longs[sym]
-        _, step_perp, _ = (await _steps([sym]))[sym]
+        meta = (await _steps([sym])).get(sym)
+        if meta is None:
+            await journal("MOMENTUM_EXIT_DEFER", symbol=sym, mode=mode,
+                          cycle=cycle, note="no exchange filter data")
+            continue
+        _, step_perp, _ = meta
         code, r = await _place("/papi/v1/um/order", {
             "symbol": sym, "side": "SELL", "type": "MARKET",
             "quantity": _fmt_qty(abs(pos["amt"]), step_perp),
@@ -482,14 +524,11 @@ async def momentum_tick() -> dict:
                       note="left top-N formation")
         actions.append(f"exit {sym}")
         held.pop(sym, None)
-    # legs closed elsewhere (crash/manual): drop from memory, never rebuy twice
-    for sym in sorted(set(held) - set(longs)):
-        held.pop(sym, None)
 
-    # entries: fresh top-N members not already long (never a carry pair)
+    # entries: fresh top-N members not already held (never a carry pair)
     notional = settings.BINANCE_EXECUTOR_MOMENTUM_NOTIONAL_USD
     for sym in top:
-        if sym in longs or sym in CARRY_SPOT_MAP:
+        if sym in held or sym in CARRY_SPOT_MAP:
             continue
         code, t = await _public("/fapi/v1/ticker/price", {"symbol": sym})
         if code != 200:
@@ -497,7 +536,12 @@ async def momentum_tick() -> dict:
         price = float(t.get("price") or 0)
         if price <= 0:
             continue
-        _, step_perp, min_notional = (await _steps([sym]))[sym]
+        meta = (await _steps([sym])).get(sym)
+        if meta is None:
+            await journal("MOMENTUM_ENTRY_DEFER", symbol=sym, mode=mode,
+                          cycle=cycle, note="no exchange filter data")
+            continue
+        _, step_perp, min_notional = meta
         qty = notional / price
         if qty * price < min_notional:
             await journal("MOMENTUM_ENTRY_SKIP", symbol=sym,
