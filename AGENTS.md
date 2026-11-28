@@ -43,6 +43,30 @@ The caveman skill pack is installed globally with the `-g` option
 - Caveman changes the *reply style* (compression), never the engineering
   bar: tests, verification steps and safety gates are unchanged.
 
+## System topology — READ BEFORE ANY INFRA / TRADING / WHATSAPP WORK
+
+**Full map: `Kubotics-Backend/docs/CLOUD_EDGE_TOPOLOGY.md`** (last verified
+2026-11-28; re-verify live states, never trust a recorded state blindly).
+
+- **Cloud hub** = `Kubotics-Backend` on ECS cluster `kubotics-cluster`
+  (AWS profile `h2rl`), data in RDS `kubotics` (schema `crm`: needle inbox,
+  contacts, followups) + `akuris` (schema `ai_trading` = trading bot state,
+  owner `aitrading`). WhatsApp webhook/inbox/send, IBKR MCP + daily plan,
+  lead followups, mail agent and the needle watchdog all run HERE.
+- **Binance trading** = ECS `akuris-cluster` service `ai-trading-service`
+  (repo `~/development/AI-Trading`, LIVE mode). It has a **desired count**:
+  it has been scaled to 0 for 16 days unnoticed (12–28 Nov) — check
+  `runningCount` before claiming trading works.
+- **WhatsApp flow** = Meta → cloud `crm.needle_inbox` → **PC-A**
+  `needle3.service` worker (PC-B hot standby in backup mode) →
+  `POST /api/whatsapp/send`. Replies are WAF-scrubbed + retried since
+  2026-11-28 (needle3 `2653a9d`/`bb4410e`); a cloud watchdog alerts stuck
+  rows.
+- **Edge**: PC-A `.199` (`ssh wa@`, root via `/etc/sudoers.d/90-agent`),
+  PC-B `.170` (`ssh vincent@`, same), dev PC `.161` (sessions, code).
+- Standing rules: review-first GO for money/ads/brand, English replies,
+  confirm destructive actions even with root.
+
 ## CI / GitHub Actions
 - **Only `.github/workflows/` at the REPO ROOT executes.** Workflow files in
   subdirectories (e.g. `Kubotics-Backend/.github/workflows/deploy.yml`) are
