@@ -372,3 +372,82 @@ def test_maybe_start_is_disabled_by_default():
 
 async def _ok():
     return True, "ok"
+
+
+def test_momentum_exit_survives_perp_only_listing():
+    """Spot LOT may not exist for perp-only listings — the exit must still fire
+    (live 09:09 DEFER storm regression, 2026-11-28)."""
+    mem = Mem()
+    _patch("load_state", mem.load)
+    _patch("save_state", mem.save)
+    _patch("journal", mem.journal)
+    _patch("rails_ok", _ok)
+    orders: list[str] = []
+
+    async def fake_book():
+        return {"positions": {"AGTUSDT": {"amt": 136.0, "entry": 0.09,
+                                          "side": "LONG", "upnl": 0.0}},
+                "spot": {}, "equity": 6800.0, "available": 4100.0}
+
+    async def fake_top(n):
+        return ["BTWUSDT"], {"BTWUSDT": 0.4}
+
+    async def fake_public(path, params=None, host=""):
+        return 200, {"price": "2.0"}
+
+    async def fake_place(path, params, *, post=True, host=""):
+        orders.append(f"{params['side']}:{params['symbol']}")
+        return 200, {"ok": True}
+
+    async def fake_steps(symbols):
+        return {s: (None, 1e-3, 5.0) for s in symbols}   # no spot LOT_SIZE
+
+    _patch("formation_top", fake_top)
+    _patch("_public", fake_public)
+    _patch("_place", fake_place)
+    _patch("live_book", fake_book)
+    _patch("_steps", fake_steps)
+
+    res = _run(ex.momentum_tick())
+    assert res["ok"] is True
+    assert "SELL:AGTUSDT" in orders                      # exit fired
+    assert "BUY:BTWUSDT" in orders                       # fresh entry too
+    kinds = [o["kind"] for o in mem.orders]
+    assert "MOMENTUM_EXIT" in kinds and "MOMENTUM_EXIT_DEFER" not in kinds
+
+
+def test_carry_entry_defers_when_spot_step_missing():
+    mem = Mem()
+    _patch("load_state", mem.load)
+    _patch("save_state", mem.save)
+    _patch("journal", mem.journal)
+    _patch("rails_ok", _ok)
+    placed: list[str] = []
+
+    async def fake_book():
+        return {"positions": {}, "spot": {}, "equity": 6800.0,
+                "available": 4100.0}
+
+    async def fake_public(path, params=None, host=""):
+        if path.endswith("fundingRate"):
+            return 200, [{"fundingRate": 0.0002} for _ in range(90)]
+        if path.endswith("ticker/price"):
+            return 200, {"price": "1.0"}
+        return 200, {}
+
+    async def fake_place(path, params, *, post=True, host=""):
+        placed.append(params.get("symbol", ""))
+        return 200, {"ok": True}
+
+    async def fake_steps(symbols):
+        return {s: (None, 1e-3, 5.0) for s in symbols}   # spot leg unknown
+
+    _patch("_place", fake_place)
+    _patch("live_book", fake_book)
+    _patch("_public", fake_public)
+    _patch("_steps", fake_steps)
+
+    _run(ex.carry_tick())
+    assert placed == []                                   # never half-pair
+    kinds = [o["kind"] for o in mem.orders]
+    assert kinds and all(k == "CARRY_ENTRY_DEFER" for k in kinds)

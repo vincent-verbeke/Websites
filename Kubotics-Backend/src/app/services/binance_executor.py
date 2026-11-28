@@ -275,15 +275,21 @@ async def _filter_maps() -> tuple[dict, dict, dict]:
             _FILTER_CACHE["perp_min"] or {})
 
 
-async def _steps(symbols: list[str]) -> dict[str, tuple[float, float, float]]:
-    """Per symbol: (spot step, perp step, perp min notional). Symbols with
-    unknown filters are OMITTED — callers defer instead of guessing."""
+async def _steps(
+    symbols: list[str],
+) -> dict[str, tuple[float | None, float | None, float]]:
+    """Per symbol: (spot step or None, perp step or None, perp min notional).
+
+    The legs are INDEPENDENT: momentum trades perp-only listings that have
+    no spot LOT_SIZE — coupling the checks wrongly DEFERRED 7 legitimate
+    exits in the live 09:09 cycle (2026-11-28). Callers must validate the
+    leg(s) they actually use; a symbol unknown to BOTH maps is omitted."""
     spot, perp, perp_min = await _filter_maps()
-    out: dict[str, tuple[float, float, float]] = {}
+    out: dict[str, tuple[float | None, float | None, float]] = {}
     for s in symbols:
         step_spot = spot.get(CARRY_SPOT_MAP.get(s, s))
         step_perp = perp.get(s)
-        if step_spot is None or step_perp is None:
+        if step_spot is None and step_perp is None:
             continue
         out[s] = (step_spot, step_perp, perp_min.get(s, 5.0))
     return out
@@ -338,7 +344,8 @@ async def carry_tick() -> dict:
         spot_sym = CARRY_SPOT_MAP[perp]
         spot_amt = book["spot"].get(spot_sym, 0.0)
         meta = (await _steps([perp])).get(perp)
-        step_spot, step_perp, _ = meta if meta else (0.0, 0.0, 5.0)
+        step_spot = (meta[0] if meta else None) or 0.0
+        step_perp = (meta[1] if meta else None) or 0.0
         open_now[perp] = {
             "spot": spot_sym, "qty": abs(pos["amt"]),
             "step_spot": step_spot, "step_perp": step_perp,
@@ -407,9 +414,10 @@ async def carry_tick() -> dict:
             continue
         qty = notional / price
         meta = (await _steps([perp])).get(perp)
-        if meta is None:
+        if meta is None or meta[0] is None or meta[1] is None:
             await journal("CARRY_ENTRY_DEFER", symbol=perp, mode=mode,
-                          cycle=cycle, note="no exchange filter data")
+                          cycle=cycle,
+                          note="missing spot/perp LOT_SIZE filter data")
             continue
         step_spot, step_perp, min_notional = meta
         qty = float(_fmt_qty(qty, min(step_spot, step_perp)))
@@ -509,11 +517,12 @@ async def momentum_tick() -> dict:
     for sym in sorted(set(held) - set(top)):
         pos = longs[sym]
         meta = (await _steps([sym])).get(sym)
-        if meta is None:
-            await journal("MOMENTUM_EXIT_DEFER", symbol=sym, mode=mode,
-                          cycle=cycle, note="no exchange filter data")
+        if meta is None or meta[1] is None:      # perp leg is all we need
+            await journal("MOMENTUM_EXIT_DEFER", symbol=sym,
+                          qty=abs(pos["amt"]), mode=mode, cycle=cycle,
+                          note="no perp LOT_SIZE filter data")
             continue
-        _, step_perp, _ = meta
+        step_perp = meta[1]
         code, r = await _place("/papi/v1/um/order", {
             "symbol": sym, "side": "SELL", "type": "MARKET",
             "quantity": _fmt_qty(abs(pos["amt"]), step_perp),
@@ -537,9 +546,9 @@ async def momentum_tick() -> dict:
         if price <= 0:
             continue
         meta = (await _steps([sym])).get(sym)
-        if meta is None:
+        if meta is None or meta[1] is None:      # perp leg is all we need
             await journal("MOMENTUM_ENTRY_DEFER", symbol=sym, mode=mode,
-                          cycle=cycle, note="no exchange filter data")
+                          cycle=cycle, note="no perp LOT_SIZE filter data")
             continue
         _, step_perp, min_notional = meta
         qty = notional / price

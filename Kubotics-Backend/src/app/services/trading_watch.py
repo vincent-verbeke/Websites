@@ -204,6 +204,28 @@ async def _persist_and_notify(problems: list[str], summary: dict,
     return {"event_id": event_id, "whatsapp": wa_ok, "sms": sms}
 
 
+async def expected_perp() -> list[str]:
+    """Expected perp book: the Binance Executor's OWN state (carry open ∪
+    momentum basket) when present, else the static env list.
+
+    The satellite rotates formation legs every 4h — a static list would
+    alert-storm after the executor's go-live (2026-11-28). Executor state
+    re-derives from the live book each tick, so genuine drift (manual
+    changes, a desynced state, feed errors) still alerts between ticks.
+    Read-only: DB kv reads only, no Binance calls.
+    """
+    try:
+        from app.services.binance_executor import load_state
+        carry = (await load_state("carry")).get("open") or {}
+        mom = (await load_state("momentum")).get("basket") or {}
+        syms = sorted(set(carry) | set(mom))
+        if syms:
+            return syms
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[trading-watch] executor expected fallback: %s", e)
+    return settings.TRADING_WATCH_EXPECTED_PERP.split(",")
+
+
 async def run_once(test: bool = False) -> dict:
     if not settings.TRADING_WATCH_ENABLED and not test:
         return {"skipped": "disabled"}
@@ -217,7 +239,8 @@ async def run_once(test: bool = False) -> dict:
             summary = {"perps": len(perps),
                        "usdt": round(spot.get("USDT", 0.0), 2),
                        "checked_at": datetime.now(UTC).isoformat()}
-            problems += evaluate(perps, spot, rates)
+            problems += evaluate(perps, spot, rates,
+                                 expected=await expected_perp())
             # per-asset cumulated income (dashboard details, non-critical)
             try:
                 inc = await fetch_income_rows(PER_ASSET_SINCE_MS)

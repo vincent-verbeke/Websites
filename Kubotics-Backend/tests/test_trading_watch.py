@@ -11,8 +11,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from app.core.config import settings          # noqa: E402
-from app.services import trading_watch as tw  # noqa: E402
+from app.core.config import settings
+from app.services import trading_watch as tw
 
 
 def _perp(sym: str, amt: float, px: float) -> dict:
@@ -111,7 +111,8 @@ def test_sms_disabled_by_default_without_boto3():
 
 
 def test_shape_alerts_orders_and_trims():
-    from datetime import datetime as dt, UTC
+    from datetime import UTC
+    from datetime import datetime as dt
     from types import SimpleNamespace
     rows = [
         SimpleNamespace(event_id="trading-alert-1", created_at=dt(2026, 11, 1, 18, 24, tzinfo=UTC),
@@ -163,3 +164,38 @@ def test_aggregate_income_per_asset_since_nov1():
     assert out["totals"]["events"] == 7
     assert out["rows"] == 7
     assert out["assets"] == sorted(out["assets"], key=lambda a: a["symbol"])
+
+
+def test_expected_perp_follows_executor_state_then_falls_back():
+    """Rotation-aware expected book (go-live 2026-11-28): the watch reads the
+    executor's carry+momentum kv; empty/failed state -> static env list."""
+    import asyncio
+
+    from app.services import binance_executor as exsvc
+
+    orig = exsvc.load_state
+
+    async def fake(key, default=None):
+        return {"open": {"CHRUSDT": {}, "SFPUSDT": {}}} if key == "carry" \
+            else {"basket": {"ARIAUSDT": {}}}
+
+    exsvc.load_state = fake
+    try:
+        out = asyncio.run(tw.expected_perp())
+        assert out == ["ARIAUSDT", "CHRUSDT", "SFPUSDT"]
+
+        async def empty(key, default=None):
+            return {}
+
+        exsvc.load_state = empty
+        assert asyncio.run(tw.expected_perp()) == \
+            settings.TRADING_WATCH_EXPECTED_PERP.split(",")
+
+        async def boom(key, default=None):
+            raise RuntimeError("db down")
+
+        exsvc.load_state = boom
+        assert asyncio.run(tw.expected_perp()) == \
+            settings.TRADING_WATCH_EXPECTED_PERP.split(",")
+    finally:
+        exsvc.load_state = orig
