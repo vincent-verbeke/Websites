@@ -25,10 +25,10 @@ and redeployed (this document exists because one of them sat at zero for
 | Cluster | Service | What |
 |---|---|---|
 | `kubotics-cluster` | `kubotics-backend-service` | The platform backend (target of every push to `main`) |
-| `akuris-cluster` | `ai-trading-service` | **Binance trading bot** (task def `ai-trading-task`, image ECR `ai-trading-service:latest`, logs `/ecs/ai-trading`) |
+| `akuris-cluster` | `ai-trading-service` | **REMOVED 2026-11-28** (Vincent: “disabled and removed permanently”). Old Binance bot (task def `ai-trading-task`, image ECR `ai-trading-service:latest`, logs group `/ecs/ai-trading` kept for history) |
 | `akuris-cluster` | whatsapp/mail/auth/api/… `*-task-service-*` | Legacy Akuris platform microservices (not Kubotics) |
 
-Status check (works today):
+Status check for the surviving services (pattern still valid):
 
 ```bash
 aws --profile h2rl ecs describe-services --cluster akuris-cluster \
@@ -36,14 +36,17 @@ aws --profile h2rl ecs describe-services --cluster akuris-cluster \
   --query 'services[0].{running:runningCount,desired:desiredCount,taskDef:taskDefinition}'
 ```
 
-**Known incident (found 2026-11-28):** `ai-trading-service` had
-`desired=0, running=0` since the deployment of task def **:72 on
-2026-11-12 20:34 CET** — the bot did **not run for 16 days** while everything
-else looked healthy. Evidence: `ai_trading.bot_state.updated_at` frozen at
-2026-11-12 20:23, `ai_trading.trades` empty (3,810 history rows archived to
-`trades_arch_20261112`, last archived trade 2026-10-19), local
-`jcode_strategy` state files mtime 2026-11-12 12:53. Never assume the bot
-runs; read `runningCount` first.
+**Incident → retirement (found 2026-11-28):** `ai-trading-service` sat at
+`desired=0, running=0` since task def **:72 (2026-11-12 20:34 CET)** —
+stopped by Vincent himself that evening, silent for 16 days while
+everything else looked healthy (evidence: `bot_state.updated_at` frozen
+2026-11-12 20:23, `trades` empty after the deliberate Nov-12 history
+cleanup, local `jcode_strategy` state mtime 2026-11-12). **Removed the same
+day it was found:** service force-deleted, all **72** `ai-trading-task`
+revisions deregistered, and the repo's ECS auto-deploy workflow
+(`AI-Trading/.github/workflows/deploy.yml`) deleted + pushed (`24cbed9`)
+so nothing can redeploy it. Lesson kept: **read `runningCount` before
+claiming a system runs.**
 
 ## 2. Cloud backend (Kubotics-Backend)
 
@@ -80,12 +83,30 @@ Ops gotchas:
 - `kubotics_app` **cannot read** schema `ai_trading` (permission denied) —
   use the `aitrading` user from `~/development/AI-Trading/.env`.
 
-## 3. Binance trading (the money system)
+## 3. Binance trading — strategy stack after the 2026-11-28 retirement
 
-- **Runtime**: ECS `ai-trading-service` = `python main.py` (bot loop) +
-  `uvicorn api.main:app :9090` (monitoring API), see
-  `AI-Trading/scripts/entrypoint.sh`.
-- **State**: RDS `akuris` schema `ai_trading` (owner `aitrading`):
+**The old ECS bot is GONE** (see §1). What actually trades/decides today:
+
+- **The “Beat the Market” trading challenge (Vincent, 2026-10-16)** —
+  plan `AI-Trading/JCODE_STRATEGY_PLAN.md`, harness `jcode_strategy/`
+  (walkforward, xsec momentum, carry, intraday-MR). Frozen snapshot:
+  `trading-tests` repo (commit `4040c66`, “trading challenge code”,
+  2026-10-18). Budget doctrine (2026-10-17): **carry = core, momentum =
+  satellite (≤ ~15%), options = tactical-only**.
+- **Live book** (governed, not bot-managed): 5 carry shorts
+  (CHR/DYDX/PEOPLE/SFP/UNI hedged vs spot ≤5%), 8 momentum perp longs,
+  spot GTC/QNT; CHF 5,000 added 2026-11-12 → 5,839.84 USDT → PM
+  (`MAIN_MARGIN` tranId 430292349721), 2,000 USDT kept on spot as carry
+  entry float. Executions go through **on-demand scripts** in
+  `ros2_reusable_stack/scripts/trading/` (`xsec_live_deploy.py`,
+  `xsec_rotate.py`, `evening_report.py`, `cost_ledger.py`) — dry-run
+  default, `--execute` places.
+- **Governance in the backend (read-only):** `trading_watch` service —
+  13-leg position-drift baseline (`TRADING_WATCH_EXPECTED_PERP`), funding
+  sign, per-asset PnL → `GET /api/v1/investments` + alerts (docs/
+  TRADING_WATCH_CLOUD.md). Bi-daily `n3review` session verifies adherence
+  (REVIEW_PROMPT in `needle3/needle3/tasks.py`).
+- **State schema (legacy now):** RDS `akuris` schema `ai_trading` (owner `aitrading`):
   `trades`, `bot_state`, `cycle_history`, `logs` (ERROR-only), `paper_portfolio`,
   `strategy_versions`; `binance` schema = legacy Akuris-era (owner
   `akuris_pg_admin`, empty-of-relevance), `trading_schema` = empty.
@@ -114,8 +135,13 @@ Ops gotchas:
 - **Capital sizing**: `executor.get_deployable_capital()` =
   `GET /papi/v1/account → totalAvailableBalance × (1 - RESERVE_PCT)` —
   i.e. the bot trades the **Portfolio-Margin available balance**, not spot.
-- The **daily evening PnL email** is produced by the bot — expect none while
-  `desired=0`.
+- **No Binance order-executing code exists in Kubotics-Backend `src`**
+  (verified 2026-11-28: no strategy modules, no order placement; Nov 5–21
+  commits touch only ibkr/leads/mail/telegram). The backend-resident
+  *trading algorithms* are the **IBKR** ones: `ibkr_plan` (cloud daily
+  plan, trend gates) + `ibkr_spread` (50/50 limit rule) — landed 2026-11-14.
+- The **daily evening PnL email** script: `ros2_reusable_stack/scripts/
+  trading/evening_report.py` (scheduling unverified 2026-11-28).
 
 ## 4. Edge machines
 

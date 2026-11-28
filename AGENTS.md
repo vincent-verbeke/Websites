@@ -53,10 +53,14 @@ The caveman skill pack is installed globally with the `-g` option
   contacts, followups) + `akuris` (schema `ai_trading` = trading bot state,
   owner `aitrading`). WhatsApp webhook/inbox/send, IBKR MCP + daily plan,
   lead followups, mail agent and the needle watchdog all run HERE.
-- **Binance trading** = ECS `akuris-cluster` service `ai-trading-service`
-  (repo `~/development/AI-Trading`, LIVE mode). It has a **desired count**:
-  it has been scaled to 0 for 16 days unnoticed (12–28 Nov) — check
-  `runningCount` before claiming trading works.
+- **Binance trading**: the old ECS service `ai-trading-service` is
+  **REMOVED (2026-11-28: service deleted, 72 task-def revisions
+  deregistered, repo auto-deploy workflow deleted)** — it had been silently
+  at `desired=0` for 16 days. The live strategy stack = the “Beat the
+  Market” challenge code (`AI-Trading/jcode_strategy`, frozen copy
+  `trading-tests`) executed via `ros2_reusable_stack/scripts/trading/`
+  scripts and governed read-only by the backend's `trading_watch`;
+  backend-resident trading algorithms = IBKR `ibkr_plan` + `ibkr_spread`.
 - **WhatsApp flow** = Meta → cloud `crm.needle_inbox` → **PC-A**
   `needle3.service` worker (PC-B hot standby in backup mode) →
   `POST /api/whatsapp/send`. Replies are WAF-scrubbed + retried since
