@@ -94,20 +94,36 @@ def evaluate(perps: list[dict], spot: dict[str, float], rates: dict[str, float],
     problems: list[str] = []
     expected = settings.TRADING_WATCH_EXPECTED_PERP.split(",") if expected is None else expected
 
-    for sym, asset in CARRY.items():
-        amt = next((float(p["positionAmt"]) for p in perps
-                    if p.get("symbol") == sym), 0.0)
+    # --- hedge integrity is per SPOT ASSET (2026-11-28): the executor can
+    # hold several pairs of one base — legacy UNIUSDC + the funded UNIUSDT
+    # top-up share ONE spot UNI balance — and per-symbol checks false-alarm
+    # 87.6% there. Sum every carry short by base asset, then compare with
+    # the balance. Pair-level closures still surface via expected-vs-book
+    # (added/removed against the executor state) and the journal.
+    short_by_asset: dict[str, float] = {}
+    for p in perps:
+        amt = float(p["positionAmt"])
+        sym = p.get("symbol") or ""
+        if amt < 0 and sym.endswith(("USDT", "USDC")):
+            short_by_asset[sym[:-4]] = short_by_asset.get(sym[:-4], 0.0) + amt
+    carry_assets = set(CARRY.values())
+    for asset in sorted(carry_assets | set(short_by_asset)):
         sq = spot.get(asset, 0.0)
+        amt = short_by_asset.get(asset, 0.0)
+        names = "/".join(sorted(s for s, a in CARRY.items() if a == asset)) \
+            or asset
         if amt == 0:
-            problems.append(f"carry {sym}: perp leg GONE (spot {asset} "
-                            f"{'unhedged' if sq > 1 else 'also closed'})")
+            if sq > 1 and asset in carry_assets:
+                problems.append(f"carry {names}: perp leg GONE (spot {asset} "
+                                f"{sq:g} unhedged)")
             continue
         if sq <= 0:
-            problems.append(f"carry {sym}: spot leg GONE (short {abs(amt):g} unhedged)")
+            problems.append(f"carry {names}: spot leg GONE "
+                            f"(short {abs(amt):g} unhedged)")
             continue
         mismatch = abs(abs(amt) - sq) / max(abs(amt), sq)
         if mismatch > HEDGE_TOL:
-            problems.append(f"carry {sym}: hedge mismatch {mismatch:.1%} "
+            problems.append(f"carry {names}: hedge mismatch {mismatch:.1%} "
                             f"(perp {amt:g} vs spot {sq:g})")
 
     est24 = 0.0
