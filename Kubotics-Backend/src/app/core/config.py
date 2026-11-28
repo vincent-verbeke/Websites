@@ -105,6 +105,24 @@ class Settings(BaseSettings):
         "JCTUSDT,MUBARAKUSDT,PEOPLEUSDT,QUSDT,SFPUSDT,UNIUSDC"
     )
 
+    # --- Binance Executor (Vincent GO 2026-11-28: “call it Binance Executor
+    #     from now on … ensure we do live trading, not paper trading and port
+    #     it to the backend”; port of the “Beat the Market” challenge stack
+    #     carry + momentum). Risk rails are Vincent's and NEVER widened. ---
+    BINANCE_EXECUTOR_ENABLED: bool = False       # loop off until task-def GO
+    BINANCE_EXECUTOR_DRY_RUN: bool = True        # True = log-only, no orders
+    BINANCE_EXECUTOR_CARRY_TICK_S: int = 3600
+    BINANCE_EXECUTOR_MOMENTUM_TICK_S: int = 21600   # 4h, aligns with reviews
+    BINANCE_EXECUTOR_CARRY_BUDGET_USD: float = 4000.0   # 2026-11-12 sizing
+    BINANCE_EXECUTOR_CARRY_ALLOC_PCT: float = 0.50
+    BINANCE_EXECUTOR_CARRY_TOP_N: int = 10
+    BINANCE_EXECUTOR_MOMENTUM_NOTIONAL_USD: float = 12.5  # rotate precedent
+    BINANCE_EXECUTOR_MOMENTUM_TOP_N: int = 10
+    BINANCE_EXECUTOR_DAILY_STOP_PCT: float = 0.005   # 0.5% of budget/day
+    BINANCE_EXECUTOR_DRAWDOWN_HALT_PCT: float = 0.20
+    BINANCE_EXECUTOR_FUNDING_EXIT_STREAK: int = 3
+    BINANCE_EXECUTOR_STOP: bool = False           # cloud kill switch
+
     # --- B5 spend caps + approval (docs §19; §6 hard boundary) ---
     # Raised 26 Nov 2026 by Vincent (WhatsApp #145 "agree to Google Budget"):
     # total 100 -> 105 (31-day months at CHF 3.30/day = 102.30), search 70 -> 100

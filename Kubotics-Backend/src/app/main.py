@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.binance_executor import router as binance_executor_router
 from app.api.v1.channel_adapters import router as channel_adapters_router
 from app.api.v1.cloud_dashboard import router as cloud_dashboard_router
 from app.api.v1.endpoints import router as api_v1_router
@@ -18,6 +19,7 @@ from app.api.v1.trading_watch import router as trading_watch_router
 from app.api.whatsapp import router as whatsapp_router
 from app.core.config import settings
 from app.db.session import Base, engine
+from app.services import binance_executor as binance_executor_service
 from app.services import ibkr_mcp as ibkr_mcp_service
 from app.services import ibkr_plan as ibkr_plan_service
 from app.services import lead_followup as lead_followup_service
@@ -119,7 +121,21 @@ async def lifespan(app: FastAPI):
                     settings.NEEDLE_WATCHDOG_TICK_S,
                     settings.NEEDLE_WATCHDOG_STALE_AFTER_S,
                     settings.NEEDLE_WATCHDOG_DISPATCHED_AFTER_S)
+    # Binance Executor (Vincent GO 2026-11-28; docs/BINANCE_EXECUTOR.md) —
+    # default OFF: maybe_start_* returns None unless BINANCE_EXECUTOR_ENABLED,
+    # and even then orders are DRY unless BINANCE_EXECUTOR_DRY_RUN=false.
+    be = binance_executor_service.maybe_start_binance_executor_loop()
+    if be is not None:
+        logger.info("[binance-executor] background loop started (carry=%ss, "
+                    "momentum=%ss, dry_run=%s)",
+                    settings.BINANCE_EXECUTOR_CARRY_TICK_S,
+                    settings.BINANCE_EXECUTOR_MOMENTUM_TICK_S,
+                    settings.BINANCE_EXECUTOR_DRY_RUN)
     yield
+    if be is not None:
+        be.cancel()
+        with suppress(asyncio.CancelledError):
+            await be
     if nw is not None:
         nw.cancel()
         with suppress(asyncio.CancelledError):
@@ -183,6 +199,8 @@ app.include_router(channel_adapters_router, prefix=settings.API_V1_STR)
 app.include_router(cloud_dashboard_router, prefix=settings.API_V1_STR)
 # trading watcher control/status (/api/v1/trading/watch/{test,status})
 app.include_router(trading_watch_router, prefix=settings.API_V1_STR)
+# Binance Executor (/api/v1/binance/executor/{status,run,stop})
+app.include_router(binance_executor_router, prefix=settings.API_V1_STR)
 # spend caps + campaign metrics (B4/B5: /api/v1/spend/*, /api/v1/campaigns/*)
 app.include_router(marketing_guard_router, prefix=settings.API_V1_STR)
 
