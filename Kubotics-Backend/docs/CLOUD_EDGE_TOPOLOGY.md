@@ -66,7 +66,11 @@ Responsibilities (all cloud, no dev-PC dependency by design):
   `docs/IBKR_MCP_BACKEND.md`.
 - **`trading_watch`**: Binance price/threshold *alerts* to the
   `trading_watch` channel + SMS — `docs/TRADING_WATCH_CLOUD.md`. Alerting
-  only, it is **not** the trading strategy.
+  only, it is **not** the trading strategy; its expected-book now follows
+  the Binance Executor's kv state (rotation-aware).
+- **Binance Executor** (LIVE since 2026-11-28, Vincent GO): carry + momentum
+  strategy that PLACES orders — `docs/BINANCE_EXECUTOR.md`. Rails + journal
+  in `crm.binance_executor_*`; kill switch `POST /api/v1/binance/executor/stop`.
 - Mail agent (`docs/MAIL_AGENT_REPLY_TRUTH.md`), lead followups, M365 email
   sending, lead/CRM APIs, conversion goals (KUB-G).
 

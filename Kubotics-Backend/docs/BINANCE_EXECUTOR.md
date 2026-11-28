@@ -37,8 +37,30 @@ Checked **before every decision** (`rails_ok()`):
 
 **State is derived from the live book every tick** (positions + spot), so a
 crash can never double-enter: the exchange, not our memory, is authoritative.
-The existing 13-leg challenge book (5 carry shorts + 8 momentum legs) is
-*adopted*, never re-bought.
+The existing challenge book (carry shorts + momentum legs) is *adopted*, never
+re-bought — for **both** legs: carry `open` comes from live shorts, momentum
+`basket` comes from live non-carry longs (phantom claims — e.g. from a dry run
+against the shared KV — drop automatically).
+
+Filter data (`_filter_maps`) = full spot+fapi `exchangeInfo`, memoized 10 min,
+first-fetch failure raises. Spot and perp LOT legs are **independent**: momentum
+trades perp-only listings (no spot LOT), so it validates only the perp leg;
+carry entries require both (never half-paired). Symbols missing the leg they
+need journal `*_DEFER` and retry next cycle — never guessed sizes.
+
+`trading_watch`'s expected book now reads the executor's kv state (carry open ∪
+momentum basket), falling back to `TRADING_WATCH_EXPECTED_PERP`. The satellite
+rotates every 4h; the static list would alert-storm after rotation.
+
+### First live day (2026-11-28, evidence in the journal)
+- Dry E2E caught the silent-empty-book defect → `live_book` fails loud.
+- GO LIVE 08:57: momentum entered the formation top-10 @12.5 (all filled);
+  carry's 5 spot top-ups rejected `-1013 LOT_SIZE` — the spot `symbols` query
+  needs a JSON array (old plain-comma value → empty steps → 1e-8 fallback).
+  Fixed in `b0eed3f`: 09:05 all 5 pairs FILLED spot+perp (10 carry shorts).
+- 09:09 rotation cycle DEFERred 7 exits (perp-only listings lacked spot LOT)
+  → fixed in `0e964ce` (legs decoupled + watch rotation-aware). Convergence:
+  legacy legs rotate to the current formation top-10 on the next tick.
 
 ## Modes (Vincent's "live, not paper" condition)
 

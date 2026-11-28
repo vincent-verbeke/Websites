@@ -56,11 +56,14 @@ The caveman skill pack is installed globally with the `-g` option
 - **Binance trading**: the old ECS service `ai-trading-service` is
   **REMOVED (2026-11-28: service deleted, 72 task-def revisions
   deregistered, repo auto-deploy workflow deleted)** — it had been silently
-  at `desired=0` for 16 days. The live strategy stack = the “Beat the
-  Market” challenge code (`AI-Trading/jcode_strategy`, frozen copy
-  `trading-tests`) executed via `ros2_reusable_stack/scripts/trading/`
-  scripts and governed read-only by the backend's `trading_watch`;
-  backend-resident trading algorithms = IBKR `ibkr_plan` + `ibkr_spread`.
+  at `desired=0` for 16 days. The live strategy = the **Binance Executor**
+  IN the backend (LIVE 2026-11-28, Vincent GO: carry+momentum, place orders,
+  rails + journal, 4h follow-ups for 3 days — `docs/BINANCE_EXECUTOR.md`),
+  with the “Beat the Market” challenge code (`AI-Trading/jcode_strategy`,
+  frozen `trading-tests`, desktop runners `ros2_reusable_stack/scripts/trading/`)
+  as its reference implementation; `trading_watch` stays the independent
+  read-only alerting layer (rotation-aware expected book). Other
+  backend-resident trading = IBKR `ibkr_plan` + `ibkr_spread`.
 - **WhatsApp flow** = Meta → cloud `crm.needle_inbox` → **PC-A**
   `needle3.service` worker (PC-B hot standby in backup mode) →
   `POST /api/whatsapp/send`. Replies are WAF-scrubbed + retried since

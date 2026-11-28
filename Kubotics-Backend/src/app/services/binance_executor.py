@@ -596,8 +596,13 @@ async def status() -> dict:
     book = await live_book()
     carry_st = await load_state("carry", {"open": {}})
     mom_st = await load_state("momentum", {"basket": {}})
-    expected = [s for s in
-                settings.TRADING_WATCH_EXPECTED_PERP.split(",") if s]
+    # meaningful drift = book vs the executor's OWN state (desync signal);
+    # since go-live the rotation makes the static env list reference-only.
+    state_expected = sorted(set(carry_st.get("open", {}))
+                            | set(mom_st.get("basket", {})))
+    env_expected = [s for s in
+                    settings.TRADING_WATCH_EXPECTED_PERP.split(",") if s]
+    expected = state_expected or env_expected
     held_perps = sorted(book["positions"])
     async with AsyncSessionLocal() as db:
         rows = (await db.execute(
@@ -622,7 +627,8 @@ async def status() -> dict:
         "momentum": {"basket": sorted(mom_st.get("basket", {})),
                      "top_n": mom_st.get("top_n", [])},
         "book": {"held_perps": held_perps, "expected": expected,
-                 "drift": sorted(set(held_perps) ^ set(expected))},
+                 "drift": sorted(set(held_perps) ^ set(expected)),
+                 "env_expected": env_expected},
         "spot_float": book["spot"].get("USDT", 0.0),
         "recent_actions": recent,
     }
